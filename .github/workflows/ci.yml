@@ -18,6 +18,8 @@ env:
   DOTNET_VERSION: '8.0.x'
   BUILD_CONFIGURATION: 'Release'
   IMAGE_NAME: azureautoscaler
+  # Default Docker Hub repository (can be overridden via REGISTRY_PATH secret)
+  DEFAULT_REGISTRY_PATH: davidbcn86
 
 jobs:
   build-and-test:
@@ -68,14 +70,26 @@ jobs:
       - name: Build Docker Image
         shell: pwsh
         env:
-          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-          REGISTRY_PWD: ${{ secrets.REGISTRY_PWD }}
-          REGISTRY_PATH: ${{ secrets.REGISTRY_PATH }}
+          REGISTRY_USER: ${{ secrets.DOCKERHUB_USERNAME || secrets.REGISTRY_USER }}
+          REGISTRY_PWD: ${{ secrets.DOCKERHUB_TOKEN || secrets.REGISTRY_PWD }}
+          REGISTRY_PATH: ${{ secrets.REGISTRY_PATH || env.DEFAULT_REGISTRY_PATH }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           TEMP: ${{ runner.temp }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          .\build.ps1
+          # Use default Docker Hub path if not provided
+          if (-not $env:REGISTRY_PATH -or $env:REGISTRY_PATH.Trim() -eq '') {
+            $env:REGISTRY_PATH = '${{ env.DEFAULT_REGISTRY_PATH }}'
+          }
+          
+          # Only build if registry credentials are provided, otherwise skip
+          if ($env:REGISTRY_USER -and $env:REGISTRY_PWD) {
+            Write-Host "Building Docker image: $($env:REGISTRY_PATH)/$($env:IMAGE_NAME)"
+            .\build.ps1
+          } else {
+            Write-Host "Skipping Docker build - registry credentials not provided"
+            Write-Host "Set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets, or REGISTRY_USER and REGISTRY_PWD"
+          }
 
   push-to-registry:
     name: Push Docker Image
@@ -111,12 +125,24 @@ jobs:
       - name: Build and Push Docker Image
         shell: pwsh
         env:
-          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
-          REGISTRY_PWD: ${{ secrets.REGISTRY_PWD }}
-          REGISTRY_PATH: ${{ secrets.REGISTRY_PATH }}
+          REGISTRY_USER: ${{ secrets.DOCKERHUB_USERNAME || secrets.REGISTRY_USER }}
+          REGISTRY_PWD: ${{ secrets.DOCKERHUB_TOKEN || secrets.REGISTRY_PWD }}
+          REGISTRY_PATH: ${{ secrets.REGISTRY_PATH || env.DEFAULT_REGISTRY_PATH }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          # Use default Docker Hub path if not provided
+          if (-not $env:REGISTRY_PATH -or $env:REGISTRY_PATH.Trim() -eq '') {
+            $env:REGISTRY_PATH = '${{ env.DEFAULT_REGISTRY_PATH }}'
+          }
+          
+          if (-not ($env:REGISTRY_USER -and $env:REGISTRY_PWD)) {
+            Write-Error "Registry credentials not provided. Cannot push image."
+            Write-Error "Set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets, or REGISTRY_USER and REGISTRY_PWD"
+            exit 1
+          }
+          
+          Write-Host "Building and pushing Docker image: $($env:REGISTRY_PATH)/$($env:IMAGE_NAME)"
           .\build.ps1 -Push
 
   create-release:
@@ -138,7 +164,7 @@ jobs:
         with:
           script: |
             const tagName = context.ref.replace('refs/tags/', '');
-            const registryPath = '${{ secrets.REGISTRY_PATH }}' || '<registry>';
+            const registryPath = '${{ secrets.REGISTRY_PATH }}' || '${{ env.DEFAULT_REGISTRY_PATH }}';
             const imageName = '${{ env.IMAGE_NAME }}';
             
             // Get auto-generated release notes from GitHub API
@@ -149,7 +175,7 @@ jobs:
             });
             
             // Append Docker image info
-            const dockerInfo = `\n\n---\n\n**Docker Image:** \`${registryPath}/${imageName}:${tagName}\``;
+            const dockerInfo = `\n\n---\n\n**Docker Image:** \`${registryPath}/${imageName}:${tagName}\`\n\nPull with: \`docker pull ${registryPath}/${imageName}:${tagName}\``;
             const fullNotes = releaseNotes.body + dockerInfo;
             
             core.setOutput('tag_name', tagName);
