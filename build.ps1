@@ -37,14 +37,14 @@ if ($Env:REGISTRY_PATH) {
 }
 Write-Output "Docker image name: $($Env:IMAGE)" 
 
+# Force Linux platform
+$env:DOCKER_DEFAULT_PLATFORM = "linux/amd64"
+
 # Ensure we are in LINUX containers
-if (-not(Test-Path $Env:ProgramFiles\Docker\Docker\DockerCli.exe)) {
-  Get-Command docker
-  Write-Warning "Docker cli not found at $Env:ProgramFiles\Docker\Docker\DockerCli.exe"
-}
-else {
-  Write-Warning "Switching to Linux Engine"
+if (Test-Path $Env:ProgramFiles\Docker\Docker\DockerCli.exe) {
+  Write-Output "Switching to Linux Engine"
   & $Env:ProgramFiles\Docker\Docker\DockerCli.exe -SwitchLinuxEngine
+  Start-Sleep -Seconds 2
 }
 
 if ((Test-Path "env-private.env") -eq $false) {
@@ -52,8 +52,6 @@ if ((Test-Path "env-private.env") -eq $false) {
 }
 
 Write-Output "Starting Docker Compose Build with no cache (Linux platform)"
-# Force Linux platform for cross-platform builds
-$env:DOCKER_DEFAULT_PLATFORM = "linux/amd64"
 docker compose -f compose.yaml build
 ThrowIfError
 

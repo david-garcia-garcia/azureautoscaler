@@ -1,9 +1,9 @@
 # Use the official .NET runtime as the base image
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 WORKDIR /app
 
 # Use the official .NET SDK as the build image
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy the project file(s) and restore dependencies
