@@ -37,21 +37,21 @@ if ($Env:REGISTRY_PATH) {
 }
 Write-Output "Docker image name: $($Env:IMAGE)" 
 
-# Force Linux platform
-$env:DOCKER_DEFAULT_PLATFORM = "linux/amd64"
-
-# Ensure we are in LINUX containers
-if (Test-Path $Env:ProgramFiles\Docker\Docker\DockerCli.exe) {
-  Write-Output "Switching to Linux Engine"
-  & $Env:ProgramFiles\Docker\Docker\DockerCli.exe -SwitchLinuxEngine
-  Start-Sleep -Seconds 2
+# On Linux runners, Docker is already in Linux mode
+# On Windows, try to switch if Docker Desktop is available
+if ($IsWindows -or $env:OS -eq "Windows_NT") {
+  if (Test-Path $Env:ProgramFiles\Docker\Docker\DockerCli.exe) {
+    Write-Output "Switching to Linux Engine"
+    & $Env:ProgramFiles\Docker\Docker\DockerCli.exe -SwitchLinuxEngine
+    Start-Sleep -Seconds 2
+  }
 }
 
 if ((Test-Path "env-private.env") -eq $false) {
     New-Item "env-private.env" -type file
 }
 
-Write-Output "Starting Docker Compose Build with no cache (Linux platform)"
+Write-Output "Starting Docker Compose Build with no cache"
 docker compose -f compose.yaml build
 ThrowIfError
 
