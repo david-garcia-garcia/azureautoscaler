@@ -13,12 +13,18 @@ namespace poolautoscaler.licensing
         private readonly RsaSecurityKey _publicKey;
         private License? _cachedLicense;
         private bool _isValid;
+        private string? _lastError;
 
         public LicenseValidator()
         {
             // Load public key from embedded resource
             _publicKey = LoadPublicKey();
         }
+
+        /// <summary>
+        /// Gets the last validation error message, if any
+        /// </summary>
+        public string? LastError => _lastError;
 
         /// <summary>
         /// Validates and loads a license from the JWT token in environment variable
@@ -36,6 +42,7 @@ namespace poolautoscaler.licensing
             // If no license is provided, return expired default license
             if (string.IsNullOrEmpty(licenseJwt))
             {
+                _lastError = "AUTOSCALER_LICENSE environment variable is not set or is empty";
                 _cachedLicense = CreateExpiredDefaultLicense();
                 _isValid = false;
                 return _cachedLicense;
@@ -59,6 +66,7 @@ namespace poolautoscaler.licensing
                 
                 if (validatedToken is not JwtSecurityToken jwtToken)
                 {
+                    _lastError = "Token validation succeeded but result is not a JWT token";
                     _cachedLicense = CreateExpiredDefaultLicense();
                     _isValid = false;
                     return _cachedLicense;
@@ -71,6 +79,7 @@ namespace poolautoscaler.licensing
 
                 if (string.IsNullOrEmpty(expirationDateStr) || string.IsNullOrEmpty(maxResourcesStr))
                 {
+                    _lastError = $"Missing required claims in JWT token. exp: {(string.IsNullOrEmpty(expirationDateStr) ? "missing" : "present")}, maxResources: {(string.IsNullOrEmpty(maxResourcesStr) ? "missing" : "present")}";
                     _cachedLicense = CreateExpiredDefaultLicense();
                     _isValid = false;
                     return _cachedLicense;
@@ -91,8 +100,30 @@ namespace poolautoscaler.licensing
                 _isValid = true;
                 return license;
             }
-            catch
+            catch (SecurityTokenSignatureKeyNotFoundException ex)
             {
+                _lastError = $"JWT signature validation failed: {ex.Message}. The license token may have been signed with a different private key.";
+                _cachedLicense = CreateExpiredDefaultLicense();
+                _isValid = false;
+                return _cachedLicense;
+            }
+            catch (SecurityTokenException ex)
+            {
+                _lastError = $"JWT token validation failed: {ex.Message}";
+                _cachedLicense = CreateExpiredDefaultLicense();
+                _isValid = false;
+                return _cachedLicense;
+            }
+            catch (FormatException ex)
+            {
+                _lastError = $"JWT token format error: {ex.Message}. The token may be malformed or corrupted.";
+                _cachedLicense = CreateExpiredDefaultLicense();
+                _isValid = false;
+                return _cachedLicense;
+            }
+            catch (Exception ex)
+            {
+                _lastError = $"Unexpected error validating license: {ex.GetType().Name}: {ex.Message}";
                 _cachedLicense = CreateExpiredDefaultLicense();
                 _isValid = false;
                 return _cachedLicense;

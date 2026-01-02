@@ -223,6 +223,7 @@ namespace AzureSqlElasticPoolAutoscaler
             private readonly Configuration Configuration;
             private readonly LicenseInfo LicenseInfo;
             private readonly DateTime _startTime;
+            private readonly LicenseValidator _licenseValidator;
 
             public AutoscalerService(IConfiguration configuration, ILoggerFactory factory)
             {
@@ -236,6 +237,9 @@ namespace AzureSqlElasticPoolAutoscaler
                 var license = validator.ValidateAndLoadLicense();
                 var isExpired = license != null && validator.IsExpired(license);
                 this.LicenseInfo = new LicenseInfo(license ?? validator.CreateExpiredDefaultLicense(), validator.IsValid, isExpired);
+                
+                // Store validator for error reporting
+                _licenseValidator = validator;
 
                 // Track startup time for expired license error checking
                 _startTime = DateTime.UtcNow;
@@ -310,11 +314,17 @@ namespace AzureSqlElasticPoolAutoscaler
                 Console.WriteLine($"License Expired: {(this.LicenseInfo.IsExpired ? "Yes" : "No")}");
                 if (this.LicenseInfo.IsRestricted)
                 {
-                    var reason = !this.LicenseInfo.IsValid ? "invalid" : "expired";
-                    Console.WriteLine($"WARNING: License is {reason}. Limited functionality enabled.");
+                    Console.WriteLine($"WARNING: License is {this.LicenseInfo.Reason}. Limited functionality enabled.");
                     Console.WriteLine("  - Scaling operations delayed by 1 minute");
                     Console.WriteLine("  - Maximum 1 resource allowed");
                     Console.WriteLine("  - Trace mode logging only");
+                    
+                    // Show validation error if available
+                    if (!string.IsNullOrEmpty(_licenseValidator.LastError))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine($"License Validation Error: {_licenseValidator.LastError}");
+                    }
                 }
                 Console.WriteLine("========================================");
             }
@@ -393,19 +403,10 @@ namespace AzureSqlElasticPoolAutoscaler
                         }
                     }
 
-                    // Limit resources if license is expired or invalid
-                    var resourcesToProcess = this.LicenseInfo.IsRestricted 
-                        ? Resources.Values.Take(this.LicenseInfo.License.MaxResources).ToList()
-                        : Resources.Values.ToList();
-
-                    if (this.LicenseInfo.IsRestricted && Resources.Count > this.LicenseInfo.License.MaxResources)
-                    {
-                        var reason = !this.LicenseInfo.IsValid ? "invalid" : "expired";
-                        this.Logger.LogWarning("License {0}: Only processing first {1} resource(s) out of {2} total", 
-                            reason, this.LicenseInfo.License.MaxResources, Resources.Count);
-                    }
-
-                    foreach (var resourceState in resourcesToProcess)
+                    // Process all resources, but limit if license is expired or invalid
+                    int processedCount = 0;
+                    
+                    foreach (var resourceState in Resources.Values)
                     {
                         if (resourceState.Configuration.Enabled == false)
                         {
@@ -417,9 +418,18 @@ namespace AzureSqlElasticPoolAutoscaler
                             continue;
                         }
 
+                        // Skip if license is restricted and we've reached the limit
+                        if (this.LicenseInfo.IsRestricted && processedCount >= this.LicenseInfo.License.MaxResources)
+                        {
+                            this.Logger.LogWarning("License {0}: Skipping resource '{1}' (limit: {2} resources)", 
+                                this.LicenseInfo.Reason, resourceState.Configuration.ResourceId, this.LicenseInfo.License.MaxResources);
+                            continue;
+                        }
+
                         try
                         {
                             await RunLoop(dimensions, resourceState, stoppingToken, credential, client, LicenseInfo);
+                            processedCount++;
                         }
                         catch (ResourceNotFoundException ex)
                         {
@@ -667,8 +677,7 @@ namespace AzureSqlElasticPoolAutoscaler
                         // Expired or invalid license: add 1 minute delay to scaling operations
                         if (licenseInfo.IsRestricted)
                         {
-                            var reason = !licenseInfo.IsValid ? "invalid" : "expired";
-                            logger.LogTrace("License {0}: Adding 1 minute delay to scaling operation", reason);
+                            logger.LogTrace("License {0}: Adding 1 minute delay to scaling operation", licenseInfo.Reason);
                             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
                         }
 

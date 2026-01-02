@@ -14,6 +14,11 @@ namespace poolautoscaler.licensing
         /// </summary>
         public bool IsRestricted => !IsValid || IsExpired;
 
+        /// <summary>
+        /// Returns the reason for license restriction: "invalid" or "expired"
+        /// </summary>
+        public string Reason => !IsValid ? "invalid" : "expired";
+
         public LicenseInfo(License license, bool isValid, bool isExpired)
         {
             License = license;
