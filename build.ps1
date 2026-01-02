@@ -54,7 +54,7 @@ if ((Test-Path "env-private.env") -eq $false) {
 Write-Output "Starting Docker Compose Build with no cache (Linux platform)"
 # Force Linux platform for cross-platform builds
 $env:DOCKER_DEFAULT_PLATFORM = "linux/amd64"
-docker compose -f compose.yaml build --platform linux/amd64
+docker compose -f compose.yaml build
 ThrowIfError
 
 if ($StartContainers -eq $true) {
