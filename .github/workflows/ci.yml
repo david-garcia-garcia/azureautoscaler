@@ -41,14 +41,15 @@ jobs:
         id: version
         shell: pwsh
         run: |
+          # Only use real version for tags like "1.0.0" or "v1.0.0", everything else is dev
           if ($env:GITHUB_REF -like "refs/tags/*") {
-            $version = $env:GITHUB_REF -replace "refs/tags/", ""
-            # Remove 'v' prefix if present
-            if ($version -match "^v(.+)") {
+            $tag = $env:GITHUB_REF -replace "refs/tags/", ""
+            if ($tag -match "^v?(\d+\.\d+\.\d+)$") {
               $version = $matches[1]
+            } else {
+              $version = "0.0.0-dev"
             }
           } else {
-            # For branches, use simple dev version
             $version = "0.0.0-dev"
           }
           Write-Host "Version: $version"
@@ -104,15 +105,15 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $version = "0.0.0-dev"
+          # Only use real version for tags like "1.0.0" or "v1.0.0", everything else is dev
           if ($env:GITHUB_REF -like "refs/tags/*") {
-            $version = $env:GITHUB_REF -replace "refs/tags/", ""
-            # Remove 'v' prefix if present (e.g., v1.0.0 -> 1.0.0)
-            if ($version -match "^v(\d+\.\d+\.\d+)") {
+            $tag = $env:GITHUB_REF -replace "refs/tags/", ""
+            if ($tag -match "^v?(\d+\.\d+\.\d+)$") {
               $version = $matches[1]
+            } else {
+              $version = "0.0.0-dev"
             }
           } else {
-            # For branches, use simple dev version
             $version = "0.0.0-dev"
           }
           Write-Host "Version: $version"
