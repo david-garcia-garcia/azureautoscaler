@@ -1,0 +1,166 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '*'
+  pull_request:
+    branches:
+      - '*'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  BUILD_CONFIGURATION: 'Release'
+  IMAGE_NAME: azureautoscaler
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore **/poolautoscaler.csproj
+
+      - name: Determine Version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "0.0.0-dev"
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $version = $env:GITHUB_REF -replace "refs/tags/", ""
+            # Remove 'v' prefix if present (e.g., v1.0.0 -> 1.0.0)
+            if ($version -match "^v(\d+\.\d+\.\d+)") {
+              $version = $matches[1]
+            }
+          } elseif ($env:GITHUB_REF -like "refs/heads/*") {
+            $branch = $env:GITHUB_REF -replace "refs/heads/", ""
+            $sha = $env:GITHUB_SHA.Substring(0, 7)
+            $version = "0.0.0-$branch-$sha"
+          }
+          Write-Host "Version: $version"
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build
+        run: dotnet build **/*.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -p:VERSION=${{ env.VERSION }}
+
+      - name: Run Tests
+        run: dotnet test **/*tests.csproj --configuration ${{ env.BUILD_CONFIGURATION }} --collect:"XPlat Code Coverage" --no-build --verbosity normal
+        continue-on-error: false
+
+      - name: Build Docker Image
+        shell: pwsh
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_PWD: ${{ secrets.REGISTRY_PWD }}
+          REGISTRY_PATH: ${{ secrets.REGISTRY_PATH }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          TEMP: ${{ runner.temp }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          .\build.ps1
+
+  push-to-registry:
+    name: Push Docker Image
+    runs-on: windows-2022
+    needs: build-and-test
+    if: |
+      github.event_name == 'push' && 
+      (startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[push]'))
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version
+        id: version
+        shell: pwsh
+        run: |
+          $version = "0.0.0-dev"
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $version = $env:GITHUB_REF -replace "refs/tags/", ""
+            # Remove 'v' prefix if present (e.g., v1.0.0 -> 1.0.0)
+            if ($version -match "^v(\d+\.\d+\.\d+)") {
+              $version = $matches[1]
+            }
+          } elseif ($env:GITHUB_REF -like "refs/heads/*") {
+            $branch = $env:GITHUB_REF -replace "refs/heads/", ""
+            $sha = $env:GITHUB_SHA.Substring(0, 7)
+            $version = "0.0.0-$branch-$sha"
+          }
+          Write-Host "Version: $version"
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build and Push Docker Image
+        shell: pwsh
+        env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
+          REGISTRY_PWD: ${{ secrets.REGISTRY_PWD }}
+          REGISTRY_PATH: ${{ secrets.REGISTRY_PATH }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          .\build.ps1 -Push
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: push-to-registry
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Release Notes
+        id: release_notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tagName = context.ref.replace('refs/tags/', '');
+            const registryPath = '${{ secrets.REGISTRY_PATH }}' || '<registry>';
+            const imageName = '${{ env.IMAGE_NAME }}';
+            
+            // Get auto-generated release notes from GitHub API
+            const { data: releaseNotes } = await github.rest.repos.generateReleaseNotes({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tagName,
+            });
+            
+            // Append Docker image info
+            const dockerInfo = `\n\n---\n\n**Docker Image:** \`${registryPath}/${imageName}:${tagName}\``;
+            const fullNotes = releaseNotes.body + dockerInfo;
+            
+            core.setOutput('tag_name', tagName);
+            core.setOutput('notes', fullNotes);
+            return fullNotes;
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ steps.release_notes.outputs.tag_name }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false
