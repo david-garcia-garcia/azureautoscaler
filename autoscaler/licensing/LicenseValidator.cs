@@ -189,7 +189,7 @@ namespace poolautoscaler.licensing
             {
                 LicensedTo = "Unlicensed",
                 ExpirationDate = DateTime.MinValue,
-                MaxResources = 1
+                MaxResources = 2
             };
         }
     }

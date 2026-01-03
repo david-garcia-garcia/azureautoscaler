@@ -331,12 +331,12 @@ namespace AzureSqlElasticPoolAutoscaler
                     if (this.LicenseInfo.IsExpired)
                     {
                         this.Logger.LogWarning(
-                            "License expired. Limited functionality enabled: scaling operations delayed by 1 minute, maximum 1 resource allowed, trace mode logging only");
+                            "License expired. Limited functionality enabled.");
                     }
                     else if (!this.LicenseInfo.IsValid)
                     {
                         this.Logger.LogWarning(
-                            "License invalid. Limited functionality enabled: scaling operations delayed by 1 minute, maximum 1 resource allowed, trace mode logging only");
+                            "License invalid. Limited functionality enabled.");
                     }
                     
                     // Show validation error if available

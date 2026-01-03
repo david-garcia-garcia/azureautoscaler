@@ -15,11 +15,11 @@ Azure Autoscaler is a powerful, self-hosted solution for automatically scaling A
 
 | Resource Type | Supported Dimensions | Custom Metrics | Notes |
 |--------------|---------------------|----------------|-------|
-| AKS Node Pools | MinNodeCount, MaxNodeCount |  |  |
+| AKS Node Pools | MinNodeCount |  | MaxNodeCount is preserved as a constraint but not scaled |
 | Azure SQL Elastic Pools | Dtu, MaxDataBytes |  |  |
 | Azure SQL Databases | Dtu, MaxDataBytes |  | MaxDataBytes supports DTU and VCore models (see notes below) |
 | Azure MySQL Flexible Server | Sku, Iops, CoreCount | custom_sku_corecount_forecast |  |
-| Azure Files | ProvisionedStorage |  |  |
+| Azure Files | ProvisionedStorage, Throughput |  | Although Throughput is not a real dimension in Azure for a file share, it is exposed as an actionable dimension and the file share provisioned storage is scaled to meet the desired thrughput targets |
 
 ## Licensing
 
@@ -30,11 +30,11 @@ Azure Autoscaler is **open source software** released under the MIT License. The
 Prebuilt Docker images are available for convenience and require a license key to unlock full functionality. License keys can be purchased at [www.azureautoscaler.com](https://www.azureautoscaler.com).
 
 **Prebuilt Image Location:**
-- Docker Hub: `davidbcn86/azureautoscaler`
+- Docker Hub: [`davidbcn86/azureautoscaler`](https://hub.docker.com/repository/docker/davidbcn86/azureautoscaler/general)
 
 **Limited Functionality (Unlicensed):**
 When using a prebuilt image without a valid license key, the following limitations apply:
-- **Maximum 1 resource**: Only one Azure resource can be scaled
+- **Maximum 2 resources**: Only two Azure resources can be scaled
 - **Trace logging only**: Limited to trace-level logging
 
 ### Building Your Own Images
@@ -66,7 +66,7 @@ Create a compose.yaml file:
 ```yaml
 services:
   app:
-    image: davidbcn86/azureautoscaler:v2.0.0-private.beta.10
+    image: davidbcn86/azureautoscaler:latest
     volumes:
       - ./config.yml:/app/config.yml
     environment:
@@ -484,6 +484,15 @@ Because you need to make real time decisions based on resource metrics, each Sca
             # This metric is only available for DTU model databases, not VCore model
             AllowFail: true
 ```
+
+The available metrics depend on the type of resources:
+
+* [Supported metrics - Microsoft.FileShares/fileShares - Azure Monitor | Microsoft Learn](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/supported-metrics/microsoft-fileshares-fileshares-metrics)
+* [Supported metrics - Microsoft.Compute/virtualmachineScaleSets - Azure Monitor | Microsoft Learn](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/supported-metrics/microsoft-compute-virtualmachinescalesets-metrics)
+* [Supported metrics - Microsoft.Sql/servers/elasticpools - Azure Monitor | Microsoft Learn](https://learn.microsoft.com/en-us/azure/azure-monitor/reference/supported-metrics/microsoft-sql-servers-elasticpools-metrics)
+* [Monitoring data reference for Azure Kubernetes Service - Azure Kubernetes Service | Microsoft Learn](https://learn.microsoft.com/en-us/azure/aks/monitor-aks-reference)
+
+You can query metrics of resources different to the one you are scaling. I.e. if you are scaling a Windows node pool in AKS, you will need to retrieve metrics from the underlying VMSS. In those cases, the VMSS is available as a replacement token (see examples further in this document).
 
 ### Scaling Rules
 
