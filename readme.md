@@ -19,7 +19,7 @@ Azure Autoscaler is a powerful, self-hosted solution for automatically scaling A
 | Azure SQL Elastic Pools | Dtu, MaxDataBytes |  |  |
 | Azure SQL Databases | Dtu, MaxDataBytes |  | MaxDataBytes supports DTU and VCore models (see notes below) |
 | Azure MySQL Flexible Server | Sku, Iops, CoreCount | custom_sku_corecount_forecast |  |
-| Azure Files | ProvisionedStorage, Throughput |  | Although Throughput is not a real dimension in Azure for a file share, it is exposed as an actionable dimension and the file share provisioned storage is scaled to meet the desired thrughput targets |
+| Azure Files | ProvisionedStorage, Throughput |  | Although Throughput is not a real dimension in Azure for a file share, it is exposed as an actionable dimension and the file share provisioned storage is scaled to meet the desired throughput targets |
 
 ## Licensing
 
@@ -94,7 +94,7 @@ Logging:
     FormatterName: "simple"
     FormatterOptions:
       SingleLine: true
-      TimestampFormat: "HH:HH:mm:ss"
+      TimestampFormat: "HH:mm:ss"
 Resources:
   - Resources:
       stdevappsharedfiles:
@@ -124,6 +124,8 @@ Resources:
             Dimension: ProvisionedStorage
             # Fixed +50 GB above whatever is being used
             ScaleTarget: "(data) => (data.Metrics[\"FileCapacity\"].Values.First().Average + 50).ToString()"
+            DimensionValueCeilingStep: "1"  # Round up to nearest GB
+            DimensionValueMin: "100"  # Minimum 100 GB for Azure Files
 ```
 
 Start the image with docker:
@@ -192,7 +194,7 @@ data "azurerm_kubernetes_cluster" "cluster" {
 resource "azurerm_user_assigned_identity" "app" {
   name                = "azureautoscaler"
   resource_group_name = local.resource_group_name
-  location            = "your-locastion"
+  location            = "your-location"
 }
 
 # Assign permissions to resources that the application will be manipulating
@@ -211,7 +213,7 @@ resource "azurerm_role_assignment" "identity_azureresource_contributor" {
 resource "kubernetes_service_account" "app" {
   metadata {
     name      = "workloadidentity-azureautoscaler"
-    namespace = local.aks_namespace_name
+    namespace = local.aks_namespace
     annotations = {
       "azure.workload.identity/client-id" = var.application_identity.client_id
     }
@@ -223,7 +225,7 @@ resource "azurerm_federated_identity_credential" "federated_credential" {
   name                = "k8s-fed-${data.azurerm_kubernetes_cluster.cluster.name}-${kubernetes_service_account.app.metadata[0].name}"
   resource_group_name = local.resource_group_name
   parent_id           = var.application_identity.id
-  # Ojo que el formato de esto es imporantisimo y sigue un patrón concreto
+  # Note: The format of this is important and follows a specific pattern
   subject  = "system:serviceaccount:${local.aks_namespace}:${kubernetes_service_account.app.metadata[0].name}"
   issuer   = data.azurerm_kubernetes_cluster.cluster.oidc_issuer_url
   audience = ["api://AzureADTokenExchange"]
@@ -240,7 +242,7 @@ resource "kubernetes_namespace" "app" {
   }
 }
 
-# The applicaton configuration
+# The application configuration
 resource "kubernetes_config_map" "app_config_yml" {
   metadata {
     name      = "azureautoscaler-config-yml"
@@ -264,7 +266,7 @@ resource "kubernetes_deployment" "app" {
   spec {
     selector {
       match_labels = {
-        app = local.deployment_app_label
+        app = "azureautoscaler"
       }
     }
     template {
@@ -342,7 +344,7 @@ Logging:
     FormatterName: "simple"
     FormatterOptions:
       SingleLine: true
-      TimestampFormat: "HH:HH:mm:ss"
+      TimestampFormat: "HH:mm:ss"
 Resources:
   - R0
   - R1
@@ -454,11 +456,11 @@ Because you need to make real time decisions based on resource metrics, each Sca
           FileCapacity:
             # Name is the name of the metric in Azure Metrics
             Name: FileCapacity
-            # (OPTIONAL) resourceID indicates what resource to get the metric from. Sometimes the metrics for some resource actually belong to the parent resource, and are accesed through the usag eof splits. If not specified, the actual ID of the configured resource will be used.
+            # (OPTIONAL) resourceID indicates what resource to get the metric from. Sometimes the metrics for some resource actually belong to the parent resource, and are accessed through the usage of splits. If not specified, the actual ID of the configured resource will be used.
             ResourceId: "/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${storageAccountName}/fileServices/default"
             # Evaluation window. Metric evaluation will retrieve data from (Now - Window) to Now
             Window: 02:00:00
-            # TimeGrain, as defined in the Azure metricsA
+            # TimeGrain, as defined in the Azure Metrics API
             TimeGrain: 01:00:00 
             # (OPTIONAL) SplitName. You can use resource replace groups in the splitname.
             SplitName: "FileShare"
@@ -468,7 +470,7 @@ Because you need to make real time decisions based on resource metrics, each Sca
             # to "Average". Careful with this because the default Average is not the default behaviour for all metrics
             # in the portal, where some resource have different aggregations set as default.
             Aggregations: ["Total"]
-            # (OPTIONAL) Manipulate the individual metric values before sendig them to evaluation 
+            # (OPTIONAL) Manipulate the individual metric values before sending them to evaluation 
             Transform: "(value) => value / (1000 * 1000 * 1000)" # Convert to Gb
             # (OPTIONAL) AllowFail. When set to true, allows the metric to fail to load without throwing an exception.
             # Instead, a debug message will be logged and the metric will be skipped. Defaults to false.
@@ -496,7 +498,7 @@ You can query metrics of resources different to the one you are scaling. I.e. if
 
 ### Scaling Rules
 
-A scaling rule determines a target value for one of the resources dimensions. A dimensions is an attribute on the target resources (i..e DTU for elastic pools, IOPS or MaxSyzeBytes for FileShares), consider that:
+A scaling rule determines a target value for one of the resources dimensions. A dimension is an attribute on the target resources (i.e. DTU for elastic pools, IOPS or MaxSizeBytes for FileShares), consider that:
 
 * A resource can have more than one Dimension and these dimensions might have dependencies (i.e. the provisioned storage in an Azure Sql Elastic Pool is dependant on the provisioned DTU's). You do not have to worry about this. Create a scaling rule that actuates on the dimension that you are interested in and the system will automatically determine the smallest compatible value for the other dimensions if needed.
 * The Autoscaler dimensions **do not always match** one to one the dimensions of the real Azure Resource. I.e. the MySqlFlexible server exposes SKU and CoreCount dimensions, but the Azure resource only know about SKU. The autoscaler will automatically translate these virtual dimensions into what the target resource is expecting (i.e. if you specify a CoreCount,  it will find the nearest SKU that complies with your request). The purpose of this is to facilitate making decisions on resource metrics that will not reflect directly SKU definitions.
@@ -536,6 +538,9 @@ You can also use `DimensionValueMax` and `DimensionValueMin` to bound the calcul
             DimensionValueMin: "50"   # Never scale below 50 DTU
 ```
 
+> [!NOTE]
+> The `DimensionValueCeilingStep` feature is only available for the **Fixed** strategy, not for Autoadjust.
+
 You can use `DimensionValueCeilingStep` to round the calculated value up to the nearest multiple of a step size:
 
 ```yaml
@@ -570,8 +575,8 @@ Supported attributes are:
             Dimension: Dtu
             ScaleUpCondition: "(data) => data.Metrics[\"dtu_consumption_percent\"].Values.Take(3).Average() > 85" # Average DTU > 85% for 3 minutes
             ScaleDownCondition: "(data) => data.Metrics[\"dtu_consumption_percent\"].Values.Take(5).Average() < 60" # Average DTU < 60% for 5 minutes
-            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
-            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
             ScaleUpCooldownSeconds: 180
             ScaleDownCoolDownSeconds: 3600
             DimensionValueMax: "200"
@@ -582,7 +587,7 @@ The autoadjust is designed to react based on metrics:
 
 * **Dimension**: What resource dimension will this rule be manipulating. ScaleUpTarget and ScaleDownTarget must return compatible values with this dimension. I.e. if the dimensions is SKU, they must return valid SKU's for the resource.
 * **ScaleUpCondition**: Boolean indicating that the value returned by ScaleUpTarget should be used.
-* **ScaleDownCondition**: Boolean indicating that the value return by ScaleDownTarget should be used.
+* **ScaleDownCondition**: Boolean indicating that the value returned by ScaleDownTarget should be used.
 * **ScaleUpCooldownSeconds**: After a scale operation, minimum amount of time required to allow a new upscale operation.
 * **ScaleDownCooldDownSeconds**: After a scale operation, minimum amount of time required to allow a new downscale operation.
 * **DimensionValueMax**: Upper limit that both ScaleUpTarget and ScaleDownTarget will be capped. (yes, you could take care of this within the lambda expression itself, it is just here for convenience)
@@ -626,8 +631,8 @@ The autoadjust is designed to react based on metrics:
             Dimension: MinNodeCount
             DimensionValueMax: "5"
             DimensionValueMin: "1"
-            ScaleUpCondition: "(data) => data.Metrics[\"node_cpu_usage_percentage\"].Values.Select(i => i.Average).Take(3).Average() > 80" # Average DTU > 85% for 3 minutes
-            ScaleDownCondition: "(data) => data.Metrics[\"node_cpu_usage_percentage\"].Values.Select(i => i.Average).Take(10).Average() < 60" # Average DTU < 60% for 5 minutes
+            ScaleUpCondition: "(data) => data.Metrics[\"node_cpu_usage_percentage\"].Values.Select(i => i.Average).Take(3).Average() > 80" # Average CPU > 80% for 3 minutes
+            ScaleDownCondition: "(data) => data.Metrics[\"node_cpu_usage_percentage\"].Values.Select(i => i.Average).Take(10).Average() < 60" # Average CPU < 60% for 10 minutes
             ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
             ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
             ScaleUpCooldownSeconds: 300
@@ -662,10 +667,10 @@ The autoadjust is designed to react based on metrics:
           autoadjust:
             ScalingStrategy: Autoadjust
             Dimension: Dtu
-            ScaleUpCondition: "(data) => data.Metrics[\"dtu_consumption_percent\"].Values.Select(i => i.Average).Take(3).Average() > 80" # Average DTU > 85% for 3 minutes
+            ScaleUpCondition: "(data) => data.Metrics[\"dtu_consumption_percent\"].Values.Select(i => i.Average).Take(3).Average() > 80" # Average DTU > 80% for 3 minutes
             ScaleDownCondition: "(data) => data.Metrics[\"dtu_consumption_percent\"].Values.Select(i => i.Average).Take(5).Average() < 60" # Average DTU < 60% for 5 minutes
-            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
-            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
             ScaleUpCooldownSeconds: 180
             ScaleDownCoolDownSeconds: 3600
             DimensionValueMax: "200"
@@ -687,6 +692,9 @@ The autoadjust is designed to react based on metrics:
             Dimension: MaxDataBytes
             # Fix target of extra 50GB or 20% additional of current storage, whatever is greater.
             ScaleTarget: "(data) => (Math.Max(data.Metrics[\"storage_used\"].Values.First().Average.Value + (50.1*1024*1024*1024), data.Metrics[\"storage_used\"].Values.First().Average.Value * 1.2)).ToString()"
+            DimensionValueCeilingStep: "1"  # Round up to nearest GB
+            DimensionValueMax: "1024"  # Never scale above 1024 GB
+            DimensionValueMin: "1"     # Never scale below 1 GB
 ```
 
 ## SQL Database
@@ -719,8 +727,8 @@ The autoadjust is designed to react based on metrics:
             Dimension: Dtu
             ScaleUpCondition: "(data) => data.Metrics[\"dtu_consumption_percent\"].Values.Select(i => i.Average).Take(3).Average() > 85" # Average DTU > 85% for 3 minutes
             ScaleDownCondition: "(data) => data.Metrics[\"dtu_consumption_percent\"].Values.Select(i => i.Average).Take(5).Average() < 60" # Average DTU < 60% for 5 minutes
-            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
-            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
             ScaleUpCooldownSeconds: 180
             ScaleDownCoolDownSeconds: 3600
             DimensionValueMax: "200"
@@ -754,6 +762,7 @@ The autoadjust is designed to react based on metrics:
             Dimension: MaxDataBytes
             # Calculate target based on metrics, but ensure it stays within bounds
             ScaleTarget: "(data) => (data.Metrics[\"allocated_data_storage\"].Values.First().Average.Value / (1024 * 1024 * 1024) + 50).ToString()"  # Current usage + 50GB
+            DimensionValueCeilingStep: "1"  # Round up to nearest GB
             DimensionValueMax: "1024"  # Never scale above 1024 GB (VCore) or 250 GB (DTU Standard) - depends on SKU
             DimensionValueMin: "1"       # Never scale below 1 GB (VCore) or 0.1 GB (DTU)
 ```
@@ -793,10 +802,10 @@ The autoadjust is designed to react based on metrics:
           autoadjust:
             ScalingStrategy: Autoadjust
             Dimension: Sku
-            ScaleUpCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Average).Take(3).Average() > 85" # Average DTU > 85% for 3 minutes
-            ScaleDownCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Average).Take(5).Average() < 60" # Average DTU < 60% for 5 minutes
-            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
-            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specificy DTU number manually, and system will find closes valid tier
+            ScaleUpCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Average).Take(3).Average() > 85" # Average CPU > 85% for 3 minutes
+            ScaleDownCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Average).Take(5).Average() < 60" # Average CPU < 60% for 5 minutes
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
             ScaleUpCooldownSeconds: 180
             ScaleDownCoolDownSeconds: 3600
             DimensionValueMax: "Standard_B4ms"
@@ -804,7 +813,7 @@ The autoadjust is designed to react based on metrics:
       ForecastDaily:
         Metrics:
           custom_sku_corecount_forecast:
-            Name: custom_sku_corecount_forecast # This metrics provides a SKU forecast based on last 90 days of activity so that no resizing is needed within the proposed time window. It's internals are currently hardcoded and should be parameterized. Useful because MySQL resizing is very disruptive (i.e. ~5 min downtime). 
+            Name: custom_sku_corecount_forecast # This metric provides a SKU forecast based on last 90 days of activity so that no resizing is needed within the proposed time window. Its internals are currently hardcoded and should be parameterized. Useful because MySQL resizing is very disruptive (i.e. ~5 min downtime). 
         TimeWindow:
           Days: All
           Months: All
