@@ -2,6 +2,21 @@
 
 Azure Autoscaler is a powerful, self-hosted solution for automatically scaling Azure resources based on real-time metrics, schedules, and usage forecasts. It helps optimize costs while maintaining performance for various Azure services.
 
+## Why Azure Autoscaler?
+
+Azure provides built-in autoscaling capabilities for some resources, but there are significant gaps that Azure Autoscaler addresses:
+
+* **AKS Node Pool Limitations**: The built-in AKS node autoscaler is slow to respond to load changes and can easily fail under load peaks. Azure Autoscaler provides faster, more reliable scaling based on actual CPU usage metrics rather than just pod scheduling requests.
+
+* **Missing PaaS Autoscaling**: Many Azure PaaS resources lack native autoscaling capabilities:
+  * Azure SQL Elastic Pools
+  * Azure SQL Databases
+  * Azure MySQL Flexible Server
+  * Azure PostgreSQL Flexible Server
+  * Azure Files
+
+Azure Autoscaler fills these gaps by providing intelligent, metric-based autoscaling for all these resources, helping you optimize costs while maintaining performance during peak loads.
+
 ## Features
 
 - **Real-time Metric Based Scaling**: Scale resources based on actual usage patterns and performance metrics
