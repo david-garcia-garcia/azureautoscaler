@@ -98,7 +98,26 @@ namespace AzureSqlElasticPoolAutoscaler
                 return;
             }
 
-            if (!DateTime.TryParse(expirationDateStr, out var expirationDate))
+            DateTimeOffset expirationDateOffset;
+            try
+            {
+                // Parse as DateTimeOffset using ParseExact to ensure correct UTC handling
+                // Try ISO 8601 format with Z suffix first
+                if (expirationDateStr.EndsWith("Z", StringComparison.OrdinalIgnoreCase))
+                {
+                    expirationDateOffset = DateTimeOffset.ParseExact(
+                        expirationDateStr, 
+                        "yyyy-MM-ddTHH:mm:ssZ", 
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal);
+                }
+                else
+                {
+                    // Fallback to general parse
+                    expirationDateOffset = DateTimeOffset.Parse(expirationDateStr, null, System.Globalization.DateTimeStyles.RoundtripKind);
+                }
+            }
+            catch (FormatException)
             {
                 Console.Error.WriteLine($"Error: Invalid expiration date format: {expirationDateStr}");
                 Console.Error.WriteLine("Expected ISO 8601 format (e.g., 2025-12-31T23:59:59Z)");
@@ -116,9 +135,10 @@ namespace AzureSqlElasticPoolAutoscaler
             try
             {
                 var privateKeyPem = File.ReadAllText(privateKeyPath);
+                // Pass the DateTimeOffset directly to avoid conversion issues
                 var jwt = poolautoscaler.licensing.LicenseGenerator.GenerateLicense(
                     licensedTo,
-                    expirationDate,
+                    expirationDateOffset,
                     maxResources,
                     privateKeyPem);
 

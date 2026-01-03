@@ -14,13 +14,13 @@ namespace poolautoscaler.licensing
         /// Generates a signed JWT license token
         /// </summary>
         /// <param name="licensedTo">Name of the licensee</param>
-        /// <param name="expirationDate">Expiration date</param>
+        /// <param name="expirationDate">Expiration date as DateTimeOffset</param>
         /// <param name="maxResources">Maximum number of resources</param>
         /// <param name="privateKeyPem">RSA private key in PEM format</param>
         /// <returns>JWT token string</returns>
         public static string GenerateLicense(
             string licensedTo,
-            DateTime expirationDate,
+            DateTimeOffset expirationDate,
             int maxResources,
             string privateKeyPem)
         {
@@ -30,11 +30,9 @@ namespace poolautoscaler.licensing
             var signingKey = new RsaSecurityKey(rsa);
 
             // Create claims
-            var expirationUnix = new DateTimeOffset(expirationDate).ToUnixTimeSeconds();
             var claims = new[]
             {
                 new Claim("licensedTo", licensedTo),
-                new Claim("exp", expirationUnix.ToString()),
                 new Claim("maxResources", maxResources.ToString())
             };
 
@@ -43,6 +41,7 @@ namespace poolautoscaler.licensing
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
+                Expires = expirationDate.UtcDateTime, // Set expiration via Expires property
                 SigningCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.RsaSha256)
             };
 

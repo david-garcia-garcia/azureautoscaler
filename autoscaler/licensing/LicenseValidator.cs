@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -35,6 +36,21 @@ namespace poolautoscaler.licensing
             if (_cachedLicense != null)
             {
                 return _cachedLicense;
+            }
+
+            // Debug mode: if debugger is attached, return a valid license with 50 resources expiring in 2 hours
+            if (Debugger.IsAttached)
+            {
+                var debugLicense = new License
+                {
+                    LicensedTo = "Debug Mode",
+                    ExpirationDate = DateTime.UtcNow.AddHours(2),
+                    MaxResources = 50
+                };
+                _cachedLicense = debugLicense;
+                _isValid = true;
+                _lastError = null;
+                return debugLicense;
             }
 
             var licenseJwt = Environment.GetEnvironmentVariable("AUTOSCALER_LICENSE");
