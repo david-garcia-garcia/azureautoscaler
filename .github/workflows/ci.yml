@@ -132,34 +132,75 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Generate Release Notes
-        id: release_notes
-        uses: actions/github-script@v7
+      - name: Generate Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v4
         with:
-          script: |
-            const tagName = context.ref.replace('refs/tags/', '');
-            const registryPath = '${{ secrets.REGISTRY_PATH }}' || '${{ env.DEFAULT_REGISTRY_PATH }}';
-            const imageName = '${{ env.IMAGE_NAME }}';
-            
-            // Get auto-generated release notes from GitHub API
-            const { data: releaseNotes } = await github.rest.repos.generateReleaseNotes({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: tagName,
-            });
-            
-            // Append Docker image info
-            const dockerInfo = `\n\n---\n\n**Docker Image:** \`${registryPath}/${imageName}:${tagName}\`\n\nPull with: \`docker pull ${registryPath}/${imageName}:${tagName}\``;
-            const fullNotes = releaseNotes.body + dockerInfo;
-            
-            core.setOutput('tag_name', tagName);
-            core.setOutput('notes', fullNotes);
-            return fullNotes;
+          ignorePreReleases: true
+          configuration: |
+            {
+              "categories": [
+                {
+                  "title": "## 🎉 Features",
+                  "labels": ["feature", "enhancement"]
+                },
+                {
+                  "title": "## 🐛 Bug Fixes",
+                  "labels": ["bug", "fix"]
+                },
+                {
+                  "title": "## 📚 Documentation",
+                  "labels": ["documentation", "docs"]
+                },
+                {
+                  "title": "## ♻️ Refactoring",
+                  "labels": ["refactoring", "refactor"]
+                },
+                {
+                  "title": "## 📝 Other Changes",
+                  "labels": ["*"]
+                }
+              ],
+              "ignore_labels": ["ignore-for-release", "skip-changelog"],
+              "sort": "ASC"
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Append Docker Image Info
+        id: release_notes
+        shell: pwsh
+        run: |
+          $changelog = @'
+          ${{ steps.changelog.outputs.changelog }}
+          '@
+          
+          $registryPath = '${{ secrets.REGISTRY_PATH }}'
+          if (-not $registryPath) {
+            $registryPath = '${{ env.DEFAULT_REGISTRY_PATH }}'
+          }
+          $imageName = '${{ env.IMAGE_NAME }}'
+          $tagName = '${{ github.ref_name }}'
+          
+          $dockerInfo = @"
+
+          ---
+
+          **Docker Image:** ``${registryPath}/${imageName}:${tagName}``
+
+          Pull with: ``docker pull ${registryPath}/${imageName}:${tagName}``
+          "@
+          
+          $fullNotes = $changelog + $dockerInfo
+          
+          echo "notes<<EOF" >> $env:GITHUB_OUTPUT
+          echo "$fullNotes" >> $env:GITHUB_OUTPUT
+          echo "EOF" >> $env:GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ steps.release_notes.outputs.tag_name }}
+          name: Release ${{ github.ref_name }}
           body: ${{ steps.release_notes.outputs.notes }}
           draft: false
           prerelease: false
