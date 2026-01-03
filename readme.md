@@ -21,6 +21,36 @@ Azure Autoscaler is a powerful, self-hosted solution for automatically scaling A
 | Azure MySQL Flexible Server | Sku, Iops, CoreCount | custom_sku_corecount_forecast |  |
 | Azure Files | ProvisionedStorage |  |  |
 
+## Licensing
+
+Azure Autoscaler is **open source software** released under the MIT License. The source code is freely available and you are welcome to build, modify, and distribute it according to the terms of the MIT License.
+
+### Prebuilt Docker Images
+
+Prebuilt Docker images are available for convenience and require a license key to unlock full functionality. License keys can be purchased at [www.azureautoscaler.com](https://www.azureautoscaler.com).
+
+**Prebuilt Image Location:**
+- Docker Hub: `davidbcn86/azureautoscaler`
+
+**Limited Functionality (Unlicensed):**
+When using a prebuilt image without a valid license key, the following limitations apply:
+- **Maximum 1 resource**: Only one Azure resource can be scaled
+- **Trace logging only**: Limited to trace-level logging
+
+### Building Your Own Images
+
+You can always build your own Docker images from the source code without any license restrictions. This gives you full functionality without requiring a license key. See the [Installation](#installation) section for build instructions.
+
+### Why Licensing?
+
+The licensing model for prebuilt images helps support the ongoing development and maintenance of Azure Autoscaler. By purchasing a license, you're directly contributing to:
+- Continued feature development
+- Bug fixes and security updates
+- Documentation improvements
+- Community support
+
+This approach allows us to keep the source code open and freely available while ensuring sustainable development of the project.
+
 ## Installation
 
 The Azure Autoscaler application is distributed as a container image, and needs to be deployed to a runtime of your choice. You also need to ensure the application is granted permissions to act on your Azure Resources in order to perform scaling operations.
@@ -39,6 +69,10 @@ services:
     image: davidbcn86/azureautoscaler:v2.0.0-private.beta.10
     volumes:
       - ./config.yml:/app/config.yml
+    environment:
+      # Optional: Set your license key to unlock full functionality
+      # Purchase a license at https://www.azureautoscaler.com
+      # AUTOSCALER_LICENSE: "your-license-jwt-token-here"
 ```
 
 Create a configuration file:
@@ -251,6 +285,12 @@ resource "kubernetes_deployment" "app" {
         container {
           name  = "app"
           image = local.app_image
+          env {
+            # Optional: Set your license key to unlock full functionality
+            # Purchase a license at https://www.azureautoscaler.com
+            # name  = "AUTOSCALER_LICENSE"
+            # value = "your-license-jwt-token-here"
+          }
           volume_mount {
             name       = "config-yml"
             mount_path = "/app/config.yml"
