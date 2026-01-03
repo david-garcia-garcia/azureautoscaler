@@ -39,7 +39,7 @@ namespace poolautoscaler.tests
             Assert.NotNull(license);
             Assert.Equal("Unlicensed", license.LicensedTo);
             Assert.Equal(DateTime.MinValue, license.ExpirationDate);
-            Assert.Equal(1, license.MaxResources);
+            Assert.Equal(2, license.MaxResources);
             Assert.False(validator.IsValid);
             Assert.NotNull(validator.LastError);
             Assert.Contains("AUTOSCALER_LICENSE", validator.LastError);
@@ -182,7 +182,7 @@ namespace poolautoscaler.tests
             Assert.NotNull(license);
             Assert.Equal("Unlicensed", license.LicensedTo);
             Assert.Equal(DateTime.MinValue, license.ExpirationDate);
-            Assert.Equal(1, license.MaxResources);
+            Assert.Equal(2, license.MaxResources);
         }
 
         [Fact]
