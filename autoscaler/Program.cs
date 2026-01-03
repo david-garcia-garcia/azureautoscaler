@@ -503,7 +503,7 @@ namespace AzureSqlElasticPoolAutoscaler
                                 this.Logger.LogInformation("Adding new resource: {0}", expandedResourceId.Value);
                                 var logger = this.LogFactory.CreateLogger(expandedResourceId.Key);
                                 var state = ResourceStateFactory.Create(expandedResourceId.Value, logger, resource);
-                                this.Logger.LogInformation("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
+                                this.Logger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
                                 resources[expandedResourceId.Key] = state;
                                 addedResources++;
                             }

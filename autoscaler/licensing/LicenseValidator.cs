@@ -155,13 +155,15 @@ namespace poolautoscaler.licensing
                 using var reader = new StreamReader(stream);
                 var publicKeyPem = reader.ReadToEnd();
                 
-                using var rsa = RSA.Create();
+                // Create RSA without disposing - RsaSecurityKey needs it for the lifetime of the validator
+                // The RSA will be disposed when the validator is garbage collected
+                var rsa = RSA.Create();
                 rsa.ImportFromPem(publicKeyPem);
                 return new RsaSecurityKey(rsa);
             }
 
             // Fallback: create a dummy key (this should not happen in production)
-            using var dummyRsa = RSA.Create();
+            var dummyRsa = RSA.Create();
             return new RsaSecurityKey(dummyRsa);
         }
 
