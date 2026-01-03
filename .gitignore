@@ -203,7 +203,6 @@ ClientBin/
 *.pfx
 *.publishsettings
 node_modules/
-ETG.SABENTISpro.UI/cypress/results/
 bower_components/
 
 # RIA/Silverlight projects
@@ -237,8 +236,6 @@ FakesAssemblies/
 
 # Visual Studio 6 workspace options file
 *.opt
-/ETG.SABENTISpro.UI/scripts/enabled-styles.json
 
 # IDEs and editors
 /.idea
-/ETG.SABENTISpro.Application.Modules/Sabentis/Services/JobManager.cs
