@@ -1,0 +1,55 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Version will be set during build from environment variable or default to 0.0.0-dev -->
+    <!-- Extract numeric part (before any dash/hyphen) for Version/AssemblyVersion/FileVersion -->
+    <_VersionNumeric Condition="'$(VERSION)' == ''">0.0.0</_VersionNumeric>
+    <_VersionNumeric Condition="'$(VERSION)' != ''">$([System.Text.RegularExpressions.Regex]::Replace($(VERSION), '-.*$', ''))</_VersionNumeric>
+    <Version>$(_VersionNumeric)</Version>
+    <!-- Use full version string (including pre-release identifiers) for informational version -->
+    <AssemblyInformationalVersion Condition="'$(VERSION)' == ''">0.0.0-dev</AssemblyInformationalVersion>
+    <AssemblyInformationalVersion Condition="'$(VERSION)' != ''">$(VERSION)</AssemblyInformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="config.yml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="licensing\public_key.pem" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>poolautoscaler.tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.17.0" />
+    <PackageReference Include="Azure.Monitor.Query" Version="1.7.1" />
+    <PackageReference Include="Azure.ResourceManager" Version="1.13.2" />
+    <PackageReference Include="Azure.ResourceManager.Compute" Version="1.12.0" />
+    <PackageReference Include="Azure.ResourceManager.ContainerService" Version="1.2.5" />
+    <PackageReference Include="Azure.ResourceManager.Kubernetes" Version="1.0.0-beta.5" />
+    <PackageReference Include="Azure.ResourceManager.KubernetesConfiguration" Version="1.2.0" />
+    <PackageReference Include="Azure.ResourceManager.Monitor" Version="1.4.0-beta.3" />
+    <PackageReference Include="Azure.ResourceManager.MySql" Version="1.1.2" />
+    <PackageReference Include="Azure.ResourceManager.ResourceGraph" Version="1.1.0-beta.4" />
+    <PackageReference Include="Azure.ResourceManager.Sql" Version="1.3.0" />
+    <PackageReference Include="Azure.ResourceManager.Storage" Version="1.6.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0-preview.3.25171.5" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0-preview.3.25171.5" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0-preview.3.25171.5" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0-preview.3.25171.5" />
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="3.1.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.2.1" />
+    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.6.9" />
+  </ItemGroup>
+
+</Project>

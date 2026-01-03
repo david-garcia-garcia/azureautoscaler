@@ -1,0 +1,207 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - '*'
+    tags:
+      - '*'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  BUILD_CONFIGURATION: 'Release'
+  IMAGE_NAME: azureautoscaler
+  # Default Docker Hub repository (can be overridden via REGISTRY_PATH secret)
+  DEFAULT_REGISTRY_PATH: davidbcn86
+  REGISTRY_USER: davidbcn86
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog generation
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Determine Version
+        id: version
+        shell: pwsh
+        run: |
+          # Only use real version for tags like "1.0.0" or "v1.0.0", everything else is dev
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $tag = $env:GITHUB_REF -replace "refs/tags/", ""
+            if ($tag -match "^v?(\d+\.\d+\.\d+)$") {
+              $version = $matches[1]
+            } else {
+              $version = "0.0.0-dev"
+            }
+          } else {
+            $version = "0.0.0-dev"
+          }
+          Write-Host "Version: $version"
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Restore dependencies
+        run: dotnet restore poolautoscaler.sln
+
+      - name: Build
+        run: dotnet build poolautoscaler.sln --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -p:VERSION=${{ env.VERSION }}
+
+      - name: Run Tests
+        run: dotnet test poolautoscaler.sln --configuration ${{ env.BUILD_CONFIGURATION }} --collect:"XPlat Code Coverage" --no-build --verbosity normal
+        continue-on-error: false
+
+  push-to-registry:
+    name: Push Docker Image
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: |
+      github.event_name == 'push' && 
+      (startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '[push]'))
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Determine Version
+        id: version
+        shell: pwsh
+        run: |
+          # Only use real version for tags like "1.0.0" or "v1.0.0", everything else is dev
+          if ($env:GITHUB_REF -like "refs/tags/*") {
+            $tag = $env:GITHUB_REF -replace "refs/tags/", ""
+            if ($tag -match "^v?(\d+\.\d+\.\d+)$") {
+              $version = $matches[1]
+            } else {
+              $version = "0.0.0-dev"
+            }
+          } else {
+            $version = "0.0.0-dev"
+          }
+          Write-Host "Version: $version"
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Docker Image
+        shell: pwsh
+        env:
+          REGISTRY_USER: ${{ env.REGISTRY_USER }}
+          REGISTRY_PWD: ${{ secrets.REGISTRY_PWD }}
+          REGISTRY_PATH: ${{ secrets.REGISTRY_PATH || env.DEFAULT_REGISTRY_PATH }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Use default Docker Hub path if not provided
+          if (-not $env:REGISTRY_PATH -or $env:REGISTRY_PATH.Trim() -eq '') {
+            $env:REGISTRY_PATH = '${{ env.DEFAULT_REGISTRY_PATH }}'
+          }
+          
+          if (-not $env:REGISTRY_PWD) {
+            Write-Error "REGISTRY_PWD secret not provided. Cannot push image."
+            exit 1
+          }
+          
+          Write-Host "Building and pushing Docker image: $($env:REGISTRY_PATH)/$($env:IMAGE_NAME)"
+          .\build.ps1 -Push
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: push-to-registry
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v4
+        with:
+          ignorePreReleases: true
+          configuration: |
+            {
+              "categories": [
+                {
+                  "title": "## 🎉 Features",
+                  "labels": ["feature", "enhancement"]
+                },
+                {
+                  "title": "## 🐛 Bug Fixes",
+                  "labels": ["bug", "fix"]
+                },
+                {
+                  "title": "## 📚 Documentation",
+                  "labels": ["documentation", "docs"]
+                },
+                {
+                  "title": "## ♻️ Refactoring",
+                  "labels": ["refactoring", "refactor"]
+                },
+                {
+                  "title": "## 📝 Other Changes",
+                  "labels": ["*"]
+                }
+              ],
+              "ignore_labels": ["ignore-for-release", "skip-changelog"],
+              "sort": "ASC"
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Append Docker Image Info
+        id: release_notes
+        shell: pwsh
+        run: |
+          $changelog = @'
+          ${{ steps.changelog.outputs.changelog }}
+          '@
+          
+          $registryPath = '${{ secrets.REGISTRY_PATH }}'
+          if (-not $registryPath) {
+            $registryPath = '${{ env.DEFAULT_REGISTRY_PATH }}'
+          }
+          $imageName = '${{ env.IMAGE_NAME }}'
+          $tagName = '${{ github.ref_name }}'
+          
+          $dockerInfo = @"
+
+          ---
+
+          **Docker Image:** ``${registryPath}/${imageName}:${tagName}``
+
+          Pull with: ``docker pull ${registryPath}/${imageName}:${tagName}``
+          "@
+          
+          $fullNotes = $changelog + $dockerInfo
+          
+          echo "notes<<EOF" >> $env:GITHUB_OUTPUT
+          echo "$fullNotes" >> $env:GITHUB_OUTPUT
+          echo "EOF" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          draft: false
+          prerelease: false
+          generate_release_notes: false

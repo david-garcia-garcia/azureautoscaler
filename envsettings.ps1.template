@@ -1,0 +1,4 @@
+$ENV:REGISTRY_PATH = "xx.azurecr.io/azure"
+$ENV:REGISTRY_USER = $null
+$ENV:REGISTRY_PWD = $null
+$ENV:IMAGE_NAME = "resourceautoscaler:v1.0.0-beta.0";
