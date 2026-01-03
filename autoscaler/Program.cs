@@ -264,10 +264,10 @@ namespace AzureSqlElasticPoolAutoscaler
                 // Track startup time for expired license error checking
                 _startTime = DateTime.UtcNow;
 
-                // Print version information to console
+                // Log version information
                 PrintVersionInfo();
 
-                // Print license information to console
+                // Log license information
                 PrintLicenseInfo();
 
                 // Apply logging restrictions for expired or invalid licenses
@@ -283,11 +283,7 @@ namespace AzureSqlElasticPoolAutoscaler
             private void PrintVersionInfo()
             {
                 var version = GetVersion();
-                Console.WriteLine("========================================");
-                Console.WriteLine("Azure Autoscaler");
-                Console.WriteLine("========================================");
-                Console.WriteLine($"Version: {version}");
-                Console.WriteLine("========================================");
+                this.Logger.LogInformation("Azure Autoscaler Version: {Version}", version);
             }
 
             private string GetVersion()
@@ -320,33 +316,35 @@ namespace AzureSqlElasticPoolAutoscaler
                 var license = this.LicenseInfo.License;
                 var now = DateTime.UtcNow;
                 var timeUntilExpiration = license.ExpirationDate - now;
-                var daysRemaining = timeUntilExpiration.TotalDays;
+                var daysRemaining = (int)timeUntilExpiration.TotalDays;
                 
-                Console.WriteLine("========================================");
-                Console.WriteLine("Azure Autoscaler License Information");
-                Console.WriteLine("========================================");
-                Console.WriteLine($"Licensed To: {license.LicensedTo}");
-                Console.WriteLine($"Expiration Date: {license.ExpirationDate:yyyy-MM-dd HH:mm:ss} UTC");
-                Console.WriteLine($"Days Until Expiration: {(int)daysRemaining}");
+                // Log basic license information in one line
+                this.Logger.LogInformation(
+                    "License: LicensedTo={LicensedTo}, DaysRemaining={DaysRemaining}, MaxResources={MaxResources}",
+                    license.LicensedTo,
+                    daysRemaining,
+                    license.MaxResources);
                 
-                Console.WriteLine($"Max Resources: {license.MaxResources}");
-                Console.WriteLine($"License Valid: {(this.LicenseInfo.IsValid ? "Yes" : "No")}");
-                Console.WriteLine($"License Expired: {(this.LicenseInfo.IsExpired ? "Yes" : "No")}");
+                // Optionally log license issues if expired or has errors
                 if (this.LicenseInfo.IsRestricted)
                 {
-                    Console.WriteLine($"WARNING: License is {this.LicenseInfo.Reason}. Limited functionality enabled.");
-                    Console.WriteLine("  - Scaling operations delayed by 1 minute");
-                    Console.WriteLine("  - Maximum 1 resource allowed");
-                    Console.WriteLine("  - Trace mode logging only");
+                    if (this.LicenseInfo.IsExpired)
+                    {
+                        this.Logger.LogWarning(
+                            "License expired. Limited functionality enabled: scaling operations delayed by 1 minute, maximum 1 resource allowed, trace mode logging only");
+                    }
+                    else if (!this.LicenseInfo.IsValid)
+                    {
+                        this.Logger.LogWarning(
+                            "License invalid. Limited functionality enabled: scaling operations delayed by 1 minute, maximum 1 resource allowed, trace mode logging only");
+                    }
                     
                     // Show validation error if available
                     if (!string.IsNullOrEmpty(_licenseValidator.LastError))
                     {
-                        Console.WriteLine();
-                        Console.WriteLine($"License Validation Error: {_licenseValidator.LastError}");
+                        this.Logger.LogWarning("License Validation Error: {Error}", _licenseValidator.LastError);
                     }
                 }
-                Console.WriteLine("========================================");
             }
 
             protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -442,7 +440,7 @@ namespace AzureSqlElasticPoolAutoscaler
                         if (this.LicenseInfo.IsRestricted && processedCount >= this.LicenseInfo.License.MaxResources)
                         {
                             resourceState.Logger.LogWarning("License {0}: Skipping resource (limit: {2} resources)", 
-                                this.LicenseInfo.Reason,this.LicenseInfo.License.MaxResources);
+this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             continue;
                         }
 
