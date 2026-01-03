@@ -421,8 +421,8 @@ namespace AzureSqlElasticPoolAutoscaler
                         // Skip if license is restricted and we've reached the limit
                         if (this.LicenseInfo.IsRestricted && processedCount >= this.LicenseInfo.License.MaxResources)
                         {
-                            this.Logger.LogWarning("License {0}: Skipping resource '{1}' (limit: {2} resources)", 
-                                this.LicenseInfo.Reason, resourceState.Configuration.ResourceId, this.LicenseInfo.License.MaxResources);
+                            resourceState.Logger.LogWarning("License {0}: Skipping resource (limit: {2} resources)", 
+                                this.LicenseInfo.Reason,this.LicenseInfo.License.MaxResources);
                             continue;
                         }
 
