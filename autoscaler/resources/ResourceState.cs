@@ -170,7 +170,8 @@ namespace poolautoscaler.resources
             if (this.LastScale == null && this.ChangeHistory.Any())
             {
                 var lastChange = this.ChangeHistory.First().Timestamp;
-                this.Logger.LogInformation("Loaded last change for resource from change history at {0} ({1} ago)", lastChange, (DateTime.UtcNow - lastChange).ToString("HH:mm:ss.f"));
+                var timeAgo = DateTime.UtcNow - lastChange;
+                this.Logger.LogInformation("Loaded last change for resource from change history at {0} ({1} ago)", lastChange, timeAgo.ToString(@"hh\:mm\:ss\.f"));
 
                 if (this.LastScale == null || lastChange.DateTime > this.LastScale)
                 {
