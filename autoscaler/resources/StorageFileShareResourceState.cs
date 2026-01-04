@@ -1,8 +1,8 @@
+using Azure;
 using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.Storage;
 using Microsoft.Extensions.Logging;
-using System.Text.Json.Serialization;
 
 namespace poolautoscaler.resources
 {
@@ -28,6 +28,15 @@ namespace poolautoscaler.resources
             {
                 throw new ArgumentException("Invalid File Share resource ID", nameof(id));
             }
+        }
+
+        protected override string GetResourceIdForChangeHistory()
+        {
+            // Changes for file shares are not available in the resourcechanges table
+            // https://techcommunity.microsoft.com/blog/healthcareandlifesciencesblog/tracking-azure-history-with-azure-resource-graph/3611914
+            // which is the one we use to retrieve resource change history. They could though be obtained
+            // from elsewhere because they appear in the general Monitor Activity Logs
+            return null;
         }
 
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
@@ -64,7 +73,7 @@ namespace poolautoscaler.resources
         public void SetThroughput(double targetThroughputMbps)
         {
             int requiredQuota = StorageFileShareResourceStateHelper.GetQuotaFromThroughput(targetThroughputMbps);
-            
+
             Logger.LogDebug("Setting storage quota to {requiredQuota} GB to achieve {ThroughputMiBps} MiB/s throughput.", requiredQuota, targetThroughputMbps);
 
             // Always take the higher value between existing request and required quota for throughput
@@ -141,7 +150,15 @@ namespace poolautoscaler.resources
             FileShareData patch = new FileShareData();
             patch.ShareQuota = internalPatch.ShareQuotaGb;
 
-            await fileShare.UpdateAsync(patch, cancellationToken);
+            try
+            {
+                await fileShare.UpdateAsync(patch, cancellationToken);
+            }
+            catch (RequestFailedException e) when (e.ErrorCode == "ContainerQuotaDowngradeNotAllowed")
+            {
+                // NextAllowedQuotaDowngradeOn is empty from graph api so we need to deal with this error
+                this.Logger.LogInformation("Storage quota downgrade not allowed at the time. You cannot downgrade quota if the last increase happened less than 24h ago.");
+            }
         }
     }
 }
