@@ -426,6 +426,12 @@ namespace AzureSqlElasticPoolAutoscaler
                     
                     foreach (var resourceState in Resources.Values)
                     {
+                        if (stoppingToken.IsCancellationRequested)
+                        {
+                            this.Logger.LogWarning("Program::ExecuteAsync IsCancellationRequested=true");
+                            break;
+                        }
+
                         if (resourceState.Configuration.Enabled == false)
                         {
                             continue;
