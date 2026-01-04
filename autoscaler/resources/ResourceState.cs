@@ -92,16 +92,37 @@ namespace poolautoscaler.resources
                 ExceptionDispatchInfo.Capture(ex).Throw();
             }
 
+            bool initialRefresh = this.ChangeHistory == null;
+
+            // Initialize resource history
+            if (this.ChangeHistory == null)
+            {
+                this.ChangeHistory = new List<ResourceHistoryItem>();
+            }
+
             // Grab the activity logs. Ojo porque no es el registro de cambios...
             //LogsQueryClient c = new LogsQueryClient(credential, new LogsQueryClientOptions() { });
             // var r = await c.QueryResourceAsync(this.Resource.Id, "AzureActivity", QueryTimeRange.All, new LogsQueryOptions(), cancellationToken);
 
             // Grab the changelogs
             var tenantResource = client.GetTenants().First();
-            this.ChangeHistory = this.ChangeHistory ?? new List<ResourceHistoryItem>();
-
+            
             var mostRecentTimestamp = this.ChangeHistory.FirstOrDefault()?.Timestamp;
             var timeFilter = mostRecentTimestamp.HasValue ? $"and timestamp > datetime('{mostRecentTimestamp.Value:O}')" : "";
+            var resourceIdFilter = this.GetResourceIdForChangeHistory();
+
+            // Null here means no resource history should be loaded.
+            if (string.IsNullOrWhiteSpace(resourceIdFilter))
+            {
+                if (initialRefresh)
+                {
+                    this.Logger.LogInformation("Resource change history is not available and will not be read.");
+                }
+
+                return;
+            }
+
+
 
             int page = 0;
             int loadedSnapshots = 0;
@@ -112,7 +133,7 @@ namespace poolautoscaler.resources
 
                 var changeLog = await tenantResource.GetResourceHistoryAsync(new ResourcesHistoryContent()
                 {
-                    Query = $"where id =~ '{this.GetResourceIdForChangeHistory()}' {timeFilter} | order by timestamp desc",
+                    Query = $"where id =~ '{resourceIdFilter}' {timeFilter} | order by timestamp desc",
                     Options = new ResourcesHistoryRequestOptions()
                     {
                         // Max allowed by this API es 17 days of snapshots | two weeks
