@@ -644,7 +644,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
 
                         var currentDimensionValue = dimension.GetCurrentDimensionValue(state);
 
-                        var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, logger, credential, stoppingToken, metrics);
+                        var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, logger, credential, stoppingToken, metrics, setting);
 
                         // If we are going to scale down, do it wisely because resources are billed by natural hour
                         if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1)
@@ -854,6 +854,10 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                 else if (rule.ScalingStrategy == "Autoadjust")
                 {
                     return new RuleStrategyAutoAdjust();
+                }
+                else if (rule.ScalingStrategy == "Forecast")
+                {
+                    return new RuleStrategyForecast();
                 }
 
                 throw new ArgumentException($"Invalid scaling strategy: '{rule.ScalingStrategy}'");

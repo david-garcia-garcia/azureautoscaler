@@ -13,6 +13,7 @@ namespace poolautoscaler
             ILogger logger,
             TokenCredential credential,
             CancellationToken stoppingToken,
-            Dictionary<string, MetricEvalDtoResult> metrics);
+            Dictionary<string, MetricEvalDtoResult> metrics,
+            ScalingConfiguration scalingConfiguration);
     }
 }

@@ -15,7 +15,8 @@ namespace poolautoscaler.strategies
             ILogger logger,
             TokenCredential credential,
             CancellationToken stoppingToken,
-            Dictionary<string, MetricEvalDtoResult> metrics)
+            Dictionary<string, MetricEvalDtoResult> metrics,
+            ScalingConfiguration scalingConfiguration)
         {
             var evaluationMetrics = new MetricEvalDto();
             evaluationMetrics.Metrics = metrics;

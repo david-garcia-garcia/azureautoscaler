@@ -103,6 +103,31 @@ public class Configuration
                     var rule = scalingRule.Value;
                     rule.Id = scalingRule.Key;
 
+                    // Validate Forecast strategy configuration
+                    if (rule.ScalingStrategy == "Forecast")
+                    {
+                        if (string.IsNullOrEmpty(rule.MetricDimensionTotal))
+                        {
+                            throw new Exception($"ScalingRule '{rule.Id}' uses Forecast strategy but MetricDimensionTotal is not specified.");
+                        }
+
+                        if (string.IsNullOrEmpty(rule.MetricDimensionUsedPercentage) &&
+                            string.IsNullOrEmpty(rule.MetricDimensionUsedTotal))
+                        {
+                            throw new Exception($"ScalingRule '{rule.Id}' uses Forecast strategy but neither MetricDimensionUsedPercentage nor MetricDimensionUsedTotal is specified.");
+                        }
+
+                        if (!string.IsNullOrEmpty(rule.MetricDimensionUsedPercentage) &&
+                            !string.IsNullOrEmpty(rule.MetricDimensionUsedTotal))
+                        {
+                            logger.LogWarning(
+                                "ScalingRule '{0}' specifies both MetricDimensionUsedPercentage and MetricDimensionUsedTotal. Using percentage metric '{1}' and ignoring '{2}'.",
+                                rule.Id,
+                                rule.MetricDimensionUsedPercentage,
+                                rule.MetricDimensionUsedTotal);
+                        }
+                    }
+
                     if (!string.IsNullOrEmpty(rule.ScaleUpCondition))
                     {
                         rule.ScaleUpConditionExpression =
@@ -258,9 +283,24 @@ public class ScalingRule
     public string DimensionValueCeilingStep { get; set; }
 
     /// <summary>
-    /// Possible values: Fixed or Autoadjust
+    /// Possible values: Fixed, Autoadjust, or Forecast
     /// </summary>
     public string ScalingStrategy { get; set; }
+
+    /// <summary>
+    /// Metric name for the total available value (required for Forecast strategy)
+    /// </summary>
+    public string MetricDimensionTotal { get; set; }
+
+    /// <summary>
+    /// Metric name for the percentage used (optional for Forecast strategy, preferred over MetricDimensionUsedTotal)
+    /// </summary>
+    public string MetricDimensionUsedPercentage { get; set; }
+
+    /// <summary>
+    /// Metric name for the absolute value used (optional for Forecast strategy, used if MetricDimensionUsedPercentage is not provided)
+    /// </summary>
+    public string MetricDimensionUsedTotal { get; set; }
 
     /// <summary>
     /// Threshold for the metric do upscale
