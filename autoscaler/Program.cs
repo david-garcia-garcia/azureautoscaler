@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Eventing.Reader;
 using System.Reflection;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.ExceptionServices;
 using Azure.Core;
 using Azure.Identity;
@@ -597,6 +598,12 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                 await state.Refresh(armClient, credential, stoppingToken);
 
                 logger.LogDebug("Existing object state {0}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
+
+                if (state.IsDisabled())
+                {
+                    logger.LogDebug("Resource is currently disabled.");
+                    return;
+                }
 
                 foreach (var setting in scalingConfigurations)
                 {
