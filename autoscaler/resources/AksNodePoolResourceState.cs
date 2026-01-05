@@ -94,6 +94,15 @@ namespace poolautoscaler.resources
 
             var nodePool = (ContainerServiceAgentPoolResource)this.Resource;
 
+            if (nodePool.Data.ProvisioningState == "Failed")
+            {
+                this.Logger.LogWarning($"AKS node pool in provisioning state '{nodePool.Data.ProvisioningState}'. Resource will be disabled until next refresh.");
+                this.DisabledUntil = DateTime.MaxValue;
+                return;
+            }
+
+            this.DisabledUntil = null;
+
             this.ResourceParts["virtualMachineScaleSetId"] = await this.GetVmssIdForNodePool(client, credential, cancellationToken, nodePool);
 
             this.RequestedAksNodePoolState = new AksNodePoolState();
@@ -107,6 +116,12 @@ namespace poolautoscaler.resources
 
         protected override string GetResourceIdForChangeHistory()
         {
+            if (this.IsDisabled())
+            {
+                // Null means do not load any history
+                return null;
+            }
+
             return this.ResourceParts["virtualMachineScaleSetId"];
         }
 

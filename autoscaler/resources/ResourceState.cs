@@ -17,8 +17,26 @@ namespace poolautoscaler.resources
     {
         protected IMemoryCache Cache { get; set; }
 
+        protected DateTime? DisabledUntil { get; set; }
+
         public abstract object ExistingStateRaw { get; }
+
         public abstract object RequestedStateRaw { get; }
+
+        public bool IsDisabled()
+        {
+            if (this.DisabledUntil == null)
+            {
+                return false;
+            }
+
+            if (this.DisabledUntil == DateTime.MaxValue)
+            {
+                return true;
+            }
+
+            return  (this.DisabledUntil.Value - DateTime.UtcNow).TotalSeconds > 0;
+        }
 
         public int NextEvaluationSeconds()
         {
@@ -86,10 +104,16 @@ namespace poolautoscaler.resources
                 // Check if the resource doesn't exist anymore (404) or is unauthorized (403 with specific messages)
                 if (ex.Status == 404 || (ex.Status == 403 && IsResourceNotFoundException(ex)))
                 {
-                    this.Logger.LogWarning("Resource no longer exists in Azure: {0}", this.ResourceId);
-                    throw new ResourceNotFoundException(this.ResourceId, $"Resource {this.ResourceId} no longer exists in Azure");
+                    this.Logger.LogWarning("Resource no longer exists in Azure or was not found: {0}", this.ResourceId);
+                    throw new ResourceNotFoundException(this.ResourceId, $"Resource {this.ResourceId} no longer exists in Azure or was not found");
                 }
+
                 ExceptionDispatchInfo.Capture(ex).Throw();
+            }
+
+            if (this.IsDisabled())
+            {
+                return;
             }
 
             bool initialRefresh = this.ChangeHistory == null;
@@ -121,8 +145,6 @@ namespace poolautoscaler.resources
 
                 return;
             }
-
-
 
             int page = 0;
             int loadedSnapshots = 0;
