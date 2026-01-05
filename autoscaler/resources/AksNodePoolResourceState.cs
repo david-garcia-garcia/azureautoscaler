@@ -94,7 +94,7 @@ namespace poolautoscaler.resources
 
             var nodePool = (ContainerServiceAgentPoolResource)this.Resource;
 
-            if (nodePool.Data.ProvisioningState == "Failed")
+            if (nodePool.Data.ProvisioningState != "Succeeded")
             {
                 this.Logger.LogWarning($"AKS node pool in provisioning state '{nodePool.Data.ProvisioningState}'. Resource will be disabled until next refresh.");
                 this.DisabledUntil = DateTime.MaxValue;
