@@ -1,3 +1,4 @@
+using System.Globalization;
 using Azure.ResourceManager.MySql.FlexibleServers.Models;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -297,6 +298,35 @@ namespace poolautoscaler.tests
             Assert.False(patch.Disruptive);
             var patchData = (MySqlFlexibleServerResourceState.MySqlFlexibleServerState)patch.PatchData;
             Assert.Equal(600, patchData.Iops);
+        }
+
+        [Fact]
+        public void SetIops_WithDecimalValue_ShouldParseAndTruncateToInteger()
+        {
+            // Arrange
+            var state = new MySqlFlexibleServerResourceState(_resourceId, _loggerMock.Object, _config);
+
+            state.ExistingMySqlFlexibleServerState = new MySqlFlexibleServerResourceState.MySqlFlexibleServerState
+            {
+                Sku = new MySqlFlexibleServerSku("Standard_B1ms", "Burstable"),
+                CoreCount = 1,
+                Iops = 360
+            };
+
+            state.RequestedMySqlFlexibleServerState = new MySqlFlexibleServerResourceState.MySqlFlexibleServerState();
+
+            // Act - This is the exact value from the error message
+            state.SetIops(527.081530782029.ToString());
+
+            // Assert - Should parse successfully and truncate to integer
+            Assert.NotNull(state.RequestedMySqlFlexibleServerState.Iops);
+            Assert.Equal(527, state.RequestedMySqlFlexibleServerState.Iops.Value);
+            
+            var patch = state.PreparePatch();
+            Assert.True(patch.HasChanges);
+            var patchData = (MySqlFlexibleServerResourceState.MySqlFlexibleServerState)patch.PatchData;
+            // IOPS should be rounded up to nearest 50 (as per PreparePatch logic: Math.Ceiling(527/50.0) * 50 = 550)
+            Assert.Equal(550, patchData.Iops);
         }
     }
 }
