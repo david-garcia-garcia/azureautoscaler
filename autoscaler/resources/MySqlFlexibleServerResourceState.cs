@@ -56,7 +56,7 @@ namespace poolautoscaler.resources
 
         public void SetIops(string iops)
         {
-            int parsedIops = int.Parse(iops);
+            int parsedIops = (int)double.Parse(iops);
 
             if (this.RequestedMySqlFlexibleServerState.Iops == null)
             {

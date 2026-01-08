@@ -1,10 +1,4 @@
-﻿using System.Data;
-using System.Diagnostics;
-using System.Diagnostics.Eventing.Reader;
-using System.Reflection;
-using System.Reflection.Metadata.Ecma335;
-using System.Runtime.ExceptionServices;
-using Azure.Core;
+﻿using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
@@ -19,6 +13,11 @@ using poolautoscaler.licensing;
 using poolautoscaler.resources;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
+using System.Data;
+using System.Diagnostics;
+using System.Globalization;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using InteractiveBrowserCredential = Azure.Identity.InteractiveBrowserCredential;
 
 namespace AzureSqlElasticPoolAutoscaler
@@ -27,6 +26,11 @@ namespace AzureSqlElasticPoolAutoscaler
     {
         static async Task Main(string[] args)
         {
+            // There are hardcoded numbers in both config lambda expressions and tests, we don't want locale
+            // messing up with that, and we dont want to support cultureinfo in this application at all.
+            CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
             // Determine command (default to "runservice" if none provided)
             var command = args.Length > 0 ? args[0] : "runservice";
             var commandArgs = args.Length > 0 ? args.Skip(1).ToArray() : Array.Empty<string>();
@@ -107,8 +111,8 @@ namespace AzureSqlElasticPoolAutoscaler
                 if (expirationDateStr.EndsWith("Z", StringComparison.OrdinalIgnoreCase))
                 {
                     expirationDateOffset = DateTimeOffset.ParseExact(
-                        expirationDateStr, 
-                        "yyyy-MM-ddTHH:mm:ssZ", 
+                        expirationDateStr,
+                        "yyyy-MM-ddTHH:mm:ssZ",
                         System.Globalization.CultureInfo.InvariantCulture,
                         System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal);
                 }
@@ -216,14 +220,14 @@ namespace AzureSqlElasticPoolAutoscaler
                         options.SingleLine = true;
                         options.TimestampFormat = "HH:mm:ss ";
                     });
-                    
+
                     // Check if license is expired/invalid and force trace mode
                     var licenseJwt = Environment.GetEnvironmentVariable("AUTOSCALER_LICENSE");
                     var validator = new LicenseValidator();
                     var license = validator.ValidateAndLoadLicense();
                     var isExpired = license != null && validator.IsExpired(license);
                     var isValid = validator.IsValid;
-                    
+
                     if (!isValid || isExpired || string.IsNullOrEmpty(licenseJwt))
                     {
                         // Expired, invalid, or no license: trace mode only
@@ -258,7 +262,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 var license = validator.ValidateAndLoadLicense();
                 var isExpired = license != null && validator.IsExpired(license);
                 this.LicenseInfo = new LicenseInfo(license ?? validator.CreateExpiredDefaultLicense(), validator.IsValid, isExpired);
-                
+
                 // Store validator for error reporting
                 _licenseValidator = validator;
 
@@ -297,7 +301,7 @@ namespace AzureSqlElasticPoolAutoscaler
                     {
                         return versionAttribute.InformationalVersion;
                     }
-                    
+
                     var version = assembly.GetName().Version;
                     if (version != null)
                     {
@@ -308,7 +312,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 {
                     // Fall through to default
                 }
-                
+
                 return "Unknown";
             }
 
@@ -318,14 +322,14 @@ namespace AzureSqlElasticPoolAutoscaler
                 var now = DateTime.UtcNow;
                 var timeUntilExpiration = license.ExpirationDate - now;
                 var daysRemaining = (int)timeUntilExpiration.TotalDays;
-                
+
                 // Log basic license information in one line
                 this.Logger.LogInformation(
                     "License: LicensedTo={LicensedTo}, DaysRemaining={DaysRemaining}, MaxResources={MaxResources}",
                     license.LicensedTo,
                     daysRemaining,
                     license.MaxResources);
-                
+
                 // Optionally log license issues if expired or has errors
                 if (this.LicenseInfo.IsRestricted)
                 {
@@ -339,7 +343,7 @@ namespace AzureSqlElasticPoolAutoscaler
                         this.Logger.LogWarning(
                             "License invalid. Limited functionality enabled.");
                     }
-                    
+
                     // Show validation error if available
                     if (!string.IsNullOrEmpty(_licenseValidator.LastError))
                     {
@@ -415,7 +419,7 @@ namespace AzureSqlElasticPoolAutoscaler
                         {
                             this.Logger.LogError(ex, "Failed to discover resources: {0}", ex.Message);
                         }
-                        finally 
+                        finally
                         {
                             // wait for next timeout to try again
                             lastResourceDiscovery = DateTime.UtcNow;
@@ -424,7 +428,7 @@ namespace AzureSqlElasticPoolAutoscaler
 
                     // Process all resources, but limit if license is expired or invalid
                     int processedCount = 0;
-                    
+
                     foreach (var resourceState in Resources.Values)
                     {
                         if (stoppingToken.IsCancellationRequested)
@@ -446,7 +450,7 @@ namespace AzureSqlElasticPoolAutoscaler
                         // Skip if license is restricted and we've reached the limit
                         if (this.LicenseInfo.IsRestricted && processedCount >= this.LicenseInfo.License.MaxResources)
                         {
-                            resourceState.Logger.LogWarning("License {0}: Skipping resource (limit: {2} resources)", 
+                            resourceState.Logger.LogWarning("License {0}: Skipping resource (limit: {2} resources)",
 this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             continue;
                         }
@@ -553,7 +557,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                     removedResources++;
                 }
 
-                this.Logger.LogInformation("Resource introspection completed. Total resources: {0} (Added: {1}, Removed: {2})", 
+                this.Logger.LogInformation("Resource introspection completed. Total resources: {0} (Added: {1}, Removed: {2})",
                     resources.Count,
                     addedResources,
                     removedResources);
@@ -562,7 +566,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
             private void CheckAndThrowErrorAfter12Hours()
             {
                 var runtime = DateTime.UtcNow - _startTime;
-                
+
                 // Throw error once after 12 hours of runtime
                 if (runtime.TotalHours >= 12)
                 {
@@ -732,7 +736,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                     logger.LogInformation("Existing resource state {0}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
                     logger.LogInformation("Target resource state: {0}", HelperExtensions.SerializeSimple(patchOperation.PatchData));
                     logger.LogInformation("Patch operation disruptive: {0}", patchOperation.Disruptive ? "yes" : "no");
-                    
+
                     if (state.Configuration.WhatIf == true)
                     {
                         logger.LogInformation("Patching Resource (WHATIF)");
@@ -832,7 +836,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         }
 
                         values.Reverse();
-                        
+
                         // Remove data points without data only from the start of the time series
                         var originalCount = values.Count;
                         values = values.SkipWhile(v => !v.HasData()).ToList();
