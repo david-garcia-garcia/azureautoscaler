@@ -112,7 +112,7 @@ Logging:
       TimestampFormat: "HH:mm:ss"
 Resources:
   - Resources:
-      stdevappsharedfiles:
+      myappfiles:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount/fileServices/default/shares/{.*}"
     Frequency: 30m
     ScalingConfigurations:
@@ -366,6 +366,59 @@ Resources:
   - R2
 ```
 
+### Resource-Specific Logging
+
+Each resource has its own logging category, allowing you to set different log levels for individual resources. This is useful for debugging specific resources without increasing verbosity for all resources.
+
+**Logging Category Format:**
+- **Non-expanded resources**: The category is the resource key used in the YAML configuration.
+- **Expanded resources**: The category is `{resource_key}_{expanded_resource_name}`, where:
+  - `resource_key` is the key from your YAML configuration
+  - `expanded_resource_name` is the name of the discovered resource (e.g., node pool name, file share name, database name)
+
+**Example:**
+```yaml
+Resources:
+  - Resources:
+      aks_dev_nodepools:  # This is the resource_key
+        ResourceId: "/subscriptions/.../agentPools/{.*}"  # Expanded resource
+```
+
+When resources are discovered, you'll see log messages like:
+```
+autoscaler[0] Adding new resource aks_dev_nodepools_default: /subscriptions/.../agentPools/default
+autoscaler[0] Adding new resource aks_dev_nodepools_w25p1: /subscriptions/.../agentPools/w25p1
+```
+
+In this example:
+- `aks_dev_nodepools_default` is the logging category for the "default" node pool
+- `aks_dev_nodepools_w25p1` is the logging category for the "w25p1" node pool
+
+**Setting Log Levels Per Resource:**
+```yaml
+Logging:
+  LogLevel:
+    Default: "Information"
+    Microsoft.Hosting.Lifetime: "Information"
+    aks_dev_nodepools_default: "Debug"      # Debug level for default node pool
+    aks_dev_nodepools_w25p1: "Trace"        # Trace level for w25p1 node pool
+    mysqldevpools_pool1: "Warning"       # Warning level for a specific SQL pool
+```
+
+**Using Wildcards for Expanded Resources:**
+You can use wildcards (`*`) in log category names to target all expanded resources from a single resource key. This is particularly useful when you have many auto-discovered resources and want to set the same log level for all of them.
+
+```yaml
+Logging:
+  LogLevel:
+    Default: "Information"
+    aks_dev_nodepools_*: "Debug"            # Debug level for all expanded node pools
+    mysqldevpools_*: "Trace"              # Trace level for all expanded SQL pools
+    myappfiles_*: "Warning"        # Warning level for all expanded file shares
+```
+
+The wildcard matches any expanded resource name, so `aks_dev_nodepools_*` will match `aks_dev_nodepools_default`, `aks_dev_nodepools_w25p1`, and any other node pools discovered from the `aks_dev_nodepools` resource key.
+
 ## Resource structure
 
 ### Scaling configurations
@@ -374,9 +427,9 @@ In this simple example, we will be scaling two Azure Sql Elastic Pools so that t
 
 ```yaml
   - Resources:
-      sbssqldevshared_dev_sbssqlpooldevshared:
+      mysqldevpools_dev_mypooldev:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/mysourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/pool1"
-      sbssqldevshared_dev_sbssqlpooldevshared2:
+      mysqldevpools_dev_mypooldev2:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/mysourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/pool2"
     Frequency: 5m
     WhatIf: true
@@ -438,7 +491,7 @@ For elasticpoools:
 
 ```yaml
   - Resources:
-      sbssqldevshared:
+      mysqldevpools:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/{.*}"
 ```
 
@@ -446,7 +499,7 @@ If you want to target a specific subset of resource, you can use a regular expre
 
 ```yaml
   - Resources:
-      sbssqldevshared:
+      mysqldevpools:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/{^pool-}"
 ```
 
@@ -457,13 +510,29 @@ Resource expansion works for:
 * SQL Databases in an Azure SQL Server
 * SQL Elastic Pools in an Azure SQL Server
 
+### Resource Tags
+
+Azure Autoscaler reads tags from resources and makes them available in the `ResourceTags` dictionary for each resource. Tags can be used to control resource behavior.
+
+For most Azure resources (SQL Databases, SQL Elastic Pools, MySQL Flexible Servers), tags are read directly from the resource.
+
+**Edge Cases:**
+
+- **AKS Node Pools**: Node pools don't support Azure resource tags. Tags must be set as **nodeLabels** on the node pool, which are automatically included in `ResourceTags`.
+
+- **File Shares**: File shares don't support Azure resource tags. Tags must be set on the **parent storage account** with the format `{fileShareName}:{tagKey}`. The prefix is automatically removed when added to `ResourceTags`. For example, a storage account tag `myshare:autoscaler.enabled=true` will appear as `autoscaler.enabled=true` in the `myshare` file share's `ResourceTags`.
+
+**Implemented Tags:**
+
+- **`autoscaler.disabled=true`**: Disables autoscaling for the resource indefinitely. When set, the resource will not be evaluated or scaled until the tag is removed or set to a different value. This is useful for temporarily disabling autoscaling on specific resources without removing them from the configuration.
+
 ### Metrics
 
 Because you need to make real time decisions based on resource metrics, each Scaling Configuration can declare a set of metrics that will be evaluated on the resource and made available for usage in the scaling rules.
 
 ```yaml
   - Resources:
-      sbssqldevshared_dev_sbssqlpooldevshared:
+      mysqldevpools_dev_mypooldev:
         ResourceId: "/subscriptions/xx/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/account/fileServices/default/shares/share"
     ScalingConfigurations:
       Baseline:
@@ -658,9 +727,9 @@ The autoadjust is designed to react based on metrics:
 
 ```yaml
   - Resources:
-      sbssqldevshared_pools:
+      mysqldevpools_pools:
         ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/mypool/elasticPools/{.*}"
-      sbsmssqlprodshared_pools:
+      mysqlprodshared_pools:
         ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/mypool2/elasticPools/{.*}"
     Frequency: 3m
     WhatIf: false
@@ -886,7 +955,7 @@ The autoadjust is designed to react based on metrics:
 
 ```yaml
   - Resources:
-      stdevappsharedfiles:
+      myappfiles:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount/fileServices/default/shares/{^(?!apptemp$)([a-zA-Z0-9]+)$}"
     Frequency: 30m
     Enabled: true

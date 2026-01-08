@@ -44,6 +44,9 @@ namespace poolautoscaler.resources
         {
             this.Resource = await client.GetMySqlFlexibleServerResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);
 
+            // Populate resource tags
+            this.PopulateResourceTags(this.ResourceCasted.Data.Tags);
+
             this.ExistingMySqlFlexibleServerState = new MySqlFlexibleServerState()
             {
                 Sku = this.ResourceCasted.Data.Sku,
