@@ -529,11 +529,11 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             else
                             {
                                 // New resource - add it
-                                this.Logger.LogInformation("Adding new resource: {0}", expandedResourceId.Value);
+                                this.Logger.LogInformation("Adding new resource {0}: {1}", expandedResourceId.Key, expandedResourceId.Value);
                                 
-                                var logger = this.LogFactory.CreateLogger(expandedResourceId.Key);
-                                var state = ResourceStateFactory.Create(expandedResourceId.Value, logger, resource);
-                                this.Logger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
+                                var resourceLogger = this.LogFactory.CreateLogger(expandedResourceId.Key);
+                                var state = ResourceStateFactory.Create(expandedResourceId.Value, resourceLogger, resource);
+                                resourceLogger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
                                 resources[expandedResourceId.Key] = state;
                                 addedResources++;
                             }

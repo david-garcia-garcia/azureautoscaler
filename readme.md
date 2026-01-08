@@ -366,6 +366,45 @@ Resources:
   - R2
 ```
 
+### Resource-Specific Logging
+
+Each resource has its own logging category, allowing you to set different log levels for individual resources. This is useful for debugging specific resources without increasing verbosity for all resources.
+
+**Logging Category Format:**
+- **Non-expanded resources**: The category is the resource key used in the YAML configuration.
+- **Expanded resources**: The category is `{resource_key}_{expanded_resource_name}`, where:
+  - `resource_key` is the key from your YAML configuration
+  - `expanded_resource_name` is the name of the discovered resource (e.g., node pool name, file share name, database name)
+
+**Example:**
+```yaml
+Resources:
+  - Resources:
+      aks_dev_nodepools:  # This is the resource_key
+        ResourceId: "/subscriptions/.../agentPools/{.*}"  # Expanded resource
+```
+
+When resources are discovered, you'll see log messages like:
+```
+autoscaler[0] Adding new resource aks_dev_nodepools_default: /subscriptions/.../agentPools/default
+autoscaler[0] Adding new resource aks_dev_nodepools_w25p1: /subscriptions/.../agentPools/w25p1
+```
+
+In this example:
+- `aks_dev_nodepools_default` is the logging category for the "default" node pool
+- `aks_dev_nodepools_w25p1` is the logging category for the "w25p1" node pool
+
+**Setting Log Levels Per Resource:**
+```yaml
+Logging:
+  LogLevel:
+    Default: "Information"
+    Microsoft.Hosting.Lifetime: "Information"
+    aks_dev_nodepools_default: "Debug"      # Debug level for default node pool
+    aks_dev_nodepools_w25p1: "Trace"        # Trace level for w25p1 node pool
+    sbssqldevshared_pool1: "Warning"       # Warning level for a specific SQL pool
+```
+
 ## Resource structure
 
 ### Scaling configurations
@@ -456,6 +495,22 @@ Resource expansion works for:
 * Node pools in an AKS cluster
 * SQL Databases in an Azure SQL Server
 * SQL Elastic Pools in an Azure SQL Server
+
+### Resource Tags
+
+Azure Autoscaler reads tags from resources and makes them available in the `ResourceTags` dictionary for each resource. Tags can be used to control resource behavior.
+
+For most Azure resources (SQL Databases, SQL Elastic Pools, MySQL Flexible Servers), tags are read directly from the resource.
+
+**Edge Cases:**
+
+- **AKS Node Pools**: Node pools don't support Azure resource tags. Tags must be set as **nodeLabels** on the node pool, which are automatically included in `ResourceTags`.
+
+- **File Shares**: File shares don't support Azure resource tags. Tags must be set on the **parent storage account** with the format `{fileShareName}:{tagKey}`. The prefix is automatically removed when added to `ResourceTags`. For example, a storage account tag `myshare:autoscaler.enabled=true` will appear as `autoscaler.enabled=true` in the `myshare` file share's `ResourceTags`.
+
+**Implemented Tags:**
+
+- **`autoscaler.disabled=true`**: Disables autoscaling for the resource indefinitely. When set, the resource will not be evaluated or scaled until the tag is removed or set to a different value. This is useful for temporarily disabling autoscaling on specific resources without removing them from the configuration.
 
 ### Metrics
 

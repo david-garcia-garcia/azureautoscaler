@@ -50,11 +50,26 @@ namespace poolautoscaler.resources
                 throw new Exception("Current implementation only supports provisioning model V1. V2 detected.");
             }
 
-            //fileShare.Data.
-
-            // Populate resource tags
-            // this.PopulateResourceTags(fileShare.Data.);
-            throw new Exception("review");
+            // File shares don't support tags directly, so we read them from the parent storage account
+            // Tags on the storage account with the format "{fileShareName}:{tagKey}" are interpreted as tags for the file share
+            this.ResourceTags.Clear();
+            var fileShareName = fileShare.Data.Name;
+            var storageAccountId = this.ReplaceResourceParts("/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${storageAccountName}");
+            var storageAccount = await client.GetStorageAccountResource(new ResourceIdentifier(storageAccountId)).GetAsync(cancellationToken: cancellationToken);
+            
+            if (storageAccount.Value.Data.Tags != null)
+            {
+                var prefix = $"{fileShareName}:";
+                foreach (var tag in storageAccount.Value.Data.Tags)
+                {
+                    if (tag.Key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Remove the prefix and add to ResourceTags
+                        var tagKey = tag.Key.Substring(prefix.Length);
+                        this.ResourceTags[tagKey] = tag.Value;
+                    }
+                }
+            }
 
             this.ExistingStorageFileShareState = new StorageFileShareState()
             {
