@@ -67,12 +67,9 @@ namespace poolautoscaler.resources
         {
             this.ResourceTags.Clear();
 
-            if (tags != null)
+            foreach (var tag in tags)
             {
-                foreach (var tag in tags)
-                {
-                    this.ResourceTags[tag.Key] = tag.Value;
-                }
+                this.ResourceTags[tag.Key] = tag.Value;
             }
         }
 

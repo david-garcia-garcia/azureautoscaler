@@ -112,7 +112,7 @@ Logging:
       TimestampFormat: "HH:mm:ss"
 Resources:
   - Resources:
-      stdevappsharedfiles:
+      myappfiles:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount/fileServices/default/shares/{.*}"
     Frequency: 30m
     ScalingConfigurations:
@@ -402,8 +402,22 @@ Logging:
     Microsoft.Hosting.Lifetime: "Information"
     aks_dev_nodepools_default: "Debug"      # Debug level for default node pool
     aks_dev_nodepools_w25p1: "Trace"        # Trace level for w25p1 node pool
-    sbssqldevshared_pool1: "Warning"       # Warning level for a specific SQL pool
+    mysqldevpools_pool1: "Warning"       # Warning level for a specific SQL pool
 ```
+
+**Using Wildcards for Expanded Resources:**
+You can use wildcards (`*`) in log category names to target all expanded resources from a single resource key. This is particularly useful when you have many auto-discovered resources and want to set the same log level for all of them.
+
+```yaml
+Logging:
+  LogLevel:
+    Default: "Information"
+    aks_dev_nodepools_*: "Debug"            # Debug level for all expanded node pools
+    mysqldevpools_*: "Trace"              # Trace level for all expanded SQL pools
+    myappfiles_*: "Warning"        # Warning level for all expanded file shares
+```
+
+The wildcard matches any expanded resource name, so `aks_dev_nodepools_*` will match `aks_dev_nodepools_default`, `aks_dev_nodepools_w25p1`, and any other node pools discovered from the `aks_dev_nodepools` resource key.
 
 ## Resource structure
 
@@ -413,9 +427,9 @@ In this simple example, we will be scaling two Azure Sql Elastic Pools so that t
 
 ```yaml
   - Resources:
-      sbssqldevshared_dev_sbssqlpooldevshared:
+      mysqldevpools_dev_mypooldev:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/mysourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/pool1"
-      sbssqldevshared_dev_sbssqlpooldevshared2:
+      mysqldevpools_dev_mypooldev2:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/mysourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/pool2"
     Frequency: 5m
     WhatIf: true
@@ -477,7 +491,7 @@ For elasticpoools:
 
 ```yaml
   - Resources:
-      sbssqldevshared:
+      mysqldevpools:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/{.*}"
 ```
 
@@ -485,7 +499,7 @@ If you want to target a specific subset of resource, you can use a regular expre
 
 ```yaml
   - Resources:
-      sbssqldevshared:
+      mysqldevpools:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/sql0/elasticPools/{^pool-}"
 ```
 
@@ -518,7 +532,7 @@ Because you need to make real time decisions based on resource metrics, each Sca
 
 ```yaml
   - Resources:
-      sbssqldevshared_dev_sbssqlpooldevshared:
+      mysqldevpools_dev_mypooldev:
         ResourceId: "/subscriptions/xx/resourceGroups/rg/providers/Microsoft.Storage/storageAccounts/account/fileServices/default/shares/share"
     ScalingConfigurations:
       Baseline:
@@ -713,9 +727,9 @@ The autoadjust is designed to react based on metrics:
 
 ```yaml
   - Resources:
-      sbssqldevshared_pools:
+      mysqldevpools_pools:
         ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/mypool/elasticPools/{.*}"
-      sbsmssqlprodshared_pools:
+      mysqlprodshared_pools:
         ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/myresourcegroup/providers/Microsoft.Sql/servers/mypool2/elasticPools/{.*}"
     Frequency: 3m
     WhatIf: false
@@ -941,7 +955,7 @@ The autoadjust is designed to react based on metrics:
 
 ```yaml
   - Resources:
-      stdevappsharedfiles:
+      myappfiles:
         ResourceId: "/subscriptions/mysubscription/resourceGroups/myresourcegroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount/fileServices/default/shares/{^(?!apptemp$)([a-zA-Z0-9]+)$}"
     Frequency: 30m
     Enabled: true
