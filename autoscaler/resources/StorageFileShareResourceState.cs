@@ -50,6 +50,12 @@ namespace poolautoscaler.resources
                 throw new Exception("Current implementation only supports provisioning model V1. V2 detected.");
             }
 
+            //fileShare.Data.
+
+            // Populate resource tags
+            // this.PopulateResourceTags(fileShare.Data.);
+            throw new Exception("review");
+
             this.ExistingStorageFileShareState = new StorageFileShareState()
             {
                 ShareQuotaGb = fileShare.Data.ShareQuota,

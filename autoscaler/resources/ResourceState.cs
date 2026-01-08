@@ -5,6 +5,7 @@ using Azure.ResourceManager.ResourceGraph.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.strategies;
+using poolautoscaler.utils;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
 
@@ -17,7 +18,8 @@ namespace poolautoscaler.resources
     {
         protected IMemoryCache Cache { get; set; }
 
-        protected DateTime? DisabledUntil { get; set; }
+        // A resource can be disabled for multiple reasons.
+        public Dictionary<string, DateTime> DisabledUntil { get; set; } = new Dictionary<string, DateTime>();
 
         public abstract object ExistingStateRaw { get; }
 
@@ -25,17 +27,17 @@ namespace poolautoscaler.resources
 
         public bool IsDisabled()
         {
-            if (this.DisabledUntil == null)
-            {
-                return false;
-            }
-
-            if (this.DisabledUntil == DateTime.MaxValue)
+            if (this.DisabledUntil.Values.Any((i) => i == DateTime.MaxValue))
             {
                 return true;
             }
 
-            return  (this.DisabledUntil.Value - DateTime.UtcNow).TotalSeconds > 0;
+            if (this.DisabledUntil.Values.Any((i) => (i - DateTime.UtcNow).TotalSeconds > 0))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         public int NextEvaluationSeconds()
@@ -54,6 +56,25 @@ namespace poolautoscaler.resources
         }
 
         public Dictionary<string, string> ResourceParts = new Dictionary<string, string>();
+
+        public Dictionary<string, string> ResourceTags = new Dictionary<string, string>();
+
+        /// <summary>
+        /// Populates ResourceTags from the provided tags dictionary
+        /// </summary>
+        /// <param name="tags">Dictionary of tags to populate from</param>
+        protected void PopulateResourceTags(IDictionary<string, string> tags)
+        {
+            this.ResourceTags.Clear();
+
+            if (tags != null)
+            {
+                foreach (var tag in tags)
+                {
+                    this.ResourceTags[tag.Key] = tag.Value;
+                }
+            }
+        }
 
         private DateTime? LastEvaluation;
 
@@ -111,6 +132,16 @@ namespace poolautoscaler.resources
                 ExceptionDispatchInfo.Capture(ex).Throw();
             }
 
+            if (this.ResourceTags.TryGetValue("autoscaler.disabled", out var autoscalerDisabled) &&
+                autoscalerDisabled == "true")
+            {
+                this.DisabledUntil["autoscaler.disabled"] = DateTime.MaxValue;
+            }
+            else
+            {
+                this.DisabledUntil.TryRemove("autoscaler.disabled");
+            }
+
             if (this.IsDisabled())
             {
                 return;
@@ -130,7 +161,7 @@ namespace poolautoscaler.resources
 
             // Grab the changelogs
             var tenantResource = client.GetTenants().First();
-            
+
             var mostRecentTimestamp = this.ChangeHistory.FirstOrDefault()?.Timestamp;
             var timeFilter = mostRecentTimestamp.HasValue ? $"and timestamp > datetime('{mostRecentTimestamp.Value:O}')" : "";
             var resourceIdFilter = this.GetResourceIdForChangeHistory();
@@ -334,7 +365,7 @@ namespace poolautoscaler.resources
             // 2. "does not have authorization" with specific wording about scope
             // 3. Message contains "invalid scope" or "scope" + "invalid"
             var message = ex.Message ?? string.Empty;
-            
+
             return message.ToLowerInvariant().Contains("scope is invalid") ||
                    message.ToLowerInvariant().Contains("scope") && message.ToLowerInvariant().Contains("invalid");
         }

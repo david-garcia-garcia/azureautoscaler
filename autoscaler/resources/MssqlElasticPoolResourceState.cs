@@ -51,6 +51,9 @@ namespace poolautoscaler.resources
 
             var storage_used = values.Take(1)?.Select((i) => i.Average).Average();
 
+            // Populate resource tags
+            this.PopulateResourceTags(this.Resource.Data.Tags);
+
             this.ExistingMssqlElasticPoolState = new MssqlElasticPoolState()
             {
                 MaxSizeBytes = this.Resource.Data.MaxSizeBytes,

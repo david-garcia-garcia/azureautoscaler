@@ -32,5 +32,24 @@ namespace poolautoscaler.utils
             var serialized = JsonSerializer.Serialize(self);
             return JsonSerializer.Deserialize<T>(serialized);
         }
+
+        /// <summary>
+        /// Attempts to remove the value with the specified key from the dictionary.
+        /// Returns true if the key was found and removed; otherwise, false.
+        /// </summary>
+        /// <typeparam name="TKey">The type of keys in the dictionary</typeparam>
+        /// <typeparam name="TValue">The type of values in the dictionary</typeparam>
+        /// <param name="dictionary">The dictionary to remove from</param>
+        /// <param name="key">The key to remove</param>
+        /// <returns>True if the key was found and removed; otherwise, false</returns>
+        public static bool TryRemove<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key)
+        {
+            if (dictionary == null)
+            {
+                return false;
+            }
+
+            return dictionary.Remove(key);
+        }
     }
 }

@@ -7,6 +7,7 @@ using Azure.ResourceManager.ContainerService;
 using Azure.ResourceManager.Resources;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using poolautoscaler.utils;
 
 namespace poolautoscaler.resources
 {
@@ -97,13 +98,25 @@ namespace poolautoscaler.resources
             if (nodePool.Data.ProvisioningState != "Succeeded")
             {
                 this.Logger.LogWarning($"AKS node pool in provisioning state '{nodePool.Data.ProvisioningState}'. Resource will be disabled until next refresh.");
-                this.DisabledUntil = DateTime.MaxValue;
+                this.DisabledUntil["ProvisioningState"] = DateTime.MaxValue;
                 return;
             }
 
-            this.DisabledUntil = null;
+            this.DisabledUntil.TryRemove("ProvisioningState");
 
             this.ResourceParts["virtualMachineScaleSetId"] = await this.GetVmssIdForNodePool(client, credential, cancellationToken, nodePool);
+
+            // Populate resource tags
+            this.PopulateResourceTags(nodePool.Data.Tags);
+
+            // Also include nodeLabels for AKS node pools
+            if (nodePool.Data.NodeLabels != null)
+            {
+                foreach (var label in nodePool.Data.NodeLabels)
+                {
+                    this.ResourceTags[label.Key] = label.Value;
+                }
+            }
 
             this.RequestedAksNodePoolState = new AksNodePoolState();
 
