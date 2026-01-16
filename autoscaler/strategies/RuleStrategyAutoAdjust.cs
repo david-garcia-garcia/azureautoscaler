@@ -65,26 +65,24 @@ namespace poolautoscaler.strategies
                 logger.LogWarning("Resource will scale down, but still above max configured range.");
             }
 
+            if (belowMinimum)
+            {
+                logger.LogDebug(
+                    "Cannot scale below minimum configured value. Current {0}. Target {1}. Min {2}. Adjusting to minimum.",
+
+                    currentDimensionValue, nextDimensionValue, rule.DimensionValueMin);
+                return rule.DimensionValueMin;
+            }
+
             if (outOfRange && !isScaleDownButGreaterThanMax)
             {
-                if (currentDimensionValue != nextDimensionValue)
+                if (aboveMaximum)
                 {
-                    if (belowMinimum)
-                    {
-                        logger.LogDebug(
-                            "Cannot scale below minimum configured value. Current {0}. Target {1}. Min {2}. Adjusting to minimum.",
+                    logger.LogDebug(
+                        "Cannot scale above maximum configured value. Current {0}. Target {1}. Max {2}. Adjusting to maximum.",
+                        currentDimensionValue, nextDimensionValue, rule.DimensionValueMax);
 
-                            currentDimensionValue, nextDimensionValue, rule.DimensionValueMin);
-                        return rule.DimensionValueMin;
-                    }
-                    else if (aboveMaximum)
-                    {
-                        logger.LogDebug(
-                            "Cannot scale above maximum configured value. Current {0}. Target {1}. Max {2}. Adjusting to maximum.",
-                            currentDimensionValue, nextDimensionValue, rule.DimensionValueMax);
-
-                        return rule.DimensionValueMax;
-                    }
+                    return rule.DimensionValueMax;
                 }
 
                 return currentDimensionValue;
