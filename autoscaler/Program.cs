@@ -365,6 +365,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 dimensions.Add(new DimensionStorageFileShareProvisionedStorage());
                 dimensions.Add(new DimensionMySqlFlexibleServerIops());
                 dimensions.Add(new DimensionStorageFileShareThroughput());
+                dimensions.Add(new DimensionFabricCapacitySku());
 
                 TokenCredential credential = null;
 

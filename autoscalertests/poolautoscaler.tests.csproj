@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.ResourceManager.Fabric" Version="1.0.0" />
     <PackageReference Include="Azure.ResourceManager.ResourceGraph" Version="1.1.0-beta.4" />
     <PackageReference Include="coverlet.collector" Version="6.0.4">
       <PrivateAssets>all</PrivateAssets>
