@@ -11,6 +11,7 @@ namespace poolautoscaler.resources
         public static readonly Regex MySqlFlexibleServer = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.DBforMySQL/flexibleServers/(?<serverName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         public static readonly Regex AksNodePool = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.ContainerService/managedClusters/(?<clusterName>[^/]+)/agentPools/(?<nodePoolName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         public static readonly Regex FileShare = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.Storage/storageAccounts/(?<storageAccountName>[^/]+)/fileServices/default/shares/(?<fileShareName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        public static readonly Regex FabricCapacity = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.Fabric/capacities/(?<capacityName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private static readonly Regex RegexPattern = new Regex(@"\{(.*?)\}", RegexOptions.Compiled);
 
@@ -52,6 +53,7 @@ namespace poolautoscaler.resources
             {
                 return await StorageFileShareResourceStateHelper.ExpandFileShareWildcard(client, key, resourceId, logger, stoppingToken);
             }
+            // Fabric capacities don't support expansion (no wildcards)
 
             var result = new Dictionary<string, string>();
             result.Add(key, resourceId);
@@ -91,6 +93,12 @@ namespace poolautoscaler.resources
             else if ((match = FileShare.Match(resourceId)).Success)
             {
                 state = new StorageFileShareResourceState(resourceId, logger, resourceConfiguration);
+                PopulateResourceParts(state, match);
+                return state;
+            }
+            else if ((match = FabricCapacity.Match(resourceId)).Success)
+            {
+                state = new FabricCapacityResourceState(resourceId, logger, resourceConfiguration);
                 PopulateResourceParts(state, match);
                 return state;
             }

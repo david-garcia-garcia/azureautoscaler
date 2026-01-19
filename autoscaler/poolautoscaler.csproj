@@ -35,6 +35,7 @@
     <PackageReference Include="Azure.ResourceManager" Version="1.13.2" />
     <PackageReference Include="Azure.ResourceManager.Compute" Version="1.12.0" />
     <PackageReference Include="Azure.ResourceManager.ContainerService" Version="1.2.5" />
+    <PackageReference Include="Azure.ResourceManager.Fabric" Version="1.0.0" />
     <PackageReference Include="Azure.ResourceManager.Kubernetes" Version="1.0.0-beta.5" />
     <PackageReference Include="Azure.ResourceManager.KubernetesConfiguration" Version="1.2.0" />
     <PackageReference Include="Azure.ResourceManager.Monitor" Version="1.4.0-beta.3" />
