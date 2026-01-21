@@ -10,6 +10,8 @@
         // For dimensions that are not discrete (i.e. tiers) this is the way to evaluate step up or down
         public Func<long, string> _PreviousDimensionValue { get; set; }
 
+        public string CurrentDimensionValue { get; set; }
+
         public string NextDimensionValue(long step)
         {
             return this._NextDimensionValue(step);

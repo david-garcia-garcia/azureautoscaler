@@ -19,6 +19,8 @@ namespace poolautoscaler.strategies
         {
             var evaluationMetrics = new MetricEvalDto();
             evaluationMetrics.Metrics = metrics;
+            string currentDimensionValue = dimension.GetCurrentDimensionValue(resource);
+            evaluationMetrics.CurrentDimensionValue = currentDimensionValue;
             var result = rule.ScaleTargetMethod(evaluationMetrics, logger);
 
             // Apply ceiling rounding if DimensionValueCeilingStep is specified
