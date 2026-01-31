@@ -1,8 +1,9 @@
-﻿using Azure.Monitor.Query.Models;
+using Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
 using System.Data;
+using System.Text.RegularExpressions;
 
 public class Configuration
 {
@@ -50,6 +51,37 @@ public class Configuration
             }
 
             resource.FrequencyParsed = DurationParser.ParseDuration(resource.Frequency);
+
+            // Compile tag filter regex patterns for each resource instance
+            if (resource.Resources != null)
+            {
+                foreach (var resourceInstance in resource.Resources.Values)
+                {
+                    if (!string.IsNullOrWhiteSpace(resourceInstance.TagsIncludeRegex))
+                    {
+                        try
+                        {
+                            resourceInstance.TagsIncludeRegexCompiled = new Regex(resourceInstance.TagsIncludeRegex, RegexOptions.Compiled);
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            throw new Exception($"Invalid TagsIncludeRegex pattern '{resourceInstance.TagsIncludeRegex}': {ex.Message}");
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(resourceInstance.TagsExcludeRegex))
+                    {
+                        try
+                        {
+                            resourceInstance.TagsExcludeRegexCompiled = new Regex(resourceInstance.TagsExcludeRegex, RegexOptions.Compiled);
+                        }
+                        catch (ArgumentException ex)
+                        {
+                            throw new Exception($"Invalid TagsExcludeRegex pattern '{resourceInstance.TagsExcludeRegex}': {ex.Message}");
+                        }
+                    }
+                }
+            }
 
             if (resource.ScalingConfigurations == null) continue;
 
@@ -178,6 +210,74 @@ public class ResourceInstance
     public string Id { get; set; }
 
     public string ResourceId { get; set; }
+
+    /// <summary>
+    /// Regex pattern to filter resources by tags. Only resources with at least one tag matching this pattern will be included.
+    /// The pattern is matched against tags in the format "key:value".
+    /// </summary>
+    public string TagsIncludeRegex { get; set; }
+
+    /// <summary>
+    /// Compiled regex for TagsIncludeRegex
+    /// </summary>
+    public Regex TagsIncludeRegexCompiled { get; set; }
+
+    /// <summary>
+    /// Regex pattern to filter resources by tags. Resources with any tag matching this pattern will be excluded.
+    /// The pattern is matched against tags in the format "key:value".
+    /// </summary>
+    public string TagsExcludeRegex { get; set; }
+
+    /// <summary>
+    /// Compiled regex for TagsExcludeRegex
+    /// </summary>
+    public Regex TagsExcludeRegexCompiled { get; set; }
+
+    /// <summary>
+    /// Checks if the given resource tags pass the include/exclude filters.
+    /// </summary>
+    /// <param name="resourceTags">Dictionary of resource tags</param>
+    /// <returns>True if the resource should be included, false if it should be excluded</returns>
+    public bool MatchesTagFilters(Dictionary<string, string> resourceTags)
+    {
+        if (resourceTags == null || resourceTags.Count == 0)
+        {
+            // No tags: include only if there's no include filter
+            return TagsIncludeRegexCompiled == null;
+        }
+
+        // Convert tags to "key:value" format for matching
+        var tagStrings = resourceTags.Select(t => $"{t.Key}:{t.Value}").ToList();
+
+        // Check exclude filter first - if any tag matches, exclude the resource
+        if (TagsExcludeRegexCompiled != null)
+        {
+            foreach (var tagString in tagStrings)
+            {
+                if (TagsExcludeRegexCompiled.IsMatch(tagString))
+                {
+                    return false;
+                }
+            }
+        }
+
+        // Check include filter - at least one tag must match
+        if (TagsIncludeRegexCompiled != null)
+        {
+            foreach (var tagString in tagStrings)
+            {
+                if (TagsIncludeRegexCompiled.IsMatch(tagString))
+                {
+                    return true;
+                }
+            }
+            // No tag matched the include filter
+            return false;
+        }
+
+        // No include filter and no exclude match - include the resource
+        return true;
+    }
 }
 
 public class ScalingConfiguration

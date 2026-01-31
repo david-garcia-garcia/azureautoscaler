@@ -1,4 +1,4 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
@@ -486,6 +486,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                 var discoveredResources = new HashSet<string>();
                 int addedResources = 0;
                 int removedResources = 0;
+                int filteredByTags = 0;
 
                 // Phase 1: Discover all resources that should exist and add new ones
                 foreach (var resource in this.Configuration.Resources)
@@ -516,26 +517,56 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             continue;
                         }
 
+                        bool hasTagFilters = resourceInstance.Value.TagsIncludeRegexCompiled != null || 
+                                             resourceInstance.Value.TagsExcludeRegexCompiled != null;
+
                         foreach (var expandedResourceId in expandedResourceIds)
                         {
                             resourceInstance.Value.Id = resourceInstance.Key;
-                            discoveredResources.Add(expandedResourceId.Key);
 
                             // Check if this resource already exists
                             if (resources.ContainsKey(expandedResourceId.Key))
                             {
                                 // Resource already exists - keep it as-is (optimal: no reinstantiation)
                                 this.Logger.LogTrace("Keeping existing resource: {0}", expandedResourceId.Value);
+                                discoveredResources.Add(expandedResourceId.Key);
                             }
                             else
                             {
-                                // New resource - add it
-                                this.Logger.LogInformation("Adding new resource {0}: {1}", expandedResourceId.Key, expandedResourceId.Value);
-                                
+                                // New resource - create it
                                 var resourceLogger = this.LogFactory.CreateLogger(expandedResourceId.Key);
                                 var state = ResourceStateFactory.Create(expandedResourceId.Value, resourceLogger, resource);
                                 resourceLogger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
+
+                                // If tag filters are configured, we need to refresh the resource to get its tags
+                                if (hasTagFilters)
+                                {
+                                    try
+                                    {
+                                        // Refresh to populate tags - this is a lightweight refresh just to get resource info
+                                        await state.Refresh(client, null, stoppingToken);
+
+                                        // Check if the resource passes the tag filters
+                                        if (!resourceInstance.Value.MatchesTagFilters(state.ResourceTags))
+                                        {
+                                            var tagSummary = state.ResourceTags.Count > 0 
+                                                ? string.Join(", ", state.ResourceTags.Select(t => $"{t.Key}:{t.Value}"))
+                                                : "(no tags)";
+                                            resourceLogger.LogDebug("Resource excluded by tag filter. Tags: {0}", tagSummary);
+                                            filteredByTags++;
+                                            continue;
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        resourceLogger.LogWarning("Failed to refresh resource for tag filtering, including resource anyway: {0}", ex.Message);
+                                    }
+                                }
+
+                                // Resource passes filters - add it
+                                this.Logger.LogInformation("Adding new resource {0}: {1}", expandedResourceId.Key, expandedResourceId.Value);
                                 resources[expandedResourceId.Key] = state;
+                                discoveredResources.Add(expandedResourceId.Key);
                                 addedResources++;
                             }
                         }
@@ -559,10 +590,21 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                     removedResources++;
                 }
 
-                this.Logger.LogInformation("Resource introspection completed. Total resources: {0} (Added: {1}, Removed: {2})",
-                    resources.Count,
-                    addedResources,
-                    removedResources);
+                if (filteredByTags > 0)
+                {
+                    this.Logger.LogInformation("Resource introspection completed. Total resources: {0} (Added: {1}, Removed: {2}, Filtered by tags: {3})",
+                        resources.Count,
+                        addedResources,
+                        removedResources,
+                        filteredByTags);
+                }
+                else
+                {
+                    this.Logger.LogInformation("Resource introspection completed. Total resources: {0} (Added: {1}, Removed: {2})",
+                        resources.Count,
+                        addedResources,
+                        removedResources);
+                }
             }
 
             private void CheckAndThrowErrorAfter12Hours()

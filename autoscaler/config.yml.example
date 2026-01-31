@@ -89,11 +89,19 @@ Resources:
   ############################
   # SQL Elastic Pool Example
   ############################
+  # This example shows how to use TagsIncludeRegex and TagsExcludeRegex to filter resources
+  # based on their Azure tags. Tags are matched in "key:value" format.
   - Resources:
       example_sql_dev_pools:
         ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-dev/providers/Microsoft.Sql/servers/sqlexample-dev/elasticPools/{.*}"
+        # Only include resources that have the tag "autoscaler.enabled:true"
+        TagsIncludeRegex: "autoscaler\\.enabled:true"
+        # Exclude any resources tagged with "environment:production" 
+        TagsExcludeRegex: "environment:production"
       example_sql_prod_pools:
         ResourceId: "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-example-prod/providers/Microsoft.Sql/servers/sqlexample-prod/elasticPools/{.*}"
+        # Include only production environment resources
+        TagsIncludeRegex: "environment:production"
     Frequency: 3m
     WhatIf: false
     ScalingConfigurations:
@@ -402,3 +410,41 @@ Resources:
             ScalingStrategy: Fixed
             Dimension: Throughput
             ScaleTarget: "(data) => (data.Metrics[\"FileThroughput\"].Values.First().Average + 10).ToString()"
+  ###################################
+  # Microsoft Fabric Capacity
+  ###################################
+  # Fabric capacities support scaling the SKU dimension.
+  # Supported SKUs (smallest to largest): F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048
+  - Resources:
+      example_fabric_capacity:
+        ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-powerbi/providers/Microsoft.Fabric/capacities/fabricexample"
+    Frequency: 10m
+    WhatIf: false
+    Enabled: true
+    ScalingConfigurations:
+      # Scale down to F2 during off-hours
+      Baseline:
+        TimeWindow:
+          Days: All
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          fixed:
+            ScalingStrategy: Fixed
+            Dimension: Sku
+            ScaleTarget: "(data) => (\"F2\")"
+      # Scale up during working hours
+      WorkingHours:
+        TimeWindow:
+          Days: Monday, Tuesday, Wednesday, Thursday, Friday
+          Months: All
+          StartTime: "07:00"
+          EndTime: "21:00"
+          TimeZone: "Romance Standard Time"
+        ScalingRules:
+          fixed:
+            ScalingStrategy: Fixed
+            Dimension: Sku
+            ScaleTarget: "(data) => (\"F8\")"

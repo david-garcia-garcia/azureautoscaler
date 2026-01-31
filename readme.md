@@ -35,6 +35,7 @@ Azure Autoscaler fills these gaps by providing intelligent, metric-based autosca
 | Azure SQL Databases | Dtu, MaxDataBytes |  | MaxDataBytes supports DTU and VCore models (see notes below) |
 | Azure MySQL Flexible Server | Sku, Iops, CoreCount | custom_sku_corecount_forecast |  |
 | Azure Files | ProvisionedStorage, Throughput |  | Although Throughput is not a real dimension in Azure for a file share, it is exposed as an actionable dimension and the file share provisioned storage is scaled to meet the desired throughput targets |
+| Microsoft Fabric Capacity | Sku |  | Supports SKUs F2 through F2048; SKU changes are disruptive operations |
 
 ## Licensing
 
@@ -526,6 +527,46 @@ For most Azure resources (SQL Databases, SQL Elastic Pools, MySQL Flexible Serve
 
 - **`autoscaler.disabled=true`**: Disables autoscaling for the resource indefinitely. When set, the resource will not be evaluated or scaled until the tag is removed or set to a different value. This is useful for temporarily disabling autoscaling on specific resources without removing them from the configuration.
 
+### Tag Filtering
+
+You can use `TagsIncludeRegex` and `TagsExcludeRegex` to filter which resources are included or excluded during resource discovery. This is especially useful when using resource expansion patterns (wildcards) and you want to only manage specific resources based on their tags.
+
+**Configuration Options:**
+
+- **`TagsIncludeRegex`**: A regex pattern to include resources. Only resources with at least one tag matching this pattern will be managed. Tags are matched in `key:value` format.
+- **`TagsExcludeRegex`**: A regex pattern to exclude resources. Resources with any tag matching this pattern will be excluded. Tags are matched in `key:value` format.
+
+**Filter Logic:**
+
+1. If `TagsExcludeRegex` is set and any tag matches, the resource is excluded
+2. If `TagsIncludeRegex` is set, at least one tag must match for the resource to be included
+3. If neither filter is set, all discovered resources are included
+4. Resources with no tags are excluded if `TagsIncludeRegex` is set (unless the pattern matches empty)
+
+**Example:**
+
+```yaml
+Resources:
+  - Resources:
+      production_pools:
+        ResourceId: "/subscriptions/.../elasticPools/{.*}"
+        # Only include resources tagged with "autoscaler.enabled:true"
+        TagsIncludeRegex: "autoscaler\\.enabled:true"
+        # Exclude any resources tagged with "environment:development"
+        TagsExcludeRegex: "environment:development"
+      development_pools:
+        ResourceId: "/subscriptions/.../elasticPools/{.*}"
+        # Include only development environment resources
+        TagsIncludeRegex: "environment:development"
+```
+
+**Notes:**
+
+- Tag filters are evaluated during resource discovery, not during scaling operations
+- The regex pattern is matched against each tag in `key:value` format
+- Remember to escape special regex characters (e.g., `\\.` for a literal dot)
+- Tag filtering adds a small overhead during resource discovery as resources must be refreshed to read their tags
+
 ### Metrics
 
 Because you need to make real time decisions based on resource metrics, each Scaling Configuration can declare a set of metrics that will be evaluated on the resource and made available for usage in the scaling rules.
@@ -984,5 +1025,94 @@ The autoadjust is designed to react based on metrics:
             Dimension: ProvisionedStorage
             # Fixed +50 GB above whatever is being used
             ScaleTarget: "(data) => (data.Metrics[\"FileCapacity\"].Values.First().Average + 50).ToString()"
+```
+
+## Microsoft Fabric Capacity
+
+Microsoft Fabric Capacity resources support scaling the SKU dimension. This is useful for optimizing costs by scaling down during off-hours and scaling up during business hours.
+
+**Supported SKUs (smallest to largest):**
+- F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048
+
+**Important Notes:**
+- SKU changes are **disruptive operations** - they may cause brief service interruptions
+- Fabric capacities do **not** support resource expansion (wildcards) - you must specify each capacity individually
+- If the current SKU is null or invalid, the autoscaler defaults to F2
+
+**Schedule-Based Scaling Example:**
+
+This example scales the Fabric capacity to F8 during working hours and F2 during off-hours:
+
+```yaml
+  - Resources:
+      my_fabric_capacity:
+        ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/rg-powerbi/providers/Microsoft.Fabric/capacities/myfabriccapacity"
+    Frequency: 10m
+    WhatIf: false
+    Enabled: true
+    ScalingConfigurations:
+      # Scale down to minimum during off-hours (default/baseline)
+      Baseline:
+        TimeWindow:
+          Days: All
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          fixed:
+            ScalingStrategy: Fixed
+            Dimension: Sku
+            ScaleTarget: "(data) => (\"F2\")"
+      # Scale up during working hours (higher priority due to overlapping time windows)
+      WorkingHours:
+        TimeWindow:
+          Days: Monday, Tuesday, Wednesday, Thursday, Friday
+          Months: All
+          StartTime: "07:00"
+          EndTime: "21:00"
+          TimeZone: "Romance Standard Time"
+        ScalingRules:
+          fixed:
+            ScalingStrategy: Fixed
+            Dimension: Sku
+            ScaleTarget: "(data) => (\"F8\")"
+```
+
+**Metric-Based Autoadjust Example:**
+
+You can also use the Autoadjust strategy with Fabric capacity metrics to scale based on usage:
+
+```yaml
+  - Resources:
+      my_fabric_capacity:
+        ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/rg-powerbi/providers/Microsoft.Fabric/capacities/myfabriccapacity"
+    Frequency: 10m
+    WhatIf: false
+    ScalingConfigurations:
+      Baseline:
+        Metrics:
+          # Add your Fabric capacity metrics here (check Azure Monitor for available metrics)
+          capacity_usage:
+            Name: CapacityUsagePercent
+            Window: 00:15
+        TimeWindow:
+          Days: All
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          autoadjust:
+            ScalingStrategy: Autoadjust
+            Dimension: Sku
+            DimensionValueMin: "F2"
+            DimensionValueMax: "F64"
+            ScaleUpCondition: "(data) => data.Metrics[\"capacity_usage\"].Values.Select(i => i.Average).Take(3).Average() > 80"
+            ScaleDownCondition: "(data) => data.Metrics[\"capacity_usage\"].Values.Select(i => i.Average).Take(10).Average() < 40"
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
+            ScaleUpCooldownSeconds: 600
+            ScaleDownCooldownSeconds: 3600
 ```
 
