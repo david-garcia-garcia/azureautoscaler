@@ -1,4 +1,4 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
@@ -366,6 +366,8 @@ namespace AzureSqlElasticPoolAutoscaler
                 dimensions.Add(new DimensionMySqlFlexibleServerIops());
                 dimensions.Add(new DimensionStorageFileShareThroughput());
                 dimensions.Add(new DimensionFabricCapacitySku());
+                dimensions.Add(new DimensionAzureDevOpsHostedParallelJobs());
+                dimensions.Add(new DimensionAzureDevOpsPrivateParallelJobs());
 
                 TokenCredential credential = null;
 
@@ -533,7 +535,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                                 this.Logger.LogInformation("Adding new resource {0}: {1}", expandedResourceId.Key, expandedResourceId.Value);
                                 
                                 var resourceLogger = this.LogFactory.CreateLogger(expandedResourceId.Key);
-                                var state = ResourceStateFactory.Create(expandedResourceId.Value, resourceLogger, resource);
+                                var state = ResourceStateFactory.Create(expandedResourceId.Value, resourceLogger, resource, resourceInstance.Value);
                                 resourceLogger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
                                 resources[expandedResourceId.Key] = state;
                                 addedResources++;

@@ -402,3 +402,92 @@ Resources:
             ScalingStrategy: Fixed
             Dimension: Throughput
             ScaleTarget: "(data) => (data.Metrics[\"FileThroughput\"].Values.First().Average + 10).ToString()"
+  ####################################################################
+  # Azure DevOps Parallel Jobs (MS-hosted and self-hosted)
+  ####################################################################
+  # This uses the undocumented Azure DevOps Commerce API to programmatically
+  # change the number of purchased parallel jobs based on pipeline queue metrics.
+  #
+  # Resource ID format: azuredevops://{organization}
+  # The organization name is the one from your Azure DevOps URL (dev.azure.com/yourorg).
+  # The organization ID (GUID) is resolved automatically via API.
+  #
+  # Settings (in the resource configuration):
+  #   Pat: Required. PAT with Agent Pools (read) and billing permissions.
+  #        Can be the actual PAT value, or "env://VAR_NAME" to read from an environment variable.
+  #
+  # Available custom metrics (aggregated across all pools of each type):
+  #   custom_azdo_queued_hosted       - Total queued jobs across all MS-hosted pools
+  #   custom_azdo_queued_self_hosted  - Total queued jobs across all self-hosted pools
+  #   custom_azdo_running_hosted      - Total running jobs across all MS-hosted pools
+  #   custom_azdo_running_self_hosted - Total running jobs across all self-hosted pools
+  #   custom_azdo_available_hosted         - Available hosted capacity (parallel jobs limit - running jobs)
+  #   custom_azdo_available_self_hosted    - Available self-hosted capacity (parallel jobs limit - running jobs)
+  ####################################################################
+  - Resources:
+      azdo_parallel_jobs:
+        # Replace 'myorg' with your organization name (from dev.azure.com/myorg)
+        ResourceId: "azuredevops://myorg"
+        Settings:
+          # Option 1: Direct PAT value (useful for testing, but be careful with secrets in config files!)
+          # Pat: "your-personal-access-token-here"
+          # Option 2: Reference an environment variable (recommended for production)
+          Pat: "env://AZDO_PAT"
+    Frequency: 1m
+    Enabled: true
+    WhatIf: true  # Set to false to actually change parallel jobs (this affects billing!)
+    ScalingConfigurations:
+      # Weekday scaling: more capacity during work days
+      SelfHostedWeekdays:
+        Metrics:
+          queued_self_hosted:
+            Name: custom_azdo_queued_self_hosted  # Aggregated across all self-hosted pools
+          available_self_hosted:
+            Name: custom_azdo_available_self_hosted  # Available capacity (limit - running)
+        TimeWindow:
+          Days: Monday, Tuesday, Wednesday, Thursday, Friday
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          scale_private:
+            ScalingStrategy: Autoadjust
+            Dimension: PrivateParallelJobs
+            DimensionValueMin: "1"   # Keep at least 1 during weekdays
+            DimensionValueMax: "5"   # Cap at 5 parallel jobs
+            # Scale up when more than 2 jobs are queued
+            ScaleUpCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average > 2"
+            # Scale down when there's spare capacity (more than 1 slot available)
+            ScaleDownCondition: "(data) => data.Metrics[\"available_self_hosted\"].Values.First().Average > 1"
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
+            ScaleUpCooldownSeconds: 1200    # 20 min cooldown to allow changes to propagate
+            ScaleDownCooldownSeconds: 3600  # 1 hour cooldown before scale down
+      # Weekend scaling: reduced capacity to save costs
+      SelfHostedWeekends:
+        Metrics:
+          queued_self_hosted:
+            Name: custom_azdo_queued_self_hosted  # Aggregated across all self-hosted pools
+          available_self_hosted:
+            Name: custom_azdo_available_self_hosted  # Available capacity (limit - running)
+        TimeWindow:
+          Days: Saturday, Sunday
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          scale_private:
+            ScalingStrategy: Autoadjust
+            Dimension: PrivateParallelJobs
+            DimensionValueMin: "1"   # Keep at least 1 (first self-hosted job is free)
+            DimensionValueMax: "3"   # Cap at 3 parallel jobs on weekends
+            # Scale up when more than 2 jobs are queued
+            ScaleUpCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average > 2"
+            # Scale down when there's spare capacity (more than 1 slot available)
+            ScaleDownCondition: "(data) => data.Metrics[\"available_self_hosted\"].Values.First().Average > 1"
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
+            ScaleUpCooldownSeconds: 1200    # 20 min cooldown to allow changes to propagate
+            ScaleDownCooldownSeconds: 1800  # 30 min cooldown before scale down
