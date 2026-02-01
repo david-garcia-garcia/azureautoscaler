@@ -472,6 +472,24 @@ In this simple example, we will be scaling two Azure Sql Elastic Pools so that t
             ScalingStrategy: Fixed
             Dimension: Dtu
             ScaleTarget: "(data) => (10).ToString()"
+      # Storage scaling: keep provisioned storage ahead of actual usage
+      MaxDataBytes:
+        Metrics:
+          storage_allocated:
+            Name: allocated_data_storage
+            Window: 00:05
+        TimeWindow:
+          Days: All
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          fixed:
+            ScalingStrategy: Fixed
+            Dimension: MaxDataBytes
+            # Fix target of extra 50GB or 20% additional of current storage, whatever is greater.
+            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"storage_allocated\"].Values.First().Average.Value + (50.1*1024*1024*1024), data.Metrics[\"storage_allocated\"].Values.First().Average.Value * 1.2)).ToString()"
 ```
 
 As you can see in the previous example, a group of resources share a Resource Configuration, which consists of:
