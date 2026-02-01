@@ -131,7 +131,7 @@ namespace poolautoscaler.resources
 
             RequestedParallelJobsState = new ParallelJobsState();
 
-            Logger.LogInformation("Current parallel jobs - Hosted: {Hosted}, Private: {Private}",
+            Logger.LogDebug("Current parallel jobs - Hosted: {Hosted}, Private: {Private}",
                 ExistingParallelJobsState.HostedParallelJobs,
                 ExistingParallelJobsState.PrivateParallelJobs);
 
