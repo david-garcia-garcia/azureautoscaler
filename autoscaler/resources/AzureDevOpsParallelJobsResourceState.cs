@@ -249,13 +249,15 @@ namespace poolautoscaler.resources
         }
 
         /// <summary>
-        /// Custom metric implementation to get queued/running jobs count from Azure DevOps.
+        /// Custom metric implementation to get queued/running/free jobs count from Azure DevOps.
         /// 
         /// Supported metrics:
         /// - custom_azdo_queued_hosted: Total queued jobs across all MS-hosted pools
         /// - custom_azdo_queued_self_hosted: Total queued jobs across all self-hosted pools
         /// - custom_azdo_running_hosted: Total running jobs across all MS-hosted pools
         /// - custom_azdo_running_self_hosted: Total running jobs across all self-hosted pools
+        /// - custom_azdo_available_hosted: Available hosted capacity (parallel jobs limit - running jobs)
+        /// - custom_azdo_available_self_hosted: Available self-hosted capacity (parallel jobs limit - running jobs)
         /// </summary>
         public override async Task<MetricEvalDtoResult> CustomMetric(
             ArmClient client,
@@ -264,35 +266,71 @@ namespace poolautoscaler.resources
             ScalingConfiguration setting,
             string name)
         {
-            QueuedJobsInfo jobsInfo;
-            bool isQueuedMetric;
+            double metricValue;
 
             switch (name)
             {
                 case "custom_azdo_queued_hosted":
-                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
-                    isQueuedMetric = true;
+                {
+                    var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
+                    metricValue = jobsInfo.QueuedJobs;
+                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                        name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
+                }
 
                 case "custom_azdo_queued_self_hosted":
-                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
-                    isQueuedMetric = true;
+                {
+                    var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
+                    metricValue = jobsInfo.QueuedJobs;
+                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                        name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
+                }
 
                 case "custom_azdo_running_hosted":
-                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
-                    isQueuedMetric = false;
+                {
+                    var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
+                    metricValue = jobsInfo.RunningJobs;
+                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                        name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
+                }
 
                 case "custom_azdo_running_self_hosted":
-                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
-                    isQueuedMetric = false;
+                {
+                    var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
+                    metricValue = jobsInfo.RunningJobs;
+                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                        name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
+                }
+
+                case "custom_azdo_available_hosted":
+                {
+                    var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
+                    var limit = ExistingParallelJobsState.HostedParallelJobs ?? 0;
+                    metricValue = Math.Max(0, limit - jobsInfo.RunningJobs);
+                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Limit={Limit}, Running={Running})",
+                        name, metricValue, limit, jobsInfo.RunningJobs);
+                    break;
+                }
+
+                case "custom_azdo_available_self_hosted":
+                {
+                    var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
+                    var limit = ExistingParallelJobsState.PrivateParallelJobs ?? 0;
+                    metricValue = Math.Max(0, limit - jobsInfo.RunningJobs);
+                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Limit={Limit}, Running={Running})",
+                        name, metricValue, limit, jobsInfo.RunningJobs);
+                    break;
+                }
 
                 default:
                     throw new NotSupportedException($"Custom metric '{name}' is not supported for Azure DevOps resources. " +
                         "Supported metrics: custom_azdo_queued_hosted, custom_azdo_queued_self_hosted, " +
-                        "custom_azdo_running_hosted, custom_azdo_running_self_hosted");
+                        "custom_azdo_running_hosted, custom_azdo_running_self_hosted, " +
+                        "custom_azdo_available_hosted, custom_azdo_available_self_hosted");
             }
 
             var result = new MetricEvalDtoResult
@@ -301,15 +339,11 @@ namespace poolautoscaler.resources
                 {
                     new MetricEvalDtoResultValue
                     {
-                        Average = isQueuedMetric ? jobsInfo.QueuedJobs : jobsInfo.RunningJobs,
+                        Average = metricValue,
                         TimeStamp = DateTimeOffset.UtcNow
                     }
                 }
             };
-
-            Logger.LogDebug("Custom metric {MetricName}: Value={Value} (Queued={Queued}, Running={Running})",
-                name, isQueuedMetric ? jobsInfo.QueuedJobs : jobsInfo.RunningJobs,
-                jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
 
             return result;
         }

@@ -417,10 +417,12 @@ Resources:
   #        Can be the actual PAT value, or "env://VAR_NAME" to read from an environment variable.
   #
   # Available custom metrics (aggregated across all pools of each type):
-  #   custom_azdo_queued_hosted      - Total queued jobs across all MS-hosted pools
-  #   custom_azdo_queued_self_hosted - Total queued jobs across all self-hosted pools
-  #   custom_azdo_running_hosted     - Total running jobs across all MS-hosted pools
-  #   custom_azdo_running_self_hosted- Total running jobs across all self-hosted pools
+  #   custom_azdo_queued_hosted       - Total queued jobs across all MS-hosted pools
+  #   custom_azdo_queued_self_hosted  - Total queued jobs across all self-hosted pools
+  #   custom_azdo_running_hosted      - Total running jobs across all MS-hosted pools
+  #   custom_azdo_running_self_hosted - Total running jobs across all self-hosted pools
+  #   custom_azdo_available_hosted         - Available hosted capacity (parallel jobs limit - running jobs)
+  #   custom_azdo_available_self_hosted    - Available self-hosted capacity (parallel jobs limit - running jobs)
   ####################################################################
   - Resources:
       azdo_parallel_jobs:

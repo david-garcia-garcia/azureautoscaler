@@ -32,17 +32,50 @@ namespace poolautoscaler.resources
             _logger = logger;
         }
 
+        #region Helper Methods
+
+        /// <summary>
+        /// Creates an HTTP request with Basic authentication using a PAT.
+        /// </summary>
+        private static HttpRequestMessage CreateRequestWithBasicAuth(HttpMethod method, string url, string pat)
+        {
+            var request = new HttpRequestMessage(method, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue(
+                "Basic",
+                Convert.ToBase64String(Encoding.ASCII.GetBytes($"user:{pat}")));
+            return request;
+        }
+
+        /// <summary>
+        /// Creates an HTTP request with Bearer token authentication.
+        /// </summary>
+        private static HttpRequestMessage CreateRequestWithBearerAuth(HttpMethod method, string url, string bearerToken)
+        {
+            var request = new HttpRequestMessage(method, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            return request;
+        }
+
+        /// <summary>
+        /// Sets JSON content on an HTTP request.
+        /// </summary>
+        private static void SetJsonContent(HttpRequestMessage request, object content)
+        {
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(content),
+                Encoding.UTF8,
+                "application/json");
+        }
+
+        #endregion
+
         /// <summary>
         /// Gets the organization ID (GUID) from the organization name using the connectionData API.
         /// </summary>
         public async Task<string> GetOrganizationIdAsync(string organization, string pat, CancellationToken cancellationToken)
         {
             var url = $"https://dev.azure.com/{organization}/_apis/connectionData";
-
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Basic",
-                Convert.ToBase64String(Encoding.ASCII.GetBytes($"user:{pat}")));
+            var request = CreateRequestWithBasicAuth(HttpMethod.Get, url, pat);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -66,15 +99,8 @@ namespace poolautoscaler.resources
         public async Task<string> GetBillingTokenAsync(string organization, string pat, CancellationToken cancellationToken)
         {
             var url = $"https://dev.azure.com/{organization}/_apis/WebPlatformAuth/SessionToken?api-version=7.2-preview.1";
-
-            var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Basic",
-                Convert.ToBase64String(Encoding.ASCII.GetBytes($"user:{pat}")));
-            request.Content = new StringContent(
-                JsonSerializer.Serialize(new { namedTokenId = "AzCommDeploymentProfile" }),
-                Encoding.UTF8,
-                "application/json");
+            var request = CreateRequestWithBasicAuth(HttpMethod.Post, url, pat);
+            SetJsonContent(request, new { namedTokenId = "AzCommDeploymentProfile" });
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -96,9 +122,7 @@ namespace poolautoscaler.resources
         public async Task<ParallelJobsInfo> GetParallelJobsAsync(string organizationId, string billingToken, CancellationToken cancellationToken)
         {
             var url = $"https://azdevopscommerce.dev.azure.com/{organizationId}/_apis/AzComm/MeterResource?api-version=7.2-preview.1";
-
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", billingToken);
+            var request = CreateRequestWithBearerAuth(HttpMethod.Get, url, billingToken);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -132,13 +156,8 @@ namespace poolautoscaler.resources
         public async Task SetParallelJobsAsync(string organizationId, string billingToken, string meterId, int quantity, CancellationToken cancellationToken)
         {
             var url = $"https://azdevopscommerce.dev.azure.com/{organizationId}/_apis/AzComm/MeterResource?api-version=7.2-preview.1";
-
-            var request = new HttpRequestMessage(HttpMethod.Patch, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", billingToken);
-            request.Content = new StringContent(
-                JsonSerializer.Serialize(new { meterId = meterId, purchaseQuantity = quantity }),
-                Encoding.UTF8,
-                "application/json");
+            var request = CreateRequestWithBearerAuth(HttpMethod.Patch, url, billingToken);
+            SetJsonContent(request, new { meterId, purchaseQuantity = quantity });
 
             _logger.LogInformation("Setting parallel jobs: MeterId={MeterId}, Quantity={Quantity}", meterId, quantity);
 
@@ -152,11 +171,7 @@ namespace poolautoscaler.resources
         public async Task<QueuedJobsInfo> GetQueuedJobsAsync(string organization, string pat, int poolId, CancellationToken cancellationToken)
         {
             var url = $"https://dev.azure.com/{organization}/_apis/distributedtask/pools/{poolId}/jobrequests?api-version=6.0";
-
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Basic",
-                Convert.ToBase64String(Encoding.ASCII.GetBytes($"user:{pat}")));
+            var request = CreateRequestWithBasicAuth(HttpMethod.Get, url, pat);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
@@ -190,11 +205,7 @@ namespace poolautoscaler.resources
         public async Task<List<AgentPool>> GetAgentPoolsAsync(string organization, string pat, CancellationToken cancellationToken)
         {
             var url = $"https://dev.azure.com/{organization}/_apis/distributedtask/pools?api-version=6.0";
-
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Basic",
-                Convert.ToBase64String(Encoding.ASCII.GetBytes($"user:{pat}")));
+            var request = CreateRequestWithBasicAuth(HttpMethod.Get, url, pat);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
