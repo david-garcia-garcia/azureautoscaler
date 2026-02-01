@@ -615,6 +615,10 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                     return;
                 }
 
+                // Wrap the logger in a capturing logger to capture messages that would be lost
+                // If a scale operation happens, we'll flush these at INFO level so they're visible
+                var capturingLogger = new CapturingLogger(logger);
+
                 foreach (var setting in scalingConfigurations)
                 {
                     var metricsClient = new MetricsQueryClient(credential, new MetricsQueryClientOptions(MetricsQueryClientOptions.ServiceVersion.V2018_01_01));
@@ -626,9 +630,9 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         credential,
                         armClient,
                         stoppingToken,
-                        logger);
+                        capturingLogger);
 
-                    logger.LogTrace("Evaluating scale configuration {0}", setting.Id);
+                    capturingLogger.LogTrace("Evaluating scale configuration {0}", setting.Id);
 
                     foreach (var rule in setting.ScalingRules.Values)
                     {
@@ -636,7 +640,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
 
                         foreach (var dim in dimensions)
                         {
-                            if (dim.CanApplyDimension(state, rule, logger))
+                            if (dim.CanApplyDimension(state, rule, capturingLogger))
                             {
                                 dimension = dim;
                                 break;
@@ -648,12 +652,12 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             // This is not necessarily bad. We might want to setup rules that are generalistic (i.e. for all databsaes in an sql) but some of them
                             // will only work for specific tiers. I.E. you might have mixed ElasticPools + Indpendant SKU in the same server, and not all rules
                             // will work for all of them.
-                            logger.LogDebug($@"No dimension handler compatible with dimension '{rule.Dimension}' found in this resource. Rule: '{rule.Id}'");
+                            capturingLogger.LogDebug($@"No dimension handler compatible with dimension '{rule.Dimension}' found in this resource. Rule: '{rule.Id}'");
                             continue;
                         }
 
-                        logger.LogDebug("Current request state {0}", HelperExtensions.SerializeSimple(state.RequestedStateRaw));
-                        logger.LogDebug("Evaluating rule {0}", rule.Id);
+                        capturingLogger.LogDebug("Current request state {0}", HelperExtensions.SerializeSimple(state.RequestedStateRaw));
+                        capturingLogger.LogTrace("Evaluating rule {0}", rule.Id);
 
                         dimension.ValidateRuleConfiguration(rule);
 
@@ -661,7 +665,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
 
                         var currentDimensionValue = dimension.GetCurrentDimensionValue(state);
 
-                        var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, logger, credential, stoppingToken, metrics);
+                        var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, capturingLogger, credential, stoppingToken, metrics);
 
                         // If we are going to scale down, do it wisely because resources are billed by natural hour
                         if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1)
@@ -669,7 +673,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
                                 rule.ScaleDownCooldownSeconds)
                             {
-                                logger.LogTrace(
+                                capturingLogger.LogTrace(
                                     "Skipping scale down from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
                                     currentDimensionValue, targetDimensionValue, rule.ScaleDownCooldownSeconds);
                                 continue;
@@ -679,7 +683,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             // sure the scaling operation is completed before the hour ends.
                             if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute < setting.ScaleDownLockWindowMinutes)
                             {
-                                logger.LogTrace(
+                                capturingLogger.LogTrace(
                                     "Skipping scale down from {0} to {1} not allowed before minute {2} of a billable hour.",
                                     currentDimensionValue, targetDimensionValue, setting.ScaleDownLockWindowMinutes);
                                 continue;
@@ -693,7 +697,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
                                 rule.ScaleUpCooldownSeconds)
                             {
-                                logger.LogTrace(
+                                capturingLogger.LogTrace(
                                     "Skipping scale up from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
                                     currentDimensionValue, targetDimensionValue, rule.ScaleUpCooldownSeconds);
                                 continue;
@@ -704,32 +708,34 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             // scaling is not "reactive" but "proactive".
                             if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute > setting.ScaleUpAllowWindowMinutes)
                             {
-                                logger.LogTrace(
+                                capturingLogger.LogTrace(
                                     "Skipping scale up from {0} to {1} not allowed after minute {0} of a billable hour.",
                                     currentDimensionValue, targetDimensionValue, setting.ScaleUpAllowWindowMinutes);
                                 continue;
                             }
                         }
 
-                        logger.LogTrace("Setting target value {0}", targetDimensionValue);
-
                         var existingDimensionRequest = dimension.GetRequestedDimensionValue(state);
 
                         // Expired or invalid license: add 1 minute delay to scaling operations
                         if (licenseInfo.IsRestricted)
                         {
-                            logger.LogTrace("License {0}: Adding 1 minute delay to scaling operation", licenseInfo.Reason);
+                            capturingLogger.LogInformation("License {0}: Adding 1 minute delay to scaling operation", licenseInfo.Reason);
                             await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
                         }
 
                         // La dimensión siempre la establecemos, se encarga el estado del recurso de aceptar o no el cambio si han habido otras peticiones
-                        await dimension.SetDimensionValue(stoppingToken, state, logger, credential, targetDimensionValue);
+                        await dimension.SetDimensionValue(stoppingToken, state, capturingLogger, credential, targetDimensionValue);
 
                         var newDimensionRequest = dimension.GetRequestedDimensionValue(state);
 
                         if (existingDimensionRequest != newDimensionRequest)
                         {
-                            logger.LogDebug("Rule {0} Dimension request changed from {1} to {2}", rule.Id, existingDimensionRequest, newDimensionRequest);
+                            capturingLogger.LogDebug("Rule '{0}' Dimension request changed from {1} to {2}", rule.Id, existingDimensionRequest ?? "(null)", newDimensionRequest);
+                        }
+                        else 
+                        {
+                            capturingLogger.LogDebug("Rule '{0}' requested target value '{1}'", rule.Id, targetDimensionValue);
                         }
                     }
                 }
@@ -739,6 +745,11 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
 
                 if (patchOperation.HasChanges)
                 {
+                    // Replay any captured messages as INFO so they're visible.
+                    // The capturing logger only captures messages the inner logger doesn't show,
+                    // so this will be empty if running at DEBUG/TRACEa level.
+                    capturingLogger.Replay(LogLevel.Information, LogLevel.Debug);
+
                     logger.LogInformation("Existing resource state {0}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
                     logger.LogInformation("Target resource state: {0}", HelperExtensions.SerializeSimple(patchOperation.PatchData));
                     logger.LogInformation("Patch operation disruptive: {0}", patchOperation.Disruptive ? "yes" : "no");
@@ -759,6 +770,9 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                     logger.LogDebug("No changes in patch operation");
                     logger.LogDebug("Target resource state: {0}", HelperExtensions.SerializeSimple(patchOperation.PatchData));
                 }
+
+                // Clean up the capturing logger buffer
+                capturingLogger.Clear();
             }
 
             private async Task<Dictionary<string, MetricEvalDtoResult>> GatherMetrics(
