@@ -29,9 +29,6 @@ namespace poolautoscaler.resources
         
         // Organization ID is resolved on first API call
         private string? _organizationId;
-        
-        // For metrics
-        public int? DefaultPoolId { get; private set; }
 
         // Cache the billing token
         private string? _billingToken;
@@ -59,17 +56,6 @@ namespace poolautoscaler.resources
                 throw new ArgumentException("Azure DevOps PAT not configured. Add 'Pat' to Settings in the resource configuration.");
             }
             PersonalAccessToken = ResolveSettingValue(patSetting, "Pat");
-
-            // Get Pool ID from Settings (optional, defaults to 1 = Azure Pipelines hosted pool)
-            var poolIdSetting = resourceInstance?.Settings?.GetValueOrDefault("PoolId");
-            if (!string.IsNullOrEmpty(poolIdSetting))
-            {
-                var poolIdValue = ResolveSettingValue(poolIdSetting, "PoolId");
-                if (int.TryParse(poolIdValue, out var poolId))
-                {
-                    DefaultPoolId = poolId;
-                }
-            }
 
             _devOpsClient = new AzureDevOpsClient(logger);
         }
@@ -263,8 +249,13 @@ namespace poolautoscaler.resources
         }
 
         /// <summary>
-        /// Custom metric implementation to get queued jobs count from Azure DevOps.
-        /// Use metric name "custom_azdo_queued_jobs" in configuration.
+        /// Custom metric implementation to get queued/running jobs count from Azure DevOps.
+        /// 
+        /// Supported metrics:
+        /// - custom_azdo_queued_hosted: Total queued jobs across all MS-hosted pools
+        /// - custom_azdo_queued_self_hosted: Total queued jobs across all self-hosted pools
+        /// - custom_azdo_running_hosted: Total running jobs across all MS-hosted pools
+        /// - custom_azdo_running_self_hosted: Total running jobs across all self-hosted pools
         /// </summary>
         public override async Task<MetricEvalDtoResult> CustomMetric(
             ArmClient client,
@@ -273,32 +264,54 @@ namespace poolautoscaler.resources
             ScalingConfiguration setting,
             string name)
         {
-            if (name == "custom_azdo_queued_jobs" || name == "custom_azdo_running_jobs")
+            QueuedJobsInfo jobsInfo;
+            bool isQueuedMetric;
+
+            switch (name)
             {
-                // Get pool ID from metric configuration or default
-                int poolId = DefaultPoolId ?? 1; // Default to Azure Pipelines hosted pool (ID 1)
+                case "custom_azdo_queued_hosted":
+                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
+                    isQueuedMetric = true;
+                    break;
 
-                var queuedJobs = await _devOpsClient.GetQueuedJobsAsync(Organization, PersonalAccessToken, poolId, cancellationToken);
+                case "custom_azdo_queued_self_hosted":
+                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
+                    isQueuedMetric = true;
+                    break;
 
-                var result = new MetricEvalDtoResult
-                {
-                    Values = new List<MetricEvalDtoResultValue>
-                    {
-                        new MetricEvalDtoResultValue
-                        {
-                            Average = name == "custom_azdo_queued_jobs" ? queuedJobs.QueuedJobs : queuedJobs.RunningJobs,
-                            TimeStamp = DateTimeOffset.UtcNow
-                        }
-                    }
-                };
+                case "custom_azdo_running_hosted":
+                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
+                    isQueuedMetric = false;
+                    break;
 
-                Logger.LogDebug("Custom metric {MetricName}: Queued={Queued}, Running={Running}",
-                    name, queuedJobs.QueuedJobs, queuedJobs.RunningJobs);
+                case "custom_azdo_running_self_hosted":
+                    jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
+                    isQueuedMetric = false;
+                    break;
 
-                return result;
+                default:
+                    throw new NotSupportedException($"Custom metric '{name}' is not supported for Azure DevOps resources. " +
+                        "Supported metrics: custom_azdo_queued_hosted, custom_azdo_queued_self_hosted, " +
+                        "custom_azdo_running_hosted, custom_azdo_running_self_hosted");
             }
 
-            throw new NotSupportedException($"Custom metric '{name}' is not supported for Azure DevOps resources.");
+            var result = new MetricEvalDtoResult
+            {
+                Values = new List<MetricEvalDtoResultValue>
+                {
+                    new MetricEvalDtoResultValue
+                    {
+                        Average = isQueuedMetric ? jobsInfo.QueuedJobs : jobsInfo.RunningJobs,
+                        TimeStamp = DateTimeOffset.UtcNow
+                    }
+                }
+            };
+
+            Logger.LogDebug("Custom metric {MetricName}: Value={Value} (Queued={Queued}, Running={Running})",
+                name, isQueuedMetric ? jobsInfo.QueuedJobs : jobsInfo.RunningJobs,
+                jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
+
+            return result;
         }
     }
 }

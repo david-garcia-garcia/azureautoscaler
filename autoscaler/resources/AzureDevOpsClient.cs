@@ -147,7 +147,7 @@ namespace poolautoscaler.resources
         }
 
         /// <summary>
-        /// Gets the count of queued jobs (jobs without assignTime) from an agent pool.
+        /// Gets the count of queued jobs (jobs without assignTime) from a specific agent pool.
         /// </summary>
         public async Task<QueuedJobsInfo> GetQueuedJobsAsync(string organization, string pat, int poolId, CancellationToken cancellationToken)
         {
@@ -180,6 +180,74 @@ namespace poolautoscaler.resources
                     }
                 }
             }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Gets all agent pools in the organization.
+        /// </summary>
+        public async Task<List<AgentPool>> GetAgentPoolsAsync(string organization, string pat, CancellationToken cancellationToken)
+        {
+            var url = $"https://dev.azure.com/{organization}/_apis/distributedtask/pools?api-version=6.0";
+
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue(
+                "Basic",
+                Convert.ToBase64String(Encoding.ASCII.GetBytes($"user:{pat}")));
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+            var poolsResponse = JsonSerializer.Deserialize<AgentPoolsResponse>(content);
+
+            return poolsResponse?.Value ?? new List<AgentPool>();
+        }
+
+        /// <summary>
+        /// Gets aggregated queued jobs count across all pools of a specific type.
+        /// </summary>
+        /// <param name="organization">Organization name</param>
+        /// <param name="pat">Personal access token</param>
+        /// <param name="hostedOnly">If true, only count hosted (managed) pools. If false, only count self-hosted pools.</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        public async Task<QueuedJobsInfo> GetAggregatedQueuedJobsAsync(string organization, string pat, bool hostedOnly, CancellationToken cancellationToken)
+        {
+            var pools = await GetAgentPoolsAsync(organization, pat, cancellationToken);
+            var result = new QueuedJobsInfo();
+
+            // Filter pools by type
+            var filteredPools = pools.Where(p => p.IsHosted == hostedOnly).ToList();
+
+            _logger.LogDebug("Found {Count} {Type} pools to query for queued jobs",
+                filteredPools.Count,
+                hostedOnly ? "hosted" : "self-hosted");
+
+            foreach (var pool in filteredPools)
+            {
+                try
+                {
+                    var poolJobs = await GetQueuedJobsAsync(organization, pat, pool.Id, cancellationToken);
+                    result.QueuedJobs += poolJobs.QueuedJobs;
+                    result.RunningJobs += poolJobs.RunningJobs;
+
+                    if (poolJobs.QueuedJobs > 0 || poolJobs.RunningJobs > 0)
+                    {
+                        _logger.LogDebug("Pool '{PoolName}' (ID: {PoolId}): Queued={Queued}, Running={Running}",
+                            pool.Name, pool.Id, poolJobs.QueuedJobs, poolJobs.RunningJobs);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to get queued jobs for pool '{PoolName}' (ID: {PoolId})", pool.Name, pool.Id);
+                }
+            }
+
+            _logger.LogDebug("Total {Type} jobs - Queued: {Queued}, Running: {Running}",
+                hostedOnly ? "hosted" : "self-hosted",
+                result.QueuedJobs,
+                result.RunningJobs);
 
             return result;
         }
@@ -230,6 +298,27 @@ namespace poolautoscaler.resources
 
             [JsonPropertyName("result")]
             public object? Result { get; set; }
+        }
+
+        public class AgentPoolsResponse
+        {
+            [JsonPropertyName("value")]
+            public List<AgentPool>? Value { get; set; }
+        }
+
+        public class AgentPool
+        {
+            [JsonPropertyName("id")]
+            public int Id { get; set; }
+
+            [JsonPropertyName("name")]
+            public string? Name { get; set; }
+
+            [JsonPropertyName("isHosted")]
+            public bool IsHosted { get; set; }
+
+            [JsonPropertyName("poolType")]
+            public string? PoolType { get; set; }
         }
 
         #endregion

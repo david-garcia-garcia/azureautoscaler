@@ -415,7 +415,12 @@ Resources:
   # Settings (in the resource configuration):
   #   Pat: Required. PAT with Agent Pools (read) and billing permissions.
   #        Can be the actual PAT value, or "env://VAR_NAME" to read from an environment variable.
-  #   PoolId: Optional. Agent pool ID to monitor for queue metrics (default: 1 = Azure Pipelines hosted pool).
+  #
+  # Available custom metrics (aggregated across all pools of each type):
+  #   custom_azdo_queued_hosted      - Total queued jobs across all MS-hosted pools
+  #   custom_azdo_queued_self_hosted - Total queued jobs across all self-hosted pools
+  #   custom_azdo_running_hosted     - Total running jobs across all MS-hosted pools
+  #   custom_azdo_running_self_hosted- Total running jobs across all self-hosted pools
   ####################################################################
   - Resources:
       azdo_parallel_jobs:
@@ -426,17 +431,14 @@ Resources:
           # Pat: "your-personal-access-token-here"
           # Option 2: Reference an environment variable (recommended for production)
           Pat: "env://AZDO_PAT"
-          # Optional: Pool ID to monitor for queue metrics
-          PoolId: "1"
     Frequency: 1m
     Enabled: true
     WhatIf: true  # Set to false to actually change parallel jobs (this affects billing!)
     ScalingConfigurations:
-      QueueBased:
+      HostedJobs:
         Metrics:
-          queued_jobs:
-            Name: custom_azdo_queued_jobs  # Custom metric from Azure DevOps job queue
-            Window: 00:01
+          queued_hosted:
+            Name: custom_azdo_queued_hosted  # Aggregated across all MS-hosted pools
         TimeWindow:
           Days: All
           Months: All
@@ -451,22 +453,32 @@ Resources:
             DimensionValueMin: "0"   # Scale to zero when idle (save costs!)
             DimensionValueMax: "5"   # Cap at 5 parallel jobs (~$200/month max)
             # Scale up immediately when there are queued jobs
-            ScaleUpCondition: "(data) => data.Metrics[\"queued_jobs\"].Values.First().Average > 0"
+            ScaleUpCondition: "(data) => data.Metrics[\"queued_hosted\"].Values.First().Average > 0"
             # Scale down when no jobs are queued for the evaluation window
-            ScaleDownCondition: "(data) => data.Metrics[\"queued_jobs\"].Values.First().Average == 0"
-            ScaleUpTarget: "(data) => Math.Min(5, (int)data.Metrics[\"queued_jobs\"].Values.First().Average + 1).ToString()"
-            ScaleDownTarget: "(data) => (\"0\")"
+            ScaleDownCondition: "(data) => data.Metrics[\"queued_hosted\"].Values.First().Average == 0"
+            ScaleUpTarget: "(data) => Math.Min(5, (int)data.Metrics[\"queued_hosted\"].Values.First().Average + 1).ToString()"
+            ScaleDownTarget: "(data) => \"0\""
             ScaleUpCooldownSeconds: 60      # Quick scale up for responsiveness
             ScaleDownCooldownSeconds: 1800  # 30 min cooldown before scale down (avoid rapid oscillation)
-          # Optional: Scale self-hosted parallel jobs similarly
-          # scale_private:
-          #   ScalingStrategy: Autoadjust
-          #   Dimension: PrivateParallelJobs
-          #   DimensionValueMin: "0"
-          #   DimensionValueMax: "10"
-          #   ScaleUpCondition: "(data) => data.Metrics[\"queued_jobs\"].Values.First().Average > 0"
-          #   ScaleDownCondition: "(data) => data.Metrics[\"queued_jobs\"].Values.First().Average == 0"
-          #   ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
-          #   ScaleDownTarget: "(data) => (\"0\")"
-          #   ScaleUpCooldownSeconds: 60
-          #   ScaleDownCooldownSeconds: 1800
+      # SelfHostedJobs:
+      #   Metrics:
+      #     queued_self_hosted:
+      #       Name: custom_azdo_queued_self_hosted  # Aggregated across all self-hosted pools
+      #   TimeWindow:
+      #     Days: All
+      #     Months: All
+      #     StartTime: "00:00"
+      #     EndTime: "23:59"
+      #     TimeZone: UTC
+      #   ScalingRules:
+      #     scale_private:
+      #       ScalingStrategy: Autoadjust
+      #       Dimension: PrivateParallelJobs
+      #       DimensionValueMin: "0"
+      #       DimensionValueMax: "10"
+      #       ScaleUpCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average > 0"
+      #       ScaleDownCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average == 0"
+      #       ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+      #       ScaleDownTarget: "(data) => \"0\""
+      #       ScaleUpCooldownSeconds: 60
+      #       ScaleDownCooldownSeconds: 1800
