@@ -437,50 +437,57 @@ Resources:
     Enabled: true
     WhatIf: true  # Set to false to actually change parallel jobs (this affects billing!)
     ScalingConfigurations:
-      HostedJobs:
+      # Weekday scaling: more capacity during work days
+      SelfHostedWeekdays:
         Metrics:
-          queued_hosted:
-            Name: custom_azdo_queued_hosted  # Aggregated across all MS-hosted pools
+          queued_self_hosted:
+            Name: custom_azdo_queued_self_hosted  # Aggregated across all self-hosted pools
+          available_self_hosted:
+            Name: custom_azdo_available_self_hosted  # Available capacity (limit - running)
         TimeWindow:
-          Days: All
+          Days: Monday, Tuesday, Wednesday, Thursday, Friday
           Months: All
           StartTime: "00:00"
           EndTime: "23:59"
           TimeZone: UTC
         ScalingRules:
-          # Scale up MS-hosted parallel jobs when pipelines are queued
-          scale_hosted:
+          scale_private:
             ScalingStrategy: Autoadjust
-            Dimension: HostedParallelJobs
-            DimensionValueMin: "0"   # Scale to zero when idle (save costs!)
-            DimensionValueMax: "5"   # Cap at 5 parallel jobs (~$200/month max)
-            # Scale up immediately when there are queued jobs
-            ScaleUpCondition: "(data) => data.Metrics[\"queued_hosted\"].Values.First().Average > 0"
-            # Scale down when no jobs are queued for the evaluation window
-            ScaleDownCondition: "(data) => data.Metrics[\"queued_hosted\"].Values.First().Average == 0"
-            ScaleUpTarget: "(data) => Math.Min(5, (int)data.Metrics[\"queued_hosted\"].Values.First().Average + 1).ToString()"
-            ScaleDownTarget: "(data) => \"0\""
-            ScaleUpCooldownSeconds: 60      # Quick scale up for responsiveness
-            ScaleDownCooldownSeconds: 1800  # 30 min cooldown before scale down (avoid rapid oscillation)
-      # SelfHostedJobs:
-      #   Metrics:
-      #     queued_self_hosted:
-      #       Name: custom_azdo_queued_self_hosted  # Aggregated across all self-hosted pools
-      #   TimeWindow:
-      #     Days: All
-      #     Months: All
-      #     StartTime: "00:00"
-      #     EndTime: "23:59"
-      #     TimeZone: UTC
-      #   ScalingRules:
-      #     scale_private:
-      #       ScalingStrategy: Autoadjust
-      #       Dimension: PrivateParallelJobs
-      #       DimensionValueMin: "0"
-      #       DimensionValueMax: "10"
-      #       ScaleUpCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average > 0"
-      #       ScaleDownCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average == 0"
-      #       ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
-      #       ScaleDownTarget: "(data) => \"0\""
-      #       ScaleUpCooldownSeconds: 60
-      #       ScaleDownCooldownSeconds: 1800
+            Dimension: PrivateParallelJobs
+            DimensionValueMin: "1"   # Keep at least 1 during weekdays
+            DimensionValueMax: "5"   # Cap at 5 parallel jobs
+            # Scale up when more than 2 jobs are queued
+            ScaleUpCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average > 2"
+            # Scale down when there's spare capacity (more than 1 slot available)
+            ScaleDownCondition: "(data) => data.Metrics[\"available_self_hosted\"].Values.First().Average > 1"
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
+            ScaleUpCooldownSeconds: 1200    # 20 min cooldown to allow changes to propagate
+            ScaleDownCooldownSeconds: 3600  # 1 hour cooldown before scale down
+      # Weekend scaling: reduced capacity to save costs
+      SelfHostedWeekends:
+        Metrics:
+          queued_self_hosted:
+            Name: custom_azdo_queued_self_hosted  # Aggregated across all self-hosted pools
+          available_self_hosted:
+            Name: custom_azdo_available_self_hosted  # Available capacity (limit - running)
+        TimeWindow:
+          Days: Saturday, Sunday
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          scale_private:
+            ScalingStrategy: Autoadjust
+            Dimension: PrivateParallelJobs
+            DimensionValueMin: "1"   # Keep at least 1 (first self-hosted job is free)
+            DimensionValueMax: "3"   # Cap at 3 parallel jobs on weekends
+            # Scale up when more than 2 jobs are queued
+            ScaleUpCondition: "(data) => data.Metrics[\"queued_self_hosted\"].Values.First().Average > 2"
+            # Scale down when there's spare capacity (more than 1 slot available)
+            ScaleDownCondition: "(data) => data.Metrics[\"available_self_hosted\"].Values.First().Average > 1"
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
+            ScaleUpCooldownSeconds: 1200    # 20 min cooldown to allow changes to propagate
+            ScaleDownCooldownSeconds: 1800  # 30 min cooldown before scale down
