@@ -28,7 +28,7 @@ namespace poolautoscaler.resources
         public bool IsDisabled()
         {
             // Cleanup unused resources
-            var expiredKeys = this.DisabledUntil.Where((i) => (i.Value - DateTime.UtcNow).TotalSeconds < 0).Select((i) => i.Key).ToList();
+            var expiredKeys = this.DisabledUntil.Where((i) => i.Value != DateTime.MaxValue && (i.Value - DateTime.UtcNow).TotalSeconds < 0).Select((i) => i.Key).ToList();
 
             foreach (var expiredKey in expiredKeys) {
                 this.DisabledUntil.Remove(expiredKey);
