@@ -1000,6 +1000,15 @@ Azure DevOps Parallel Jobs autoscaling allows you to dynamically adjust the numb
   - **Agent Pools (Read)** - to query job queue metrics
   - **Billing** permissions on the organization
 
+### Firewall Requirements
+
+The following domains must be accessible (HTTPS, port 443):
+
+| Domain | Purpose |
+|--------|---------|
+| `dev.azure.com` | Standard Azure DevOps APIs (authentication, agent pools, job requests) |
+| `azdevopscommerce.dev.azure.com` | Commerce API for getting/setting parallel job counts |
+
 ### Resource ID Format
 
 Azure DevOps resources use a custom URI scheme (not ARM resource IDs):
