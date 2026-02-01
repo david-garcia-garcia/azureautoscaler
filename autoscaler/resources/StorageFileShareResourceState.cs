@@ -179,6 +179,7 @@ namespace poolautoscaler.resources
             {
                 // NextAllowedQuotaDowngradeOn is empty from graph api so we need to deal with this error
                 this.Logger.LogInformation("Storage quota downgrade not allowed at the time. You cannot downgrade quota if the last increase happened less than 24h ago.");
+                this.DisabledUntil["Storage quota downgrade not allowed at the time"] = DateTime.UtcNow.AddHours(2); // Hardcoded disabled for two hours
             }
         }
     }

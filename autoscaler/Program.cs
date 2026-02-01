@@ -465,11 +465,13 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         }
                         catch (ResourceNotFoundException ex)
                         {
-                            this.Logger.LogWarning("Resource no longer exists in Azure and will be skipped. Please remove '{0}' from your configuration to stop this warning.", ex.ResourceId);
+                            this.Logger.LogWarning("Resource '{0}' no longer exists in Azure and will be skipped.", ex.ResourceId);
                         }
                         catch (Exception ex)
                         {
                             resourceState.Logger.LogError(ex, ex.Message);
+                            resourceState.Logger.LogWarning("Resource evaluation will be disabled for 1 hour."); // Hardcoded right now
+                            resourceState.DisabledUntil["Unhandled exception"] = DateTime.UtcNow.AddHours(1);
                         }
                         finally
                         {
