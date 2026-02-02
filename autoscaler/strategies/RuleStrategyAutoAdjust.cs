@@ -23,6 +23,7 @@ namespace poolautoscaler.strategies
             evaluationMetrics.Metrics = metrics;
 
             string currentDimensionValue = dimension.GetCurrentDimensionValue(resource);
+            evaluationMetrics.CurrentDimensionValue = currentDimensionValue;
 
             bool scaleUp = rule.ScaleUpConditionMethod(evaluationMetrics, logger);
             bool scaleDown = rule.ScaleDownConditionMethod(evaluationMetrics, logger);
