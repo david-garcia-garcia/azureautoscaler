@@ -35,7 +35,31 @@ Azure Autoscaler fills these gaps by providing intelligent, metric-based autosca
 | Azure SQL Databases | Dtu, MaxDataBytes |  | MaxDataBytes supports DTU and VCore models (see notes below) |
 | Azure MySQL Flexible Server | Sku, Iops, CoreCount | custom_sku_corecount_forecast |  |
 | Azure Files | ProvisionedStorage, Throughput |  | Although Throughput is not a real dimension in Azure for a file share, it is exposed as an actionable dimension and the file share provisioned storage is scaled to meet the desired throughput targets |
+| Microsoft Fabric Capacity | Sku |  | Fabric capacity SKU (F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048) |
 | Azure DevOps Parallel Jobs | HostedParallelJobs, PrivateParallelJobs | custom_azdo_queued_hosted, custom_azdo_queued_self_hosted, custom_azdo_running_hosted, custom_azdo_running_self_hosted, custom_azdo_available_hosted, custom_azdo_available_self_hosted | Uses undocumented Commerce API. Requires PAT with billing permissions. |
+
+### Dimension Units Reference
+
+This table specifies the exact units expected for each dimension when configuring `ScaleTarget`, `DimensionValueMin`, `DimensionValueMax`, and related parameters:
+
+| Resource Type | Dimension | Unit | Example Values | Notes |
+|--------------|-----------|------|----------------|-------|
+| AKS Node Pools | MinNodeCount | Count (integer) | `"1"`, `"5"`, `"10"` | Number of nodes |
+| Azure SQL Elastic Pools | Dtu | DTU (integer) | `"50"`, `"100"`, `"200"` | Valid DTU tiers: 50, 100, 200, 300, 400, 800, 1200, 1600, 2000, 2500, 3000 (Standard); 125, 250, 500, 1000, 1500, 2000, 2500, 3000, 3500, 4000 (Premium) |
+| Azure SQL Elastic Pools | MaxDataBytes | Bytes | `"53687091200"` (50 GB) | Use bytes directly (e.g., `50 * 1024 * 1024 * 1024` for 50 GB) |
+| Azure SQL Databases | Dtu | DTU (integer) | `"10"`, `"20"`, `"50"` | Valid DTU tiers depend on service tier (Basic, Standard, Premium) |
+| Azure SQL Databases | MaxDataBytes | Bytes | `"53687091200"` (50 GB) | Use bytes directly; valid sizes depend on SKU (see notes in examples) |
+| Azure MySQL Flexible Server | Sku | SKU name (string) | `"Standard_B1ms"`, `"Standard_B4ms"` | Full SKU name as defined by Azure |
+| Azure MySQL Flexible Server | Iops | IOPS (integer) | `"400"`, `"1000"`, `"1500"` | Provisioned IOPS count |
+| Azure MySQL Flexible Server | CoreCount | Cores (integer) | `"1"`, `"2"`, `"4"` | Number of vCores; system finds compatible SKU |
+| Azure Files | ProvisionedStorage | GB (integer) | `"100"`, `"500"`, `"1000"` | Gigabytes of provisioned storage (min 100 GB) |
+| Azure Files | Throughput | MiB/s (double) | `"110"`, `"200"`, `"500"` | Throughput in MiB/s; system calculates required storage quota |
+| Microsoft Fabric Capacity | Sku | SKU name (string) | `"F2"`, `"F8"`, `"F64"` | Valid SKUs: F2, F4, F8, F16, F32, F64, F128, F256, F512, F1024, F2048 |
+| Azure DevOps | HostedParallelJobs | Count (integer) | `"1"`, `"4"`, `"10"` | Number of MS-hosted parallel jobs |
+| Azure DevOps | PrivateParallelJobs | Count (integer) | `"1"`, `"4"`, `"10"` | Number of self-hosted parallel jobs |
+
+> [!NOTE]
+> **Azure Files Throughput**: This is a virtual dimension. The autoscaler uses Azure's provisioned v1 formula to calculate the required storage quota: `Throughput (MiB/s) = 100 + CEILING(0.04 * QuotaGiB) + CEILING(0.06 * QuotaGiB)`. For example, to achieve 200 MiB/s throughput, approximately 1000 GB of storage quota is needed.
 
 ## Licensing
 
@@ -794,10 +818,11 @@ The autoadjust is designed to react based on metrics:
             ScalingStrategy: Fixed
             Dimension: MaxDataBytes
             # Fix target of extra 50GB or 20% additional of current storage, whatever is greater.
+            # storage_used metric and all values are in bytes
             ScaleTarget: "(data) => (Math.Max(data.Metrics[\"storage_used\"].Values.First().Average.Value + (50.1*1024*1024*1024), data.Metrics[\"storage_used\"].Values.First().Average.Value * 1.2)).ToString()"
-            DimensionValueCeilingStep: "1"  # Round up to nearest GB
-            DimensionValueMax: "1024"  # Never scale above 1024 GB
-            DimensionValueMin: "1"     # Never scale below 1 GB
+            DimensionValueCeilingStep: "1073741824"  # Round up to nearest GB (1 GB = 1024^3 bytes)
+            DimensionValueMax: "1099511627776"  # 1024 GB in bytes
+            DimensionValueMin: "1073741824"     # 1 GB in bytes
 ```
 
 ## SQL Database
@@ -863,11 +888,12 @@ The autoadjust is designed to react based on metrics:
           fixed:
             ScalingStrategy: Fixed
             Dimension: MaxDataBytes
-            # Calculate target based on metrics, but ensure it stays within bounds
-            ScaleTarget: "(data) => (data.Metrics[\"allocated_data_storage\"].Values.First().Average.Value / (1024 * 1024 * 1024) + 50).ToString()"  # Current usage + 50GB
-            DimensionValueCeilingStep: "1"  # Round up to nearest GB
-            DimensionValueMax: "1024"  # Never scale above 1024 GB (VCore) or 250 GB (DTU Standard) - depends on SKU
-            DimensionValueMin: "1"       # Never scale below 1 GB (VCore) or 0.1 GB (DTU)
+            # Calculate target based on metrics (all values in bytes)
+            # allocated_data_storage metric is in bytes, add 50GB (50 * 1024 * 1024 * 1024 bytes)
+            ScaleTarget: "(data) => (data.Metrics[\"allocated_data_storage\"].Values.First().Average.Value + (50.0 * 1024 * 1024 * 1024)).ToString()"
+            DimensionValueCeilingStep: "1073741824"  # Round up to nearest GB (1 GB = 1024^3 bytes)
+            DimensionValueMax: "1099511627776"  # 1024 GB in bytes (VCore) - adjust based on SKU
+            DimensionValueMin: "1073741824"     # 1 GB in bytes (VCore minimum)
 ```
 
 > [!NOTE]
