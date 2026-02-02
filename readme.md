@@ -1219,40 +1219,5 @@ This example scales the Fabric capacity to F8 during working hours and F2 during
             ScaleTarget: "(data) => (\"F8\")"
 ```
 
-**Metric-Based Autoadjust Example:**
-
-You can also use the Autoadjust strategy with Fabric capacity metrics to scale based on usage:
-
-```yaml
-  - Resources:
-      my_fabric_capacity:
-        ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/rg-powerbi/providers/Microsoft.Fabric/capacities/myfabriccapacity"
-    Frequency: 10m
-    WhatIf: false
-    ScalingConfigurations:
-      Baseline:
-        Metrics:
-          # Add your Fabric capacity metrics here (check Azure Monitor for available metrics)
-          capacity_usage:
-            Name: CapacityUsagePercent
-            Window: 00:15
-        TimeWindow:
-          Days: All
-          Months: All
-          StartTime: "00:00"
-          EndTime: "23:59"
-          TimeZone: UTC
-        ScalingRules:
-          autoadjust:
-            ScalingStrategy: Autoadjust
-            Dimension: Sku
-            DimensionValueMin: "F2"
-            DimensionValueMax: "F64"
-            ScaleUpCondition: "(data) => data.Metrics[\"capacity_usage\"].Values.Select(i => i.Average).Take(3).Average() > 80"
-            ScaleDownCondition: "(data) => data.Metrics[\"capacity_usage\"].Values.Select(i => i.Average).Take(10).Average() < 40"
-            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
-            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
-            ScaleUpCooldownSeconds: 600
-            ScaleDownCooldownSeconds: 3600
-```
+> **Note:** Microsoft Fabric capacities do not expose Azure Monitor metrics, so only schedule-based (Fixed strategy) scaling is supported. Metric-based autoscaling (Autoadjust strategy) is not available for this resource type.
 
