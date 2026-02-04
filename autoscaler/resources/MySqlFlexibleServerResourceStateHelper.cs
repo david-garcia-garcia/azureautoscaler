@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using Azure.ResourceManager;
 using Azure.ResourceManager.MySql.FlexibleServers;
 using poolautoscaler.utils;
@@ -35,7 +35,7 @@ namespace poolautoscaler.resources
             new SkuInfo("Burstable", "Standard_B16ms", 360, 4300),
             new SkuInfo("Burstable", "Standard_B20ms", 360, 5000),
 
-            // General Purpose SKUs
+            // General Purpose SKUs - Intel (v4)
             new SkuInfo("GeneralPurpose", "Standard_D2ds_v4", 360, 3200),
             new SkuInfo("GeneralPurpose", "Standard_D4ds_v4", 360, 6400),
             new SkuInfo("GeneralPurpose", "Standard_D8ds_v4", 360, 12800),
@@ -43,6 +43,16 @@ namespace poolautoscaler.resources
             new SkuInfo("GeneralPurpose", "Standard_D32ds_v4", 360, 20000),
             new SkuInfo("GeneralPurpose", "Standard_D48ds_v4", 360, 48000),
             new SkuInfo("GeneralPurpose", "Standard_D64ds_v4", 360, 48000),
+
+            // General Purpose SKUs - AMD (v5)
+            new SkuInfo("GeneralPurpose", "Standard_D2ads_v5", 360, 3200),
+            new SkuInfo("GeneralPurpose", "Standard_D4ads_v5", 360, 6400),
+            new SkuInfo("GeneralPurpose", "Standard_D8ads_v5", 360, 12800),
+            new SkuInfo("GeneralPurpose", "Standard_D16ads_v5", 360, 20000),
+            new SkuInfo("GeneralPurpose", "Standard_D32ads_v5", 360, 20000),
+            new SkuInfo("GeneralPurpose", "Standard_D48ads_v5", 360, 48000),
+            new SkuInfo("GeneralPurpose", "Standard_D64ads_v5", 360, 48000),
+            new SkuInfo("GeneralPurpose", "Standard_D96ads_v5", 360, 48000),
 
             // Business Critical SKUs
             new SkuInfo("BusinessCritical", "Standard_E2ds_v5", 360, 5000),

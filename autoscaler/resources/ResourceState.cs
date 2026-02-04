@@ -1,4 +1,6 @@
-﻿using Azure.Core;
+using System.Runtime.ExceptionServices;
+using System.Text.Json;
+using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.ResourceGraph;
 using Azure.ResourceManager.ResourceGraph.Models;
@@ -6,8 +8,6 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
-using System.Runtime.ExceptionServices;
-using System.Text.Json;
 
 namespace poolautoscaler.resources
 {
@@ -21,6 +21,9 @@ namespace poolautoscaler.resources
         // A resource can be disabled for multiple reasons.
         public Dictionary<string, DateTime> DisabledUntil { get; set; } = new Dictionary<string, DateTime>();
 
+        // Track when the "disabled" message was last logged to avoid log spam
+        public DateTime LastDisabledMessageLogged { get; set; } = DateTime.MinValue;
+
         public abstract object ExistingStateRaw { get; }
 
         public abstract object RequestedStateRaw { get; }
@@ -30,7 +33,8 @@ namespace poolautoscaler.resources
             // Cleanup unused resources
             var expiredKeys = this.DisabledUntil.Where((i) => i.Value != DateTime.MaxValue && (i.Value - DateTime.UtcNow).TotalSeconds < 0).Select((i) => i.Key).ToList();
 
-            foreach (var expiredKey in expiredKeys) {
+            foreach (var expiredKey in expiredKeys)
+            {
                 this.DisabledUntil.Remove(expiredKey);
             }
 
@@ -113,12 +117,16 @@ namespace poolautoscaler.resources
             return this.ResourceId;
         }
 
+        const string autoscalerDisabledTag = "autoscaler.disabled";
+
         /// <summary>
         /// Refreshes the resource state from Azure
         /// </summary>
         public async Task Refresh(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Logger.LogTrace("Starting resource refresh");
+
+            var isCurrentlyDisabled = this.DisabledUntil.ContainsKey(autoscalerDisabledTag);
 
             try
             {
@@ -136,14 +144,27 @@ namespace poolautoscaler.resources
                 ExceptionDispatchInfo.Capture(ex).Throw();
             }
 
-            if (this.ResourceTags.TryGetValue("autoscaler.disabled", out var autoscalerDisabled) &&
-                autoscalerDisabled == "true")
+            if (this.ResourceTags.TryGetValue(autoscalerDisabledTag, out var autoscalerDisabled) &&
+                autoscalerDisabled.ToLower() == "true")
             {
-                this.DisabledUntil["autoscaler.disabled"] = DateTime.MaxValue;
+                this.DisabledUntil[autoscalerDisabledTag] = DateTime.MaxValue;
             }
             else
             {
-                this.DisabledUntil.TryRemove("autoscaler.disabled");
+                this.DisabledUntil.TryRemove(autoscalerDisabledTag);
+            }
+
+            // This gives visiblity - wihtout flooding the logs - that the resource was disabled externally
+            if (isCurrentlyDisabled != this.DisabledUntil.ContainsKey(autoscalerDisabledTag))
+            {
+                if (isCurrentlyDisabled)
+                {
+                    this.Logger.LogInformation($"Tag '{autoscalerDisabledTag}' was externally removed from resource.");
+                }
+                else
+                {
+                    this.Logger.LogInformation($"Tag '{autoscalerDisabledTag}' was externally added to resource.");
+                }
             }
 
             if (this.IsDisabled())

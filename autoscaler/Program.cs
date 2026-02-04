@@ -611,9 +611,17 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
 
                 if (state.IsDisabled())
                 {
-                    logger.LogDebug("Resource is currently disabled: " + string.Join(", ", state.DisabledUntil.Keys));
+                    // Only log the disabled message once per hour to avoid log spam
+                    if ((DateTime.UtcNow - state.LastDisabledMessageLogged).TotalHours >= 1)
+                    {
+                        logger.LogInformation("Resource is currently disabled: " + string.Join(", ", state.DisabledUntil.Keys));
+                        state.LastDisabledMessageLogged = DateTime.UtcNow;
+                    }
                     return;
                 }
+
+                // Reset the disabled message counter so it shows immediately if disabled again
+                state.LastDisabledMessageLogged = DateTime.MinValue;
 
                 // Wrap the logger in a capturing logger to capture messages that would be lost
                 // If a scale operation happens, we'll flush these at INFO level so they're visible
