@@ -640,7 +640,39 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         stoppingToken,
                         capturingLogger);
 
+                    // Output detailed metric information in debug mode - one compact line per metric
+                    foreach (var metricEntry in metrics)
+                    {
+                        var metricId = metricEntry.Key;
+                        var metricResult = metricEntry.Value;
+
+                        if (!metricResult.Values.Any())
+                        {
+                            capturingLogger.LogDebug($"Metric={metricId}, valid={metricResult.Valid}, values=0, aggregation=none, valuedetail=<empty>");
+                            continue;
+                        }
+
+                        // Determine aggregation type from first value
+                        var aggregationType = metricResult.Values.First().GetAggregationType();
+
+                        // Extract all values into a compact list with validity status
+                        var valuesDetail = string.Join(",", metricResult.Values.Select(v => v.RenderValueWithStatus()));
+                        var invalidReason = metricResult.Valid ? "" : $", reason=\"{metricResult.InvalidReason}\"";
+
+                        capturingLogger.LogDebug($"Metric={metricId}, valid={metricResult.Valid}, values={metricResult.Values.Count}, aggregation={aggregationType}, valuedetail={valuesDetail}{invalidReason}");
+                    }
+
                     capturingLogger.LogTrace("Evaluating scale configuration {0}", setting.Id);
+
+                    // Check if any metrics required by this rule are invalid
+                    var invalidMetrics = metrics.Where(m => !m.Value.Valid).ToList();
+                    if (invalidMetrics.Any())
+                    {
+                        var metricNames = string.Join(", ", invalidMetrics.Select(m => m.Key));
+                        var reasons = string.Join("; ", invalidMetrics.Select(m => $"{m.Key}: {m.Value.InvalidReason}"));
+                        capturingLogger.LogWarning($"Skipping scaling configuratoin '{setting.Id}' because one or more metrics are invalid: {reasons}");
+                        continue;
+                    }
 
                     foreach (var rule in setting.ScalingRules.Values)
                     {
@@ -681,7 +713,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
                                 rule.ScaleDownCooldownSeconds)
                             {
-                                capturingLogger.LogTrace(
+                                capturingLogger.LogDebug(
                                     "Skipping scale down from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
                                     currentDimensionValue, targetDimensionValue, rule.ScaleDownCooldownSeconds);
                                 continue;
@@ -691,7 +723,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             // sure the scaling operation is completed before the hour ends.
                             if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute < setting.ScaleDownLockWindowMinutes)
                             {
-                                capturingLogger.LogTrace(
+                                capturingLogger.LogDebug(
                                     "Skipping scale down from {0} to {1} not allowed before minute {2} of a billable hour.",
                                     currentDimensionValue, targetDimensionValue, setting.ScaleDownLockWindowMinutes);
                                 continue;
@@ -705,7 +737,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
                                 rule.ScaleUpCooldownSeconds)
                             {
-                                capturingLogger.LogTrace(
+                                capturingLogger.LogDebug(
                                     "Skipping scale up from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
                                     currentDimensionValue, targetDimensionValue, rule.ScaleUpCooldownSeconds);
                                 continue;
@@ -716,7 +748,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             // scaling is not "reactive" but "proactive".
                             if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute > setting.ScaleUpAllowWindowMinutes)
                             {
-                                capturingLogger.LogTrace(
+                                capturingLogger.LogDebug(
                                     "Skipping scale up from {0} to {1} not allowed after minute {0} of a billable hour.",
                                     currentDimensionValue, targetDimensionValue, setting.ScaleUpAllowWindowMinutes);
                                 continue;
@@ -876,8 +908,44 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             logger.LogDebug($"Removed {removedCount} data points from a total of {originalCount} without data from the beginning of the time series for {metric.Name}. This is not necessarily bad. Review your metrics configuration.");
                         }
 
-                        metrics.Add(metric.Id, new MetricEvalDtoResult());
-                        metrics[metric.Id].Values = values.Select((i) => metric.TransformExpression(i)).ToList();
+                        var metricResult = new MetricEvalDtoResult();
+                        metricResult.Values = values.Select((i) => metric.TransformExpression(i)).ToList();
+
+                        // Validate each data point in the metric against configured bounds
+                        // Mark individual values as invalid, then assess overall metric validity
+                        if (metricResult.Values.Any() && (metric.ValidValueMin.HasValue || metric.ValidValueMax.HasValue))
+                        {
+                            foreach (var value in metricResult.Values)
+                            {
+                                // Check the primary value (Average, Maximum, Minimum, or Total)
+                                var checkValue = value.Average ?? value.Maximum ?? value.Minimum ?? value.Total;
+
+                                if (checkValue.HasValue)
+                                {
+                                    if (metric.ValidValueMin.HasValue && checkValue.Value < metric.ValidValueMin.Value)
+                                    {
+                                        value.Valid = false;
+                                        value.InvalidReason = $"Value {checkValue.Value:N2} is below minimum valid value {metric.ValidValueMin.Value:N2}";
+                                    }
+                                    else if (metric.ValidValueMax.HasValue && checkValue.Value > metric.ValidValueMax.Value)
+                                    {
+                                        value.Valid = false;
+                                        value.InvalidReason = $"Value {checkValue.Value:N2} is above maximum valid value {metric.ValidValueMax.Value:N2}";
+                                    }
+                                }
+                            }
+
+                            // If any value is invalid, mark the entire metric as invalid
+                            var invalidValues = metricResult.Values.Where(v => !v.Valid).ToList();
+                            if (invalidValues.Any())
+                            {
+                                metricResult.Valid = false;
+                                metricResult.InvalidReason = $"{invalidValues.Count} out of {metricResult.Values.Count} data points are invalid (e.g., {invalidValues.First().InvalidReason} at {invalidValues.First().TimeStamp:yyyy-MM-dd HH:mm:ss})";
+                                logger.LogWarning($"Metric '{metric.Name}' appears broken or unreliable: {metricResult.InvalidReason}");
+                            }
+                        }
+
+                        metrics.Add(metric.Id, metricResult);
                     }
                 }
 
