@@ -158,12 +158,12 @@ namespace poolautoscaler.strategies
         }
 
         /// <summary>
-        /// Renders the value with validity status (wraps invalid values with [INVALID:...])
+        /// Renders the value with validity status (prefixes invalid values with !)
         /// </summary>
         public string RenderValueWithStatus()
         {
             var val = RenderValue();
-            return this.Valid ? val : $"!{val}"; // Use ! to indicate invalid status
+            return this.Valid ? val : $"!{val}";
         }
     }
 }
