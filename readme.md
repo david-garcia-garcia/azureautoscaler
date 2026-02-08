@@ -580,9 +580,20 @@ Because you need to make real time decisions based on resource metrics, each Sca
             # Useful when a metric may not be available for certain resource configurations.
             # For example, dtu_consumption_percent is not available for VCore model SQL databases, only for DTU model.
             AllowFail: false
+            # (OPTIONAL) ValidValueMin. Minimum valid value for this metric. If any data point in the metric
+            # returns a value below this threshold, the entire metric will be marked as invalid and
+            # scaling rules using this metric will be skipped. Useful for detecting broken Azure metrics
+            # that sometimes return zero or null values. For example, storage_used should never be 0 for
+            # a pool with actual data.
+            ValidValueMin: 1048576  # Reject values below 1MB - likely indicates broken metric
+            # (OPTIONAL) ValidValueMax. Maximum valid value for this metric. If any data point in the metric
+            # returns a value above this threshold, the entire metric will be marked as invalid and
+            # scaling rules using this metric will be skipped. Useful for detecting anomalous metric values.
+            ValidValueMax: 1099511627776  # Reject values above 1TB - likely indicates broken metric
           storage_used:
             Name: storage_used
             Window: 00:05
+            ValidValueMin: 1048576  # Reject values below 1MB
           dtu_consumption_percent:
             Name: dtu_consumption_percent
             Window: 00:05
@@ -598,6 +609,53 @@ The available metrics depend on the type of resources:
 * [Monitoring data reference for Azure Kubernetes Service - Azure Kubernetes Service | Microsoft Learn](https://learn.microsoft.com/en-us/azure/aks/monitor-aks-reference)
 
 You can query metrics of resources different to the one you are scaling. I.e. if you are scaling a Windows node pool in AKS, you will need to retrieve metrics from the underlying VMSS. In those cases, the VMSS is available as a replacement token (see examples further in this document).
+
+### Metric Validation
+
+Azure Autoscaler includes built-in protection against broken or unreliable metrics from Azure Monitor. Sometimes Azure metrics can return incorrect values (zeros, nulls, or anomalous data), which could lead to dangerous scaling decisions.
+
+**How It Works:**
+
+When you configure `ValidValueMin` and/or `ValidValueMax` on a metric, the autoscaler validates **every data point** in the metric's time series. If even a single data point falls outside the valid range:
+
+1. The individual data point is marked as invalid with a detailed reason
+2. The entire metric is marked as invalid
+3. All scaling rules that depend on this metric are automatically skipped
+4. Detailed warnings are logged showing which values failed validation
+
+**Example:**
+
+```yaml
+Metrics:
+  storage_used:
+    Name: storage_used
+    Window: 00:05
+    ValidValueMin: 1048576  # 1MB - reject values below this (likely broken metric)
+    ValidValueMax: 1099511627776  # 1TB - reject values above this (likely anomaly)
+```
+
+**When to Use:**
+
+- **Storage metrics** (`storage_used`, `allocated_data_storage`): Set `ValidValueMin` to prevent accepting zero values when you know the database contains data
+- **Percentage metrics** (`dtu_consumption_percent`, `cpu_percent`): Set `ValidValueMax: 100` to catch invalid values
+- **IOPS/throughput metrics**: Set reasonable bounds based on your SKU limits
+
+**Benefits:**
+
+- **Prevents dangerous scaling**: Won't shrink storage below actual usage when metrics return zeros
+- **Complete visibility**: Logs show exactly which data points failed and why
+- **Automatic protection**: Rules are skipped automatically when metrics are invalid
+- **Zero code changes**: All configuration-based via YAML
+
+**Debug Logging:**
+
+When running with debug logging enabled, you'll see detailed metric validation output:
+
+```
+Metric=storage_used, valid=False, values=5, aggregation=avg, valuedetail=524288000, 520000000, !0, !0, 518000000, reason="2 out of 5 data points are invalid (e.g., Value 0.00 is below minimum valid value 1048576.00 at 2026-02-08 10:12:00)"
+```
+
+Invalid values are prefixed with `!` to make them easy to spot. This makes it easy to diagnose when and why Azure metrics are returning bad data.
 
 ### Scaling Rules
 
@@ -783,6 +841,7 @@ The autoadjust is designed to react based on metrics:
           storage_used:
             Name: storage_used
             Window: 00:05
+            ValidValueMin: 1048576  # Reject values below 1MB - protects against broken Azure metrics returning zero
         TimeWindow:
           Days: All
           Months: All

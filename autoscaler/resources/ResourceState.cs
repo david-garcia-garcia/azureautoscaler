@@ -187,6 +187,22 @@ namespace poolautoscaler.resources
             // Grab the changelogs
             var tenantResource = client.GetTenants().First();
 
+            // Only keep snapshots from the last 72 hours to reduce memory usage
+            const int snapshotRetentionHours = 72;
+            var retentionCutoff = DateTime.UtcNow.AddHours(-snapshotRetentionHours);
+            
+            // Purge snapshots older than 72 hours
+            if (this.ChangeHistory.Any())
+            {
+                var originalCount = this.ChangeHistory.Count;
+                this.ChangeHistory = this.ChangeHistory.Where(s => s.Timestamp > retentionCutoff).ToList();
+                var purgedCount = originalCount - this.ChangeHistory.Count;
+                if (purgedCount > 0)
+                {
+                    this.Logger.LogTrace("Purged {0} snapshots older than {1} hours", purgedCount, snapshotRetentionHours);
+                }
+            }
+
             var mostRecentTimestamp = this.ChangeHistory.FirstOrDefault()?.Timestamp;
             var timeFilter = mostRecentTimestamp.HasValue ? $"and timestamp > datetime('{mostRecentTimestamp.Value:O}')" : "";
             var resourceIdFilter = this.GetResourceIdForChangeHistory();
@@ -214,8 +230,8 @@ namespace poolautoscaler.resources
                     Query = $"where id =~ '{resourceIdFilter}' {timeFilter} | order by timestamp desc",
                     Options = new ResourcesHistoryRequestOptions()
                     {
-                        // Max allowed by this API es 17 days of snapshots | two weeks
-                        Interval = new DateTimeInterval(DateTime.UtcNow.AddDays(-16), DateTimeOffset.UtcNow),
+                        // Only query last 72 hours to reduce memory usage
+                        Interval = new DateTimeInterval(retentionCutoff, DateTimeOffset.UtcNow),
                         Skip = page * itemsPerPage,
                         Top = itemsPerPage
                     }

@@ -394,4 +394,15 @@ public class Metric
     /// Useful when a metric may not be available for certain resource configurations (e.g., dtu_consumption_percent is not available for VCore model SQL databases).
     /// </summary>
     public bool AllowFail { get; set; } = false;
+
+    /// <summary>
+    /// Minimum valid value for this metric. If the metric returns a value below this, it will be considered broken/invalid.
+    /// Useful for detecting broken metrics (e.g., storage_used should never be 0 for a pool with data).
+    /// </summary>
+    public double? ValidValueMin { get; set; }
+
+    /// <summary>
+    /// Maximum valid value for this metric. If the metric returns a value above this, it will be considered broken/invalid.
+    /// </summary>
+    public double? ValidValueMax { get; set; }
 }
