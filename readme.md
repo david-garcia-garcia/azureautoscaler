@@ -572,6 +572,7 @@ Because you need to make real time decisions based on resource metrics, each Sca
             # (OPTIONAL) Aggregations. What aggregations to be retrieved for the metric. If not specified defaults
             # to "Average". Careful with this because the default Average is not the default behaviour for all metrics
             # in the portal, where some resource have different aggregations set as default.
+            # The primary aggregation will be available in the Default property for use in scaling rules.
             Aggregations: ["Total"]
             # (OPTIONAL) Manipulate the individual metric values before sending them to evaluation 
             Transform: "(value) => value / (1000 * 1000 * 1000)" # Convert to Gb
@@ -580,16 +581,17 @@ Because you need to make real time decisions based on resource metrics, each Sca
             # Useful when a metric may not be available for certain resource configurations.
             # For example, dtu_consumption_percent is not available for VCore model SQL databases, only for DTU model.
             AllowFail: false
-            # (OPTIONAL) ValidValueMin. Minimum valid value for this metric. If any data point in the metric
-            # returns a value below this threshold, the entire metric will be marked as invalid and
-            # scaling rules using this metric will be skipped. Useful for detecting broken Azure metrics
-            # that sometimes return zero or null values. For example, storage_used should never be 0 for
-            # a pool with actual data.
-            ValidValueMin: 1048576  # Reject values below 1MB - likely indicates broken metric
-            # (OPTIONAL) ValidValueMax. Maximum valid value for this metric. If any data point in the metric
-            # returns a value above this threshold, the entire metric will be marked as invalid and
-            # scaling rules using this metric will be skipped. Useful for detecting anomalous metric values.
-            ValidValueMax: 1099511627776  # Reject values above 1TB - likely indicates broken metric
+            # (OPTIONAL) ValidValueMin. Minimum valid value for this metric (inclusive). If any data point in 
+            # the metric returns a value below this threshold, the entire metric will be marked as invalid 
+            # and scaling rules using this metric will be skipped. Values equal to ValidValueMin are 
+            # considered valid. Useful for detecting broken Azure metrics that sometimes return zero or 
+            # null values. For example, storage_used should never be 0 for a pool with actual data.
+            ValidValueMin: 1048576  # Reject values < 1MB (1MB itself is valid)
+            # (OPTIONAL) ValidValueMax. Maximum valid value for this metric (inclusive). If any data point 
+            # in the metric returns a value above this threshold, the entire metric will be marked as 
+            # invalid and scaling rules using this metric will be skipped. Values equal to ValidValueMax 
+            # are considered valid. Useful for detecting anomalous metric values.
+            ValidValueMax: 1099511627776  # Reject values > 1TB (1TB itself is valid)
           storage_used:
             Name: storage_used
             Window: 00:05
@@ -610,13 +612,38 @@ The available metrics depend on the type of resources:
 
 You can query metrics of resources different to the one you are scaling. I.e. if you are scaling a Windows node pool in AKS, you will need to retrieve metrics from the underlying VMSS. In those cases, the VMSS is available as a replacement token (see examples further in this document).
 
+### Using the Default Property in Rules
+
+Each metric data point has a `Default` property that automatically contains the primary aggregation value (Average, Maximum, Minimum, Total, or Count). This allows you to write scaling rules that work regardless of which aggregation you configure.
+
+**Best Practice:** Use `.Default.Value` in your scaling rules instead of `.Average.Value`, `.Maximum.Value`, etc. This way, you can change the aggregation type in the metric configuration without having to update your scaling rules.
+
+**Example:**
+
+```yaml
+Metrics:
+  storage_used:
+    Name: storage_used
+    Window: 00:05
+    Aggregations: ["Maximum"]  # Can change to Average, Minimum, etc.
+
+ScalingRules:
+  fixed:
+    ScalingStrategy: Fixed
+    Dimension: MaxDataBytes
+    # This rule works regardless of which aggregation is configured above
+    ScaleTarget: "(data) => (data.Metrics[\"storage_used\"].Values.First().Default.Value * 1.2).ToString()"
+```
+
+If you change `Aggregations: ["Maximum"]` to `Aggregations: ["Average"]`, the rule continues to work without modification.
+
 ### Metric Validation
 
 Azure Autoscaler includes built-in protection against broken or unreliable metrics from Azure Monitor. Sometimes Azure metrics can return incorrect values (zeros, nulls, or anomalous data), which could lead to dangerous scaling decisions.
 
 **How It Works:**
 
-When you configure `ValidValueMin` and/or `ValidValueMax` on a metric, the autoscaler validates **every data point** in the metric's time series. If even a single data point falls outside the valid range:
+When you configure `ValidValueMin` and/or `ValidValueMax` on a metric, the autoscaler validates **every data point** in the metric's time series. Both bounds are **inclusive** (values equal to the min/max are considered valid). If even a single data point falls outside the valid range:
 
 1. The individual data point is marked as invalid with a detailed reason
 2. The entire metric is marked as invalid
@@ -630,14 +657,18 @@ Metrics:
   storage_used:
     Name: storage_used
     Window: 00:05
-    ValidValueMin: 1048576  # 1MB - reject values below this (likely broken metric)
-    ValidValueMax: 1099511627776  # 1TB - reject values above this (likely anomaly)
+    ValidValueMin: 1048576  # 1MB - reject values < 1MB (1MB itself is valid)
+    ValidValueMax: 1099511627776  # 1TB - reject values > 1TB (1TB itself is valid)
 ```
+
+**Important:** Both bounds are **inclusive**:
+- `ValidValueMin: 100` means values >= 100 are valid (100 is valid, 99 is invalid)
+- `ValidValueMax: 1000` means values <= 1000 are valid (1000 is valid, 1001 is invalid)
 
 **When to Use:**
 
-- **Storage metrics** (`storage_used`, `allocated_data_storage`): Set `ValidValueMin` to prevent accepting zero values when you know the database contains data
-- **Percentage metrics** (`dtu_consumption_percent`, `cpu_percent`): Set `ValidValueMax: 100` to catch invalid values
+- **Storage metrics** (`storage_used`, `allocated_data_storage`): Set `ValidValueMin` to prevent accepting zero values when you know the database contains data (e.g., `ValidValueMin: 1048576` rejects values < 1MB)
+- **Percentage metrics** (`dtu_consumption_percent`, `cpu_percent`): Set `ValidValueMax: 100` to catch invalid values (100% is valid, 101% is invalid)
 - **IOPS/throughput metrics**: Set reasonable bounds based on your SKU limits
 
 **Benefits:**
@@ -853,7 +884,8 @@ The autoadjust is designed to react based on metrics:
             ScalingStrategy: Fixed
             Dimension: MaxDataBytes
             # Fix target of extra 50GB or 20% additional of current storage, whatever is greater.
-            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"storage_used\"].Values.First().Average.Value + (50.1*1024*1024*1024), data.Metrics[\"storage_used\"].Values.First().Average.Value * 1.2)).ToString()"
+            # Use .Default.Value to access the primary aggregation (works regardless of aggregation type)
+            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"storage_used\"].Values.First().Default.Value + (50.1*1024*1024*1024), data.Metrics[\"storage_used\"].Values.First().Default.Value * 1.2)).ToString()"
             DimensionValueCeilingStep: "1"  # Round up to nearest GB
             DimensionValueMax: "1024"  # Never scale above 1024 GB
             DimensionValueMin: "1"     # Never scale below 1 GB

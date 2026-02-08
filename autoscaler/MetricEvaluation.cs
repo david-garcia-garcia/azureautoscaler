@@ -1,4 +1,4 @@
-﻿using Azure.Monitor.Query;
+using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.strategies;
@@ -125,14 +125,22 @@ namespace poolautoscaler
                 return null;
             }
 
-            return timeSeries.Values.Select((i) => new MetricEvalDtoResultValue()
+            return timeSeries.Values.Select((i) => 
             {
-                Average = i.Average,
-                Maximum = i.Maximum,
-                Minimum = i.Minimum,
-                Count = i.Count,
-                TimeStamp = i.TimeStamp,
-                Total = i.Total
+                var value = new MetricEvalDtoResultValue()
+                {
+                    Average = i.Average,
+                    Maximum = i.Maximum,
+                    Minimum = i.Minimum,
+                    Count = i.Count,
+                    TimeStamp = i.TimeStamp,
+                    Total = i.Total
+                };
+                
+                // Populate Default with the primary aggregation value
+                value.Default = value.Average ?? value.Maximum ?? value.Minimum ?? value.Total ?? value.Count;
+                
+                return value;
             }).ToList();
         }
     }

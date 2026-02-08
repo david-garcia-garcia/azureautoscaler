@@ -61,6 +61,13 @@ namespace poolautoscaler.strategies
         public double? Count { get; set; }
 
         /// <summary>
+        /// The default/primary value for this metric data point. This is automatically populated with 
+        /// whichever aggregation is available (Average, Maximum, Minimum, Total, or Count in that priority order).
+        /// Use this in scaling rules to avoid having to update expressions when changing aggregation types.
+        /// </summary>
+        public double? Default { get; set; }
+
+        /// <summary>
         /// Indicates whether this individual data point is valid based on configured validation rules.
         /// If false, this data point failed validation (e.g., out of min/max bounds).
         /// </summary>
@@ -84,18 +91,21 @@ namespace poolautoscaler.strategies
         public MetricEvalDtoResultValue SetMaximum(double? Maximum)
         {
             this.Maximum = Maximum;
+            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetMinimum(double? Minimum)
         {
             this.Minimum = Minimum;
+            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetAverage(double? Average)
         {
             this.Average = Average;
+            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
@@ -108,12 +118,14 @@ namespace poolautoscaler.strategies
         public MetricEvalDtoResultValue SetTotal(double? Total)
         {
             this.Total = Total;
+            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetCount(double? Count)
         {
             this.Count = Count;
+            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
