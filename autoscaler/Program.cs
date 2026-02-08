@@ -713,7 +713,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
                                 rule.ScaleDownCooldownSeconds)
                             {
-                                capturingLogger.LogDebug(
+                                capturingLogger.LogTrace(
                                     "Skipping scale down from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
                                     currentDimensionValue, targetDimensionValue, rule.ScaleDownCooldownSeconds);
                                 continue;
@@ -723,7 +723,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             // sure the scaling operation is completed before the hour ends.
                             if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute < setting.ScaleDownLockWindowMinutes)
                             {
-                                capturingLogger.LogDebug(
+                                capturingLogger.LogTrace(
                                     "Skipping scale down from {0} to {1} not allowed before minute {2} of a billable hour.",
                                     currentDimensionValue, targetDimensionValue, setting.ScaleDownLockWindowMinutes);
                                 continue;
@@ -737,7 +737,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
                                 rule.ScaleUpCooldownSeconds)
                             {
-                                capturingLogger.LogDebug(
+                                capturingLogger.LogTrace(
                                     "Skipping scale up from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
                                     currentDimensionValue, targetDimensionValue, rule.ScaleUpCooldownSeconds);
                                 continue;
@@ -748,7 +748,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             // scaling is not "reactive" but "proactive".
                             if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute > setting.ScaleUpAllowWindowMinutes)
                             {
-                                capturingLogger.LogDebug(
+                                capturingLogger.LogTrace(
                                     "Skipping scale up from {0} to {1} not allowed after minute {0} of a billable hour.",
                                     currentDimensionValue, targetDimensionValue, setting.ScaleUpAllowWindowMinutes);
                                 continue;
