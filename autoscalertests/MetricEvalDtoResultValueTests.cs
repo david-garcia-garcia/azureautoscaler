@@ -276,5 +276,87 @@ namespace poolautoscaler.tests
             // Assert
             Assert.True(value.Valid);
         }
+
+        [Fact]
+        public void SetAverage_ShouldPopulateDefault()
+        {
+            // Arrange
+            var value = new MetricEvalDtoResultValue();
+
+            // Act
+            value.SetAverage(42.5);
+
+            // Assert
+            Assert.Equal(42.5, value.Default);
+            Assert.Equal(42.5, value.Average);
+        }
+
+        [Fact]
+        public void SetMaximum_ShouldPopulateDefault()
+        {
+            // Arrange
+            var value = new MetricEvalDtoResultValue();
+
+            // Act
+            value.SetMaximum(100.0);
+
+            // Assert
+            Assert.Equal(100.0, value.Default);
+            Assert.Equal(100.0, value.Maximum);
+        }
+
+        [Fact]
+        public void SetMinimum_ShouldPopulateDefault()
+        {
+            // Arrange
+            var value = new MetricEvalDtoResultValue();
+
+            // Act
+            value.SetMinimum(5.0);
+
+            // Assert
+            Assert.Equal(5.0, value.Default);
+            Assert.Equal(5.0, value.Minimum);
+        }
+
+        [Fact]
+        public void SetTotal_ShouldPopulateDefault()
+        {
+            // Arrange
+            var value = new MetricEvalDtoResultValue();
+
+            // Act
+            value.SetTotal(1000.0);
+
+            // Assert
+            Assert.Equal(1000.0, value.Default);
+            Assert.Equal(1000.0, value.Total);
+        }
+
+        [Fact]
+        public void SetCount_ShouldPopulateDefault()
+        {
+            // Arrange
+            var value = new MetricEvalDtoResultValue();
+
+            // Act
+            value.SetCount(50.0);
+
+            // Assert
+            Assert.Equal(50.0, value.Default);
+            Assert.Equal(50.0, value.Count);
+        }
+
+        [Fact]
+        public void Default_WhenMultipleAggregationsSet_ShouldPrioritizeAverage()
+        {
+            // Arrange & Act
+            var value = new MetricEvalDtoResultValue();
+            value.SetMaximum(100.0);
+            value.SetAverage(50.0);
+
+            // Assert - Average takes priority
+            Assert.Equal(50.0, value.Default);
+        }
     }
 }

@@ -917,20 +917,18 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         {
                             foreach (var value in metricResult.Values)
                             {
-                                // Check the primary value (Average, Maximum, Minimum, or Total)
-                                var checkValue = value.Average ?? value.Maximum ?? value.Minimum ?? value.Total;
-
-                                if (checkValue.HasValue)
+                                // Use the Default property which contains the primary aggregation value
+                                if (value.Default.HasValue)
                                 {
-                                    if (metric.ValidValueMin.HasValue && checkValue.Value < metric.ValidValueMin.Value)
+                                    if (metric.ValidValueMin.HasValue && value.Default.Value < metric.ValidValueMin.Value)
                                     {
                                         value.Valid = false;
-                                        value.InvalidReason = $"Value {checkValue.Value:N2} is below minimum valid value {metric.ValidValueMin.Value:N2}";
+                                        value.InvalidReason = $"Value {value.Default.Value:F2} is below minimum valid value {metric.ValidValueMin.Value:F2}";
                                     }
-                                    else if (metric.ValidValueMax.HasValue && checkValue.Value > metric.ValidValueMax.Value)
+                                    else if (metric.ValidValueMax.HasValue && value.Default.Value > metric.ValidValueMax.Value)
                                     {
                                         value.Valid = false;
-                                        value.InvalidReason = $"Value {checkValue.Value:N2} is above maximum valid value {metric.ValidValueMax.Value:N2}";
+                                        value.InvalidReason = $"Value {value.Default.Value:F2} is above maximum valid value {metric.ValidValueMax.Value:F2}";
                                     }
                                 }
                             }
