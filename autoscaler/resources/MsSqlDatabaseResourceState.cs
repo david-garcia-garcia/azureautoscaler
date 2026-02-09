@@ -46,7 +46,8 @@ namespace poolautoscaler.resources
 
             // allocated_data_storage -> what is allocated
             // storage -> what is used
-            List<MetricEvalDtoResultValue> values = eval.RetrieveHistory(metricsClient, this.ResourceId, "storage", TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1), cancellationToken, null, null).Result;
+            var metricResult = eval.RetrieveHistory(metricsClient, this.ResourceId, "storage", TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1), cancellationToken, null, null).Result;
+            var values = metricResult.Values;
             values.Reverse();
 
             var storage_used = values.Take(1)?.Select((i) => i.Average).Average();

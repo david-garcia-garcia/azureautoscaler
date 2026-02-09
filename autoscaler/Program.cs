@@ -471,7 +471,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         {
                             resourceState.Logger.LogError(ex, ex.Message);
                             resourceState.Logger.LogWarning("Resource evaluation will be disabled for 1 hour."); // Hardcoded right now
-                            resourceState.DisabledUntil["Unhandled exception"] = DateTime.UtcNow.AddHours(1);
+                            resourceState.DisabledUntil["Unhandled exception: " + ex.Message] = DateTime.UtcNow.AddHours(1);
                         }
                         finally
                         {
@@ -870,10 +870,10 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
 
                         logger.LogTrace($"Metrics query: Name={metric.Name}, SplitName={splitName}, SplitValue={splitValue}, Aggregations={string.Join(", ", aggregations)} TargetResource={targetResource}, TimeRange={Math.Round(metricWindow.TotalHours, 2)}h");
 
-                        List<MetricEvalDtoResultValue> values;
+                        MetricEvalDtoResult metricResult;
                         try
                         {
-                            values = await eval.RetrieveHistory(
+                            metricResult = await eval.RetrieveHistory(
                                 metricsClient,
                                 targetResource,
                                 metric.Name,
@@ -895,12 +895,12 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             throw;
                         }
 
-                        values.Reverse();
+                        metricResult.Values.Reverse();
 
                         // Remove data points without data only from the start of the time series
-                        var originalCount = values.Count;
-                        values = values.SkipWhile(v => !v.HasData()).ToList();
-                        var removedCount = originalCount - values.Count;
+                        var originalCount = metricResult.Values.Count;
+                        metricResult.Values = metricResult.Values.SkipWhile(v => !v.HasData()).ToList();
+                        var removedCount = originalCount - metricResult.Values.Count;
 
                         // One datapoint loss is commong due to how metric windows work.
                         if (removedCount > 1)
@@ -908,8 +908,8 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             logger.LogDebug($"Removed {removedCount} data points from a total of {originalCount} without data from the beginning of the time series for {metric.Name}. This is not necessarily bad. Review your metrics configuration.");
                         }
 
-                        var metricResult = new MetricEvalDtoResult();
-                        metricResult.Values = values.Select((i) => metric.TransformExpression(i)).ToList();
+                        // Apply transform expression to values
+                        metricResult.Values = metricResult.Values.Select((i) => metric.TransformExpression(i)).ToList();
 
                         // Validate each data point in the metric against configured bounds
                         // Mark individual values as invalid, then assess overall metric validity

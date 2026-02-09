@@ -1,8 +1,8 @@
+using System.Data;
 using Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
-using System.Data;
 
 public class Configuration
 {
@@ -299,45 +299,81 @@ public class ScalingRule
     {
         logger.LogTrace($"ScaleTarget evaluation {this.ScaleTarget}");
         this.LogRuleDataSample(dto, this.ScaleTarget, logger);
-        string result;
-        result = this.ScaleTargetExpression.Invoke(dto);
-        return result;
+
+        try
+        {
+            return this.ScaleTargetExpression.Invoke(dto); ;
+        }
+        catch (Exception ex)
+        {
+            // There is little to obtain from the inner exception when the error in the lambda
+            throw new Exception($"Error evaluating scaling rule {this.Id}: " + ex.Message);
+        }
     }
 
     public string ScaleUpTargetMethod(MetricEvalDto dto, ILogger logger)
     {
         logger.LogTrace($"ScaleUpTarget evaluation {this.ScaleUpTarget}");
         this.LogRuleDataSample(dto, this.ScaleDownTarget, logger);
-        string result;
-        result = this.ScaleUpTargetExpression.Invoke(dto);
-        return result;
+
+        try
+        {
+            return this.ScaleUpTargetExpression.Invoke(dto);
+        }
+        catch (Exception ex)
+        {
+            // There is little to obtain from the inner exception when the error in the lambda
+            throw new Exception($"Error evaluating scaling rule {this.Id}: " + ex.Message);
+        }
     }
 
     public string ScaleDownTargetMethod(MetricEvalDto dto, ILogger logger)
     {
         logger.LogTrace($"ScaleDownTarget evaluation {this.ScaleDownTarget}");
         this.LogRuleDataSample(dto, this.ScaleDownTarget, logger);
-        string result;
-        result = this.ScaleDownTargetExpression.Invoke(dto);
-        return result;
+
+        try
+        {
+            return this.ScaleDownTargetExpression.Invoke(dto);
+        }
+        catch (Exception ex)
+        {
+            // There is little to obtain from the inner exception when the error in the lambda
+            throw new Exception($"Error evaluating scaling rule {this.Id}: " + ex.Message);
+        }
     }
+
 
     public bool ScaleUpConditionMethod(MetricEvalDto dto, ILogger logger)
     {
         logger.LogTrace($"ScaleUpCondition evaluation {this.ScaleUpCondition}");
         this.LogRuleDataSample(dto, this.ScaleUpCondition, logger);
-        bool result;
-        result = this.ScaleUpConditionExpression.Invoke(dto);
-        return result;
+
+        try
+        {
+            return this.ScaleUpConditionExpression.Invoke(dto);
+        }
+        catch (Exception ex)
+        {
+            // There is little to obtain from the inner exception when the error in the lambda
+            throw new Exception($"Error evaluating scaling rule {this.Id}: " + ex.Message);
+        }
     }
 
     public bool ScaleDownConditionMethod(MetricEvalDto dto, ILogger logger)
     {
         logger.LogTrace($"ScaleDownCondition evaluation {this.ScaleDownCondition}");
         this.LogRuleDataSample(dto, this.ScaleDownCondition, logger);
-        bool result;
-        result = this.ScaleDownConditionExpression.Invoke(dto);
-        return result;
+
+        try
+        {
+            return this.ScaleDownConditionExpression.Invoke(dto);
+        }
+        catch (Exception ex)
+        {
+            // There is little to obtain from the inner exception when the error in the lambda
+            throw new Exception($"Error evaluating scaling rule {this.Id}: " + ex.Message);
+        }
     }
 
     public void LogRuleDataSample(MetricEvalDto dto, string expression, ILogger logger)

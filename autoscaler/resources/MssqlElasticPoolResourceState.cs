@@ -46,7 +46,8 @@ namespace poolautoscaler.resources
             var metricsClient = new MetricsQueryClient(credential);
             MetricEvaluation eval = new MetricEvaluation(this.Logger);
 
-            List<MetricEvalDtoResultValue> values = eval.RetrieveHistory(metricsClient, this.ResourceId, "storage_used", TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1), cancellationToken, null, null).Result;
+            var metricResult = eval.RetrieveHistory(metricsClient, this.ResourceId, "storage_used", TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1), cancellationToken, null, null).Result;
+            var values = metricResult.Values;
             values.Reverse();
 
             var storage_used = values.Take(1)?.Select((i) => i.Average).Average();
