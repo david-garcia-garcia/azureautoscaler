@@ -27,7 +27,7 @@ namespace poolautoscaler
         /// <param name="splitValue"></param>
         /// <returns></returns>
         /// <exception cref="ArgumentException"></exception>
-        public async Task<List<MetricEvalDtoResultValue>> RetrieveHistory(
+        public async Task<MetricEvalDtoResult> RetrieveHistory(
             MetricsQueryClient client,
             string resourceId,
             string metricName,
@@ -39,11 +39,11 @@ namespace poolautoscaler
             IList<MetricAggregationType> aggregations = null
             )
         {
-            var timeSeries = await this.RetrieveHistoryRaw(client, resourceId, metricName, timeRange, granularity, cancellationToken, splitName, splitValue, aggregations);
-            return timeSeries;
+            var result = await this.RetrieveHistoryRaw(client, resourceId, metricName, timeRange, granularity, cancellationToken, splitName, splitValue, aggregations);
+            return result;
         }
 
-        public async Task<List<MetricEvalDtoResultValue>> RetrieveHistoryRaw(
+        public async Task<MetricEvalDtoResult> RetrieveHistoryRaw(
             MetricsQueryClient client,
             string resourceId,
             string metricName,
@@ -114,7 +114,11 @@ namespace poolautoscaler
             if (metric == null || !metric.TimeSeries.Any())
             {
                 this.Logger.LogWarning("No metrics data found for metric {0}.", metricName);
-                return [];
+                return new MetricEvalDtoResult 
+                { 
+                    Values = new List<MetricEvalDtoResultValue>(),
+                    ExecutedAggregations = aggregations
+                };
             }
 
             // Calculate the average DTU consumption
@@ -122,26 +126,29 @@ namespace poolautoscaler
             if (timeSeries == null || !timeSeries.Values.Any())
             {
                 this.Logger.LogWarning("No time series found for metric {0}.", metricName);
-                return null;
+                return new MetricEvalDtoResult 
+                { 
+                    Values = new List<MetricEvalDtoResultValue>(),
+                    ExecutedAggregations = aggregations
+                };
             }
 
-            return timeSeries.Values.Select((i) => 
+            var values = timeSeries.Values.Select((i) => new MetricEvalDtoResultValue()
             {
-                var value = new MetricEvalDtoResultValue()
-                {
-                    Average = i.Average,
-                    Maximum = i.Maximum,
-                    Minimum = i.Minimum,
-                    Count = i.Count,
-                    TimeStamp = i.TimeStamp,
-                    Total = i.Total
-                };
-                
-                // Populate Default with the primary aggregation value
-                value.Default = value.Average ?? value.Maximum ?? value.Minimum ?? value.Total ?? value.Count;
-                
-                return value;
+                Average = i.Average,
+                Maximum = i.Maximum,
+                Minimum = i.Minimum,
+                Count = i.Count,
+                TimeStamp = i.TimeStamp,
+                Total = i.Total
+                // Note: Default is populated in RetrieveHistory() based on executed aggregations
             }).ToList();
+            
+            return new MetricEvalDtoResult
+            {
+                Values = values,
+                ExecutedAggregations = aggregations
+            };
         }
     }
 }

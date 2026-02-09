@@ -274,7 +274,7 @@ namespace poolautoscaler.resources
                 {
                     var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
                     metricValue = jobsInfo.QueuedJobs;
-                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                    Logger.LogTrace("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
                         name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
                 }
@@ -283,7 +283,7 @@ namespace poolautoscaler.resources
                 {
                     var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
                     metricValue = jobsInfo.QueuedJobs;
-                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                    Logger.LogTrace("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
                         name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
                 }
@@ -292,7 +292,7 @@ namespace poolautoscaler.resources
                 {
                     var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
                     metricValue = jobsInfo.RunningJobs;
-                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                    Logger.LogTrace("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
                         name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
                 }
@@ -301,7 +301,7 @@ namespace poolautoscaler.resources
                 {
                     var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
                     metricValue = jobsInfo.RunningJobs;
-                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
+                    Logger.LogTrace("Custom metric {MetricName}: {Value} (Queued={Queued}, Running={Running})",
                         name, metricValue, jobsInfo.QueuedJobs, jobsInfo.RunningJobs);
                     break;
                 }
@@ -311,7 +311,7 @@ namespace poolautoscaler.resources
                     var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: true, cancellationToken);
                     var limit = ExistingParallelJobsState.HostedParallelJobs ?? 0;
                     metricValue = Math.Max(0, limit - jobsInfo.RunningJobs);
-                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Limit={Limit}, Running={Running})",
+                    Logger.LogTrace("Custom metric {MetricName}: {Value} (Limit={Limit}, Running={Running})",
                         name, metricValue, limit, jobsInfo.RunningJobs);
                     break;
                 }
@@ -321,7 +321,7 @@ namespace poolautoscaler.resources
                     var jobsInfo = await _devOpsClient.GetAggregatedQueuedJobsAsync(Organization, PersonalAccessToken, hostedOnly: false, cancellationToken);
                     var limit = ExistingParallelJobsState.PrivateParallelJobs ?? 0;
                     metricValue = Math.Max(0, limit - jobsInfo.RunningJobs);
-                    Logger.LogDebug("Custom metric {MetricName}: {Value} (Limit={Limit}, Running={Running})",
+                    Logger.LogTrace("Custom metric {MetricName}: {Value} (Limit={Limit}, Running={Running})",
                         name, metricValue, limit, jobsInfo.RunningJobs);
                     break;
                 }

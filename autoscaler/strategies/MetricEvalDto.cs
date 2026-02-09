@@ -1,3 +1,5 @@
+using Azure.Monitor.Query.Models;
+
 namespace poolautoscaler.strategies
 {
     public class MetricEvalDto
@@ -38,6 +40,21 @@ namespace poolautoscaler.strategies
         /// Optional message explaining why the metric is invalid
         /// </summary>
         public string InvalidReason { get; set; }
+
+        /// <summary>
+        /// The aggregations that were actually executed when retrieving this metric.
+        /// This is the effective list after applying defaults (defaults to Average if not specified).
+        /// </summary>
+        public IList<MetricAggregationType> ExecutedAggregations { get; set; }
+
+        /// <summary>
+        /// The primary aggregation type used for the Default property in values.
+        /// This is the first aggregation from ExecutedAggregations.
+        /// </summary>
+        public MetricAggregationType? PrimaryAggregation =>
+            ExecutedAggregations != null && ExecutedAggregations.Any()
+                ? ExecutedAggregations.First()
+                : null;
     }
 
     public class MetricEvalDtoResultValue
@@ -80,9 +97,9 @@ namespace poolautoscaler.strategies
 
         public bool HasData()
         {
-            return Maximum.HasValue || 
-                   Minimum.HasValue || 
-                   Average.HasValue || 
+            return Maximum.HasValue ||
+                   Minimum.HasValue ||
+                   Average.HasValue ||
                    !string.IsNullOrEmpty(CustomString) ||
                    Total.HasValue ||
                    Count.HasValue;
@@ -91,21 +108,18 @@ namespace poolautoscaler.strategies
         public MetricEvalDtoResultValue SetMaximum(double? Maximum)
         {
             this.Maximum = Maximum;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetMinimum(double? Minimum)
         {
             this.Minimum = Minimum;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetAverage(double? Average)
         {
             this.Average = Average;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
@@ -118,14 +132,12 @@ namespace poolautoscaler.strategies
         public MetricEvalDtoResultValue SetTotal(double? Total)
         {
             this.Total = Total;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetCount(double? Count)
         {
             this.Count = Count;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
@@ -153,20 +165,21 @@ namespace poolautoscaler.strategies
             if (this.Maximum.HasValue) return FormatNumber(this.Maximum.Value);
             if (this.Minimum.HasValue) return FormatNumber(this.Minimum.Value);
             if (this.Total.HasValue) return FormatNumber(this.Total.Value);
-            if (this.Count.HasValue) return this.Count.Value.ToString("F0");
+            if (this.Count.HasValue) return this.Count.Value.ToString("F0", System.Globalization.CultureInfo.InvariantCulture);
             if (!string.IsNullOrEmpty(this.CustomString)) return this.CustomString;
             return "null";
         }
 
         private static string FormatNumber(double value)
         {
+            // Use InvariantCulture to ensure consistent decimal separator (.) regardless of system locale
             // If the value is a whole number, don't show decimals
             if (value == Math.Floor(value))
             {
-                return value.ToString("F0");
+                return value.ToString("F0", System.Globalization.CultureInfo.InvariantCulture);
             }
             // Otherwise show 2 decimal places
-            return value.ToString("F2");
+            return value.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         /// <summary>

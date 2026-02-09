@@ -278,85 +278,43 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
-        public void SetAverage_ShouldPopulateDefault()
+        public void MetricEvalDtoResult_PrimaryAggregation_ShouldReturnFirstAggregation()
         {
             // Arrange
-            var value = new MetricEvalDtoResultValue();
+            var result = new MetricEvalDtoResult
+            {
+                ExecutedAggregations = new List<Azure.Monitor.Query.Models.MetricAggregationType>
+                {
+                    Azure.Monitor.Query.Models.MetricAggregationType.Maximum,
+                    Azure.Monitor.Query.Models.MetricAggregationType.Average
+                }
+            };
 
-            // Act
-            value.SetAverage(42.5);
-
-            // Assert
-            Assert.Equal(42.5, value.Default);
-            Assert.Equal(42.5, value.Average);
+            // Act & Assert
+            Assert.Equal(Azure.Monitor.Query.Models.MetricAggregationType.Maximum, result.PrimaryAggregation);
         }
 
         [Fact]
-        public void SetMaximum_ShouldPopulateDefault()
+        public void MetricEvalDtoResult_PrimaryAggregation_WhenEmpty_ShouldReturnNull()
         {
             // Arrange
-            var value = new MetricEvalDtoResultValue();
+            var result = new MetricEvalDtoResult
+            {
+                ExecutedAggregations = new List<Azure.Monitor.Query.Models.MetricAggregationType>()
+            };
 
-            // Act
-            value.SetMaximum(100.0);
-
-            // Assert
-            Assert.Equal(100.0, value.Default);
-            Assert.Equal(100.0, value.Maximum);
+            // Act & Assert
+            Assert.Null(result.PrimaryAggregation);
         }
 
         [Fact]
-        public void SetMinimum_ShouldPopulateDefault()
-        {
-            // Arrange
-            var value = new MetricEvalDtoResultValue();
-
-            // Act
-            value.SetMinimum(5.0);
-
-            // Assert
-            Assert.Equal(5.0, value.Default);
-            Assert.Equal(5.0, value.Minimum);
-        }
-
-        [Fact]
-        public void SetTotal_ShouldPopulateDefault()
-        {
-            // Arrange
-            var value = new MetricEvalDtoResultValue();
-
-            // Act
-            value.SetTotal(1000.0);
-
-            // Assert
-            Assert.Equal(1000.0, value.Default);
-            Assert.Equal(1000.0, value.Total);
-        }
-
-        [Fact]
-        public void SetCount_ShouldPopulateDefault()
-        {
-            // Arrange
-            var value = new MetricEvalDtoResultValue();
-
-            // Act
-            value.SetCount(50.0);
-
-            // Assert
-            Assert.Equal(50.0, value.Default);
-            Assert.Equal(50.0, value.Count);
-        }
-
-        [Fact]
-        public void Default_WhenMultipleAggregationsSet_ShouldPrioritizeAverage()
+        public void MetricEvalDtoResult_Valid_ShouldDefaultToTrue()
         {
             // Arrange & Act
-            var value = new MetricEvalDtoResultValue();
-            value.SetMaximum(100.0);
-            value.SetAverage(50.0);
+            var result = new MetricEvalDtoResult();
 
-            // Assert - Average takes priority
-            Assert.Equal(50.0, value.Default);
+            // Assert
+            Assert.True(result.Valid);
         }
     }
 }

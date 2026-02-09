@@ -1,3 +1,8 @@
+using System.Data;
+using System.Diagnostics;
+using System.Globalization;
+using System.Reflection;
+using System.Runtime.ExceptionServices;
 using Azure.Core;
 using Azure.Identity;
 using Azure.Monitor.Query;
@@ -13,11 +18,6 @@ using poolautoscaler.licensing;
 using poolautoscaler.resources;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
-using System.Data;
-using System.Diagnostics;
-using System.Globalization;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using InteractiveBrowserCredential = Azure.Identity.InteractiveBrowserCredential;
 
 namespace AzureSqlElasticPoolAutoscaler
@@ -471,7 +471,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         {
                             resourceState.Logger.LogError(ex, ex.Message);
                             resourceState.Logger.LogWarning("Resource evaluation will be disabled for 1 hour."); // Hardcoded right now
-                            resourceState.DisabledUntil["Unhandled exception"] = DateTime.UtcNow.AddHours(1);
+                            resourceState.DisabledUntil["Unhandled exception: " + ex.Message] = DateTime.UtcNow.AddHours(1);
                         }
                         finally
                         {
@@ -535,7 +535,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             {
                                 // New resource - add it
                                 this.Logger.LogInformation("Adding new resource {0}: {1}", expandedResourceId.Key, expandedResourceId.Value);
-                                
+
                                 var resourceLogger = this.LogFactory.CreateLogger(expandedResourceId.Key);
                                 var state = ResourceStateFactory.Create(expandedResourceId.Value, resourceLogger, resource, resourceInstance.Value);
                                 resourceLogger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
@@ -773,7 +773,7 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         {
                             capturingLogger.LogDebug("Rule '{0}' Dimension request changed from {1} to {2}", rule.Id, existingDimensionRequest ?? "(null)", newDimensionRequest);
                         }
-                        else 
+                        else
                         {
                             capturingLogger.LogDebug("Rule '{0}' requested target value '{1}'", rule.Id, targetDimensionValue);
                         }
@@ -870,10 +870,11 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
 
                         logger.LogTrace($"Metrics query: Name={metric.Name}, SplitName={splitName}, SplitValue={splitValue}, Aggregations={string.Join(", ", aggregations)} TargetResource={targetResource}, TimeRange={Math.Round(metricWindow.TotalHours, 2)}h");
 
-                        List<MetricEvalDtoResultValue> values;
+                        MetricEvalDtoResult metricResult;
+
                         try
                         {
-                            values = await eval.RetrieveHistory(
+                            metricResult = await eval.RetrieveHistory(
                                 metricsClient,
                                 targetResource,
                                 metric.Name,
@@ -895,12 +896,12 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             throw;
                         }
 
-                        values.Reverse();
+                        metricResult.Values.Reverse();
 
                         // Remove data points without data only from the start of the time series
-                        var originalCount = values.Count;
-                        values = values.SkipWhile(v => !v.HasData()).ToList();
-                        var removedCount = originalCount - values.Count;
+                        var originalCount = metricResult.Values.Count;
+                        metricResult.Values = metricResult.Values.SkipWhile(v => !v.HasData()).ToList();
+                        var removedCount = originalCount - metricResult.Values.Count;
 
                         // One datapoint loss is commong due to how metric windows work.
                         if (removedCount > 1)
@@ -908,8 +909,8 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                             logger.LogDebug($"Removed {removedCount} data points from a total of {originalCount} without data from the beginning of the time series for {metric.Name}. This is not necessarily bad. Review your metrics configuration.");
                         }
 
-                        var metricResult = new MetricEvalDtoResult();
-                        metricResult.Values = values.Select((i) => metric.TransformExpression(i)).ToList();
+                        // Apply transform expression to values
+                        metricResult.Values = metricResult.Values.Select((i) => metric.TransformExpression(i)).ToList();
 
                         // Validate each data point in the metric against configured bounds
                         // Mark individual values as invalid, then assess overall metric validity
@@ -944,6 +945,23 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         }
 
                         metrics.Add(metric.Id, metricResult);
+                    }
+                }
+
+                // Set default values, not the best place, but covers custom and regular metrics
+                foreach (var metric in metrics.Values)
+                {
+                    foreach (var metricValue in metric.Values)
+                    {
+                        metricValue.Default = metric.PrimaryAggregation switch
+                        {
+                            MetricAggregationType.Average => metricValue.Average,
+                            MetricAggregationType.Maximum => metricValue.Maximum,
+                            MetricAggregationType.Minimum => metricValue.Minimum,
+                            MetricAggregationType.Total => metricValue.Total,
+                            MetricAggregationType.Count => metricValue.Count,
+                            null => metricValue.Average ?? metricValue.Maximum ?? metricValue.Minimum ?? metricValue.Total ?? metricValue.Count
+                        };
                     }
                 }
 

@@ -1,4 +1,4 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
 using Azure.ResourceManager;
@@ -75,7 +75,7 @@ namespace poolautoscaler.resources
             var metricsClient = new MetricsQueryClient(credential);
             var eval = new MetricEvaluation(this.Logger);
 
-            var cpuHistory = await eval.RetrieveHistoryRaw(
+            var cpuHistoryResult = await eval.RetrieveHistoryRaw(
                 metricsClient,
                 this.ResourceId,
                 "cpu_percent",
@@ -88,10 +88,11 @@ namespace poolautoscaler.resources
                 // Hacer que las métricas empiecen en horas cerradas
                 new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0)
             );
+            var cpuHistory = cpuHistoryResult.Values;
 
             // This is super important in burstable series, because consuming these credits can lead
             // to a total hault. Returns a value between 0 and 1 representing consumed percentage.
-            var cpuCreditsRemaining = await eval.RetrieveHistoryRaw(
+            var cpuCreditsRemainingResult = await eval.RetrieveHistoryRaw(
                 metricsClient,
                 this.ResourceId,
                 "cpu_credits_remaining",
@@ -104,8 +105,9 @@ namespace poolautoscaler.resources
                 // Hacer que las métricas empiecen en horas cerradas
                 new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0)
             );
+            var cpuCreditsRemaining = cpuCreditsRemainingResult.Values;
 
-            var cpuCreditsConsumed = await eval.RetrieveHistoryRaw(
+            var cpuCreditsConsumedResult = await eval.RetrieveHistoryRaw(
                 metricsClient,
                 this.ResourceId,
                 "cpu_credits_consumed",
@@ -118,6 +120,7 @@ namespace poolautoscaler.resources
                 // Hacer que las métricas empiecen en horas cerradas
                 new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0)
             );
+            var cpuCreditsConsumed = cpuCreditsConsumedResult.Values;
 
             var now = DateTimeOffset.UtcNow;
             var startDate = now.AddDays(-timeRange.Days);
