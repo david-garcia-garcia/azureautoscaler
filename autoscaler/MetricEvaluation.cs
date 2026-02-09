@@ -40,24 +40,6 @@ namespace poolautoscaler
             )
         {
             var result = await this.RetrieveHistoryRaw(client, resourceId, metricName, timeRange, granularity, cancellationToken, splitName, splitValue, aggregations);
-            
-            // Populate Default based on the primary (first) executed aggregation
-            if (result.PrimaryAggregation.HasValue)
-            {
-                foreach (var value in result.Values)
-                {
-                    value.Default = result.PrimaryAggregation.Value switch
-                    {
-                        MetricAggregationType.Average => value.Average,
-                        MetricAggregationType.Maximum => value.Maximum,
-                        MetricAggregationType.Minimum => value.Minimum,
-                        MetricAggregationType.Total => value.Total,
-                        MetricAggregationType.Count => value.Count,
-                        _ => value.Average ?? value.Maximum ?? value.Minimum ?? value.Total ?? value.Count
-                    };
-                }
-            }
-            
             return result;
         }
 

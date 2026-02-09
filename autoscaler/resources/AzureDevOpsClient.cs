@@ -245,7 +245,7 @@ namespace poolautoscaler.resources
 
                     if (poolJobs.QueuedJobs > 0 || poolJobs.RunningJobs > 0)
                     {
-                        _logger.LogDebug("Pool '{PoolName}' (ID: {PoolId}): Queued={Queued}, Running={Running}",
+                        _logger.LogTrace("Pool '{PoolName}' (ID: {PoolId}): Queued={Queued}, Running={Running}",
                             pool.Name, pool.Id, poolJobs.QueuedJobs, poolJobs.RunningJobs);
                     }
                 }
@@ -255,7 +255,7 @@ namespace poolautoscaler.resources
                 }
             }
 
-            _logger.LogDebug("Total {Type} jobs - Queued: {Queued}, Running: {Running}",
+            _logger.LogTrace("Total {Type} jobs - Queued: {Queued}, Running: {Running}",
                 hostedOnly ? "hosted" : "self-hosted",
                 result.QueuedJobs,
                 result.RunningJobs);

@@ -358,5 +358,45 @@ namespace poolautoscaler.tests
             // Assert - Average takes priority
             Assert.Equal(50.0, value.Default);
         }
+
+        [Fact]
+        public void MetricEvalDtoResult_PrimaryAggregation_ShouldReturnFirstAggregation()
+        {
+            // Arrange
+            var result = new MetricEvalDtoResult
+            {
+                ExecutedAggregations = new List<Azure.Monitor.Query.Models.MetricAggregationType>
+                {
+                    Azure.Monitor.Query.Models.MetricAggregationType.Maximum,
+                    Azure.Monitor.Query.Models.MetricAggregationType.Average
+                }
+            };
+
+            // Act & Assert
+            Assert.Equal(Azure.Monitor.Query.Models.MetricAggregationType.Maximum, result.PrimaryAggregation);
+        }
+
+        [Fact]
+        public void MetricEvalDtoResult_PrimaryAggregation_WhenEmpty_ShouldReturnNull()
+        {
+            // Arrange
+            var result = new MetricEvalDtoResult
+            {
+                ExecutedAggregations = new List<Azure.Monitor.Query.Models.MetricAggregationType>()
+            };
+
+            // Act & Assert
+            Assert.Null(result.PrimaryAggregation);
+        }
+
+        [Fact]
+        public void MetricEvalDtoResult_Valid_ShouldDefaultToTrue()
+        {
+            // Arrange & Act
+            var result = new MetricEvalDtoResult();
+
+            // Assert
+            Assert.True(result.Valid);
+        }
     }
 }

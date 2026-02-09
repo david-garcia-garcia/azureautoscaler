@@ -51,9 +51,9 @@ namespace poolautoscaler.strategies
         /// The primary aggregation type used for the Default property in values.
         /// This is the first aggregation from ExecutedAggregations.
         /// </summary>
-        public MetricAggregationType? PrimaryAggregation => 
-            ExecutedAggregations != null && ExecutedAggregations.Any() 
-                ? ExecutedAggregations.First() 
+        public MetricAggregationType? PrimaryAggregation =>
+            ExecutedAggregations != null && ExecutedAggregations.Any()
+                ? ExecutedAggregations.First()
                 : null;
     }
 
@@ -97,9 +97,9 @@ namespace poolautoscaler.strategies
 
         public bool HasData()
         {
-            return Maximum.HasValue || 
-                   Minimum.HasValue || 
-                   Average.HasValue || 
+            return Maximum.HasValue ||
+                   Minimum.HasValue ||
+                   Average.HasValue ||
                    !string.IsNullOrEmpty(CustomString) ||
                    Total.HasValue ||
                    Count.HasValue;
@@ -108,21 +108,18 @@ namespace poolautoscaler.strategies
         public MetricEvalDtoResultValue SetMaximum(double? Maximum)
         {
             this.Maximum = Maximum;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetMinimum(double? Minimum)
         {
             this.Minimum = Minimum;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetAverage(double? Average)
         {
             this.Average = Average;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
@@ -135,14 +132,12 @@ namespace poolautoscaler.strategies
         public MetricEvalDtoResultValue SetTotal(double? Total)
         {
             this.Total = Total;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
         public MetricEvalDtoResultValue SetCount(double? Count)
         {
             this.Count = Count;
-            this.Default = this.Average ?? this.Maximum ?? this.Minimum ?? this.Total ?? this.Count;
             return this;
         }
 
