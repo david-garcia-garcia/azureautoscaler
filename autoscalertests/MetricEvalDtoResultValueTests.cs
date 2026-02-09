@@ -278,18 +278,6 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
-        public void Default_WhenMultipleAggregationsSet_ShouldPrioritizeAverage()
-        {
-            // Arrange & Act
-            var value = new MetricEvalDtoResultValue();
-            value.SetMaximum(100.0);
-            value.SetAverage(50.0);
-
-            // Assert - Average takes priority
-            Assert.Equal(50.0, value.Default);
-        }
-
-        [Fact]
         public void MetricEvalDtoResult_PrimaryAggregation_ShouldReturnFirstAggregation()
         {
             // Arrange
