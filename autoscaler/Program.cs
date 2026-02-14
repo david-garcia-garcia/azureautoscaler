@@ -156,6 +156,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 {
                     services.AddLogging();
                     services.AddSingleton<LicenseService>();
+                    services.AddSingleton<ResourceManager>();
                     services.AddHostedService<AutoscalerService>();
                 })
                 .ConfigureLogging((hostContext, logging) =>
@@ -193,14 +194,16 @@ namespace AzureSqlElasticPoolAutoscaler
             private readonly LicenseInfo LicenseInfo;
             private readonly DateTime _startTime;
             private readonly LicenseService _licenseService;
+            private readonly ResourceManager _resourceManager;
 
-            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService)
+            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService, ResourceManager resourceManager)
             {
                 this.RawConfiguration = configuration;
                 this.Configuration = configuration.Get<Configuration>();
                 this.LogFactory = factory;
                 this.Logger = factory.CreateLogger("autoscaler");
                 _licenseService = licenseService;
+                _resourceManager = resourceManager;
 
                 this.LicenseInfo = _licenseService.GetLicenseInfo();
 
@@ -293,48 +296,27 @@ namespace AzureSqlElasticPoolAutoscaler
                     credential = new InteractiveBrowserCredential();
                 }
 
-                Dictionary<string, ResourceState> Resources = new Dictionary<string, ResourceState>();
-
-                // Does this expire?
                 ArmClient client = new ArmClient(credential);
 
-                DateTime lastResourceDiscovery = DateTime.MinValue;
-
-                // Initial resource discovery
-                this.Logger.LogInformation("Performing initial resource discovery and expansion...");
-                await DiscoverResources(client, Resources, stoppingToken);
-                lastResourceDiscovery = DateTime.UtcNow;
+                const int MinIterationIntervalSeconds = 2;
 
                 while (!stoppingToken.IsCancellationRequested)
                 {
+                    var iterationStart = DateTime.UtcNow;
+
                     // Expired or invalid license: throw error after 12 hours of runtime
                     if (this.LicenseInfo.IsRestricted)
                     {
                         CheckAndThrowErrorAfter12Hours();
                     }
 
-                    // Check if we need to discover new resources
-                    if ((DateTime.UtcNow - lastResourceDiscovery) >= Configuration.ResourceDiscoveryFrequencyParsed)
-                    {
-                        try
-                        {
-                            await DiscoverResources(client, Resources, stoppingToken);
-                        }
-                        catch (Exception ex)
-                        {
-                            this.Logger.LogError(ex, "Failed to discover resources: {0}", ex.Message);
-                        }
-                        finally
-                        {
-                            // wait for next timeout to try again
-                            lastResourceDiscovery = DateTime.UtcNow;
-                        }
-                    }
+                    // Discover resources when due (first call runs immediately; then every ResourceDiscoveryFrequency)
+                    await _resourceManager.DiscoverAsync(client, Configuration.Resources, Configuration.ResourceDiscoveryFrequencyParsed, stoppingToken);
 
                     // Process all resources, but limit if license is expired or invalid
                     int processedCount = 0;
 
-                    foreach (var resourceState in Resources.Values)
+                    foreach (var resourceState in _resourceManager.Resources.Values)
                     {
                         if (stoppingToken.IsCancellationRequested)
                         {
@@ -383,92 +365,14 @@ this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
                         resourceState?.Logger.LogDebug("Next evaluation in {0}", TimeSpan.FromSeconds(resourceState.NextEvaluationSeconds()).ToString("g"));
                     }
 
-                    await Task.Delay(2000, stoppingToken);
-                }
-            }
-
-            private async Task DiscoverResources(ArmClient client, Dictionary<string, ResourceState> resources, CancellationToken stoppingToken)
-            {
-                var discoveredResources = new HashSet<string>();
-                int addedResources = 0;
-                int removedResources = 0;
-
-                // Phase 1: Discover all resources that should exist and add new ones
-                foreach (var resource in this.Configuration.Resources)
-                {
-                    if (resource.Enabled == false)
+                    // Ensure at least MinIterationIntervalSeconds between iteration starts
+                    var elapsed = (DateTime.UtcNow - iterationStart).TotalMilliseconds;
+                    var remaining = (MinIterationIntervalSeconds * 1000) - elapsed;
+                    if (remaining > 0)
                     {
-                        this.Logger.LogTrace($"Skipping disabled resource: " + string.Join(",", resource.Resources.Values.Select(i => i.Id)));
-                        continue;
-                    }
-
-                    foreach (var resourceInstance in resource.Resources)
-                    {
-                        Dictionary<string, string> expandedResourceIds;
-                        try
-                        {
-                            expandedResourceIds = await ResourceStateFactory.ExpandResources(client, resourceInstance.Key, resourceInstance.Value.ResourceId, this.Logger, stoppingToken);
-                        }
-                        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
-                        {
-                            // Resource/cluster was deleted, skip it
-                            this.Logger.LogError("Skipping deleted or non existing resource during expansion: {0}. Please remove this resource from your configuration.", resourceInstance.Value.ResourceId);
-                            continue;
-                        }
-                        catch (Azure.RequestFailedException ex) when (ex.Status == 403)
-                        {
-                            // Authorization error - log as error to alert operator
-                            this.Logger.LogError(ex, "Not authorized to access resource during expansion: {0}. Please check your credentials and permissions.", resourceInstance.Value.ResourceId);
-                            continue;
-                        }
-
-                        foreach (var expandedResourceId in expandedResourceIds)
-                        {
-                            resourceInstance.Value.Id = resourceInstance.Key;
-                            discoveredResources.Add(expandedResourceId.Key);
-
-                            // Check if this resource already exists
-                            if (resources.ContainsKey(expandedResourceId.Key))
-                            {
-                                // Resource already exists - keep it as-is (optimal: no reinstantiation)
-                                this.Logger.LogTrace("Keeping existing resource: {0}", expandedResourceId.Value);
-                            }
-                            else
-                            {
-                                // New resource - add it
-                                this.Logger.LogInformation("Adding new resource {0}: {1}", expandedResourceId.Key, expandedResourceId.Value);
-
-                                var resourceLogger = this.LogFactory.CreateLogger(expandedResourceId.Key);
-                                var state = ResourceStateFactory.Create(expandedResourceId.Value, resourceLogger, resource, resourceInstance.Value);
-                                resourceLogger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
-                                resources[expandedResourceId.Key] = state;
-                                addedResources++;
-                            }
-                        }
+                        await Task.Delay((int)remaining, stoppingToken);
                     }
                 }
-
-                // Phase 2: Cleanup - remove resources that no longer exist
-                var resourcesToRemove = new List<string>();
-                foreach (var existingResourceKey in resources.Keys)
-                {
-                    if (!discoveredResources.Contains(existingResourceKey))
-                    {
-                        resourcesToRemove.Add(existingResourceKey);
-                    }
-                }
-
-                foreach (var resourceKey in resourcesToRemove)
-                {
-                    this.Logger.LogInformation("Resource no longer found, removing: {0}", resources[resourceKey].Resource.Id);
-                    resources.Remove(resourceKey);
-                    removedResources++;
-                }
-
-                this.Logger.LogInformation("Resource introspection completed. Total resources: {0} (Added: {1}, Removed: {2})",
-                    resources.Count,
-                    addedResources,
-                    removedResources);
             }
 
             private void CheckAndThrowErrorAfter12Hours()
