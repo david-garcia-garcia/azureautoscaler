@@ -91,81 +91,29 @@ namespace AzureSqlElasticPoolAutoscaler
                 return;
             }
 
-            var privateKeyPath = args[0];
-            var licensedTo = args[1];
-            var expirationDateStr = args[2];
-            var maxResourcesStr = args[3];
+            var service = new poolautoscaler.licensing.LicenseService();
+            var result = service.Generate(args[0], args[1], args[2], args[3]);
 
-            if (!File.Exists(privateKeyPath))
+            if (!result.Success)
             {
-                Console.Error.WriteLine($"Error: Private key file not found: {privateKeyPath}");
+                Console.Error.WriteLine($"Error: {result.ErrorMessage}");
                 Environment.Exit(1);
                 return;
             }
 
-            DateTimeOffset expirationDateOffset;
-            try
-            {
-                // Parse as DateTimeOffset using ParseExact to ensure correct UTC handling
-                // Try ISO 8601 format with Z suffix first
-                if (expirationDateStr.EndsWith("Z", StringComparison.OrdinalIgnoreCase))
-                {
-                    expirationDateOffset = DateTimeOffset.ParseExact(
-                        expirationDateStr,
-                        "yyyy-MM-ddTHH:mm:ssZ",
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal);
-                }
-                else
-                {
-                    // Fallback to general parse
-                    expirationDateOffset = DateTimeOffset.Parse(expirationDateStr, null, System.Globalization.DateTimeStyles.RoundtripKind);
-                }
-            }
-            catch (FormatException)
-            {
-                Console.Error.WriteLine($"Error: Invalid expiration date format: {expirationDateStr}");
-                Console.Error.WriteLine("Expected ISO 8601 format (e.g., 2025-12-31T23:59:59Z)");
-                Environment.Exit(1);
-                return;
-            }
-
-            if (!int.TryParse(maxResourcesStr, out var maxResources) || maxResources < 1)
-            {
-                Console.Error.WriteLine($"Error: maxResources must be a positive integer: {maxResourcesStr}");
-                Environment.Exit(1);
-                return;
-            }
-
-            try
-            {
-                var privateKeyPem = File.ReadAllText(privateKeyPath);
-                // Pass the DateTimeOffset directly to avoid conversion issues
-                var jwt = poolautoscaler.licensing.LicenseGenerator.GenerateLicense(
-                    licensedTo,
-                    expirationDateOffset,
-                    maxResources,
-                    privateKeyPem);
-
-                Console.WriteLine("========================================");
-                Console.WriteLine("License JWT Generated Successfully");
-                Console.WriteLine("========================================");
-                Console.WriteLine();
-                Console.WriteLine("Set this environment variable:");
-                Console.WriteLine();
-                Console.WriteLine($"export AUTOSCALER_LICENSE='{jwt}'");
-                Console.WriteLine();
-                Console.WriteLine("Or in PowerShell:");
-                Console.WriteLine();
-                Console.WriteLine($"$env:AUTOSCALER_LICENSE='{jwt}'");
-                Console.WriteLine();
-                Console.WriteLine("========================================");
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Error generating license: {ex.Message}");
-                Environment.Exit(1);
-            }
+            Console.WriteLine("========================================");
+            Console.WriteLine("License JWT Generated Successfully");
+            Console.WriteLine("========================================");
+            Console.WriteLine();
+            Console.WriteLine("Set this environment variable:");
+            Console.WriteLine();
+            Console.WriteLine($"export AUTOSCALER_LICENSE='{result.Jwt}'");
+            Console.WriteLine();
+            Console.WriteLine("Or in PowerShell:");
+            Console.WriteLine();
+            Console.WriteLine($"$env:AUTOSCALER_LICENSE='{result.Jwt}'");
+            Console.WriteLine();
+            Console.WriteLine("========================================");
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args)
@@ -207,6 +155,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddLogging();
+                    services.AddSingleton<LicenseService>();
                     services.AddHostedService<AutoscalerService>();
                 })
                 .ConfigureLogging((hostContext, logging) =>
@@ -222,15 +171,10 @@ namespace AzureSqlElasticPoolAutoscaler
                     });
 
                     // Check if license is expired/invalid and force trace mode
-                    var licenseJwt = Environment.GetEnvironmentVariable("AUTOSCALER_LICENSE");
-                    var validator = new LicenseValidator();
-                    var license = validator.ValidateAndLoadLicense();
-                    var isExpired = license != null && validator.IsExpired(license);
-                    var isValid = validator.IsValid;
-
-                    if (!isValid || isExpired || string.IsNullOrEmpty(licenseJwt))
+                    var licenseService = new LicenseService();
+                    var licenseInfo = licenseService.GetLicenseInfo();
+                    if (licenseInfo.IsRestricted)
                     {
-                        // Expired, invalid, or no license: trace mode only
                         logging.SetMinimumLevel(LogLevel.Trace);
                     }
                     else
@@ -248,23 +192,17 @@ namespace AzureSqlElasticPoolAutoscaler
             private readonly Configuration Configuration;
             private readonly LicenseInfo LicenseInfo;
             private readonly DateTime _startTime;
-            private readonly LicenseValidator _licenseValidator;
+            private readonly LicenseService _licenseService;
 
-            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory)
+            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService)
             {
                 this.RawConfiguration = configuration;
                 this.Configuration = configuration.Get<Configuration>();
                 this.LogFactory = factory;
                 this.Logger = factory.CreateLogger("autoscaler");
+                _licenseService = licenseService;
 
-                // Validate and load license
-                var validator = new LicenseValidator();
-                var license = validator.ValidateAndLoadLicense();
-                var isExpired = license != null && validator.IsExpired(license);
-                this.LicenseInfo = new LicenseInfo(license ?? validator.CreateExpiredDefaultLicense(), validator.IsValid, isExpired);
-
-                // Store validator for error reporting
-                _licenseValidator = validator;
+                this.LicenseInfo = _licenseService.GetLicenseInfo();
 
                 // Track startup time for expired license error checking
                 _startTime = DateTime.UtcNow;
@@ -273,7 +211,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 PrintVersionInfo();
 
                 // Log license information
-                PrintLicenseInfo();
+                _licenseService.LogLicenseInfo(this.Logger);
 
                 // Apply logging restrictions for expired or invalid licenses
                 if (this.LicenseInfo.IsRestricted)
@@ -316,42 +254,6 @@ namespace AzureSqlElasticPoolAutoscaler
                 return "Unknown";
             }
 
-            private void PrintLicenseInfo()
-            {
-                var license = this.LicenseInfo.License;
-                var now = DateTime.UtcNow;
-                var timeUntilExpiration = license.ExpirationDate - now;
-                var daysRemaining = (int)timeUntilExpiration.TotalDays;
-
-                // Log basic license information in one line
-                this.Logger.LogInformation(
-                    "License: LicensedTo={LicensedTo}, DaysRemaining={DaysRemaining}, MaxResources={MaxResources}",
-                    license.LicensedTo,
-                    daysRemaining,
-                    license.MaxResources);
-
-                // Optionally log license issues if expired or has errors
-                if (this.LicenseInfo.IsRestricted)
-                {
-                    if (this.LicenseInfo.IsExpired)
-                    {
-                        this.Logger.LogWarning(
-                            "License expired. Limited functionality enabled.");
-                    }
-                    else if (!this.LicenseInfo.IsValid)
-                    {
-                        this.Logger.LogWarning(
-                            "License invalid. Limited functionality enabled.");
-                    }
-
-                    // Show validation error if available
-                    if (!string.IsNullOrEmpty(_licenseValidator.LastError))
-                    {
-                        this.Logger.LogWarning("License Validation Error: {Error}", _licenseValidator.LastError);
-                    }
-                }
-            }
-
             protected override async Task ExecuteAsync(CancellationToken stoppingToken)
             {
                 List<IDimension> dimensions = new List<IDimension>();
@@ -369,7 +271,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 dimensions.Add(new DimensionAzureDevOpsHostedParallelJobs());
                 dimensions.Add(new DimensionAzureDevOpsPrivateParallelJobs());
 
-                TokenCredential credential = null;
+                TokenCredential credential;
 
                 switch (Configuration.AzureCredentialType)
                 {
