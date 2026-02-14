@@ -149,7 +149,7 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var loggerMock = new Mock<ILogger>();
-            
+
             // Enable only the expected level
             foreach (LogLevel level in Enum.GetValues(typeof(LogLevel)))
             {

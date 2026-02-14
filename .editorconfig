@@ -1,0 +1,122 @@
+# EditorConfig: https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csx,vb,vbx}]
+# Unnecessary using directive (IDE0005)
+dotnet_diagnostic.IDE0005.severity = error
+
+# Require braces for all control flow (if, else, for, foreach, while, etc.)
+# IDE0011: Add braces
+dotnet_diagnostic.IDE0011.severity = error
+csharp_prefer_braces = true:error
+
+# One type per file (StyleCop.Analyzers SA1402)
+dotnet_diagnostic.SA1402.severity = error
+
+# No trailing whitespace (SA1028)
+dotnet_diagnostic.SA1028.severity = error
+
+# Prefix local calls with this (SA1101)
+dotnet_diagnostic.SA1101.severity = error
+
+# Field names should not begin with underscore (SA1309)
+dotnet_diagnostic.SA1309.severity = error
+
+# SA1413: Use trailing comma in multi-line initializers - disabled
+dotnet_diagnostic.SA1413.severity = none
+
+# Elements should be documented (SA1600)
+dotnet_diagnostic.SA1600.severity = error
+
+# Public members should come before private members (SA1202)
+dotnet_diagnostic.SA1202.severity = error
+
+# SA1200: Using directive should appear within a namespace - disabled
+dotnet_diagnostic.SA1200.severity = none
+
+# SA1300: Element should begin with an uppercase letter (e.g. namespace) - disabled
+dotnet_diagnostic.SA1300.severity = none
+
+# SA1633: File header must be at top of file - disabled (no license headers required)
+dotnet_diagnostic.SA1633.severity = none
+
+# Do not use regions (SA1124)
+dotnet_diagnostic.SA1124.severity = error
+
+# Parameters should begin on the line after the declaration when spanning multiple lines (SA1116)
+dotnet_diagnostic.SA1116.severity = error
+
+# Element parameters must be documented (SA1611)
+dotnet_diagnostic.SA1611.severity = error
+
+# Element parameter documentation should have text (SA1614)
+dotnet_diagnostic.SA1614.severity = error
+
+# Element return value should be documented (SA1615)
+dotnet_diagnostic.SA1615.severity = error
+
+# Documentation text should end with a period (SA1629)
+dotnet_diagnostic.SA1629.severity = error
+
+# Element documentation must not be copied and pasted (SA1625)
+dotnet_diagnostic.SA1625.severity = error
+
+# Property summary documentation must match accessors (SA1623) - disabled
+dotnet_diagnostic.SA1623.severity = none
+
+# Use literal suffix notation instead of casting (SA1139) - disabled
+dotnet_diagnostic.SA1139.severity = none
+
+# Constructor summary must begin with standard text (SA1642)
+dotnet_diagnostic.SA1642.severity = error
+
+# Statement must not be on single line (SA1501)
+dotnet_diagnostic.SA1501.severity = error
+
+# Code should not contain multiple blank lines in a row (SA1507)
+dotnet_diagnostic.SA1507.severity = error
+
+# Closing brace should be followed by blank line (SA1513)
+dotnet_diagnostic.SA1513.severity = error
+
+# Elements should be separated by blank line (SA1516)
+dotnet_diagnostic.SA1516.severity = error
+
+# Prefer 'var' when type is apparent (optional; use default or none to avoid churn)
+# dotnet_style_prefer_var_for_built_in_types = false:suggestion
+# dotnet_style_prefer_var_when_type_is_apparent = true:suggestion
+
+# Prefer explicit types in member declarations (optional)
+# dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+
+# SA1600 not required in test project
+[autoscalertests/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+
+# SA1600 relaxed for resource/dimension/strategy areas until XML docs are added (see LINT_FIX_PLAN.md)
+[**/resourcemanagement/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+[**/resources/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+[**/dimensions/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+[**/strategies/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+[**/metrics/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+[**/licensing/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+[**/configuration/**/*.cs]
+dotnet_diagnostic.SA1600.severity = none
+[**/Program.cs]
+dotnet_diagnostic.SA1600.severity = none
+
+[*.{json,yml,yaml}]
+indent_size = 2

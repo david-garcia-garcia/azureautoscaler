@@ -1,28 +1,25 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Azure.ResourceManager;
-using Azure.ResourceManager.ContainerService;
-using Azure.ResourceManager.MySql.FlexibleServers;
-using Azure.ResourceManager.Sql;
 using Azure.ResourceManager.Storage;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.StorageFileShare;
 
 namespace poolautoscaler.dimensions
 {
+    /// <summary>Storage file share provisioned size (GB) dimension.</summary>
     internal class DimensionStorageFileShareProvisionedStorage : IDimension
     {
-
-
         public DimensionStorageFileShareProvisionedStorage()
         {
         }
 
-        /// <summary>
-        /// Check that this rule can be applied to the given resource.
-        /// </summary>
-        /// <param name="resource"></param>
-        /// <param name="rule"></param>
-        /// <returns></returns>
+        /// <summary>Check that this rule can be applied to the given resource.</summary>
+        /// <param name="resource">The resource state.</param>
+        /// <param name="rule">The scaling rule.</param>
+        /// <param name="logger">The logger.</param>
+        /// <returns>True if the dimension can be applied.</returns>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource.Resource is FileShareResource
@@ -38,17 +35,12 @@ namespace poolautoscaler.dimensions
         {
         }
 
-        private void ValidateDimensionValue(string value)
-        {
-        }
-
-        /// <summary>
-        /// Compare two dimension values
-        /// </summary>
-        /// <param name="dimensionValue1"></param>
-        /// <param name="dimensionValue2"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentException"></exception>
+        /// <summary>Compare two dimension values.</summary>
+        /// <param name="resource">The ARM resource (unused).</param>
+        /// <param name="dimensionValue1">First dimension value.</param>
+        /// <param name="dimensionValue2">Second dimension value.</param>
+        /// <returns>Comparison result.</returns>
+        /// <exception cref="ArgumentException">Thrown when values are invalid.</exception>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             if (double.TryParse(dimensionValue1, out var value1) && double.TryParse(dimensionValue2, out var value2))
@@ -110,9 +102,13 @@ namespace poolautoscaler.dimensions
                 throw new ArgumentException("Resource is not a FileShareResource.");
             }
 
-            ValidateDimensionValue(value);
+            this.ValidateDimensionValue(value);
 
             (resource as StorageFileShareResourceState).SetProvisionedStorage(double.Parse(value));
+        }
+
+        private void ValidateDimensionValue(string value)
+        {
         }
     }
 }

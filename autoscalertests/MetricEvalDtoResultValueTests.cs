@@ -1,4 +1,4 @@
-using poolautoscaler.strategies;
+using poolautoscaler.metrics.Dto;
 
 namespace poolautoscaler.tests
 {
@@ -178,8 +178,8 @@ namespace poolautoscaler.tests
         public void RenderValueWithStatus_WhenValid_ShouldReturnPlainValue()
         {
             // Arrange
-            var value = new MetricEvalDtoResultValue 
-            { 
+            var value = new MetricEvalDtoResultValue
+            {
                 Average = 100.0,
                 Valid = true
             };
@@ -195,8 +195,8 @@ namespace poolautoscaler.tests
         public void RenderValueWithStatus_WhenInvalid_ShouldPrefixWithExclamation()
         {
             // Arrange
-            var value = new MetricEvalDtoResultValue 
-            { 
+            var value = new MetricEvalDtoResultValue
+            {
                 Average = 0.0,
                 Valid = false,
                 InvalidReason = "Value is below minimum"
@@ -214,8 +214,8 @@ namespace poolautoscaler.tests
         public void RenderValueWithStatus_WhenInvalidWithDecimal_ShouldPrefixCorrectly()
         {
             // Arrange
-            var value = new MetricEvalDtoResultValue 
-            { 
+            var value = new MetricEvalDtoResultValue
+            {
                 Average = 42.50,
                 Valid = false,
                 InvalidReason = "Value is above maximum"

@@ -1,27 +1,29 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resources.AzureDevops;
+using poolautoscaler.resources.AzureDevops.Dto;
 
 namespace poolautoscaler.tests
 {
     public class AzureDevOpsParallelJobsResourceStateTests
     {
-        private readonly Mock<ILogger> _loggerMock;
-        private readonly Resource _config;
-        private readonly string _validResourceId;
+        private readonly Mock<ILogger> loggerMock;
+        private readonly Resource config;
+        private readonly string validResourceId;
 
         public AzureDevOpsParallelJobsResourceStateTests()
         {
-            _loggerMock = new Mock<ILogger>();
-            _validResourceId = "azuredevops://myorg";
-            _config = new Resource { };
+            this.loggerMock = new Mock<ILogger>();
+            this.validResourceId = "azuredevops://myorg";
+            this.config = new Resource { };
         }
 
         [Fact]
         public void Constructor_WithValidResourceId_ShouldParseOrganization()
         {
             // Arrange & Act
-            var state = CreateStateWithMockedClient(_validResourceId);
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
 
             // Assert
             Assert.Equal("myorg", state.Organization);
@@ -35,7 +37,7 @@ namespace poolautoscaler.tests
 
             // Act & Assert
             Assert.Throws<ArgumentException>(() =>
-                CreateStateWithMockedClient(invalidResourceId));
+                this.CreateStateWithMockedClient(invalidResourceId));
         }
 
         [Fact]
@@ -46,20 +48,20 @@ namespace poolautoscaler.tests
 
             // Act & Assert
             Assert.Throws<ArgumentException>(() =>
-                CreateStateWithMockedClient(invalidResourceId));
+                this.CreateStateWithMockedClient(invalidResourceId));
         }
 
         [Fact]
         public void SetHostedParallelJobs_ShouldUpdateRequestedState()
         {
             // Arrange
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 1,
                 PrivateParallelJobs = 2
             };
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // Act
             state.SetHostedParallelJobs(5);
@@ -72,12 +74,12 @@ namespace poolautoscaler.tests
         public void SetHostedParallelJobs_WithMultipleUpdates_ShouldKeepHighestValue()
         {
             // Arrange
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 1
             };
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // Act
             state.SetHostedParallelJobs(5);
@@ -92,8 +94,8 @@ namespace poolautoscaler.tests
         public void SetHostedParallelJobs_WithNegativeValue_ShouldThrowArgumentException()
         {
             // Arrange
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // Act & Assert
             Assert.Throws<ArgumentException>(() => state.SetHostedParallelJobs(-1));
@@ -103,13 +105,13 @@ namespace poolautoscaler.tests
         public void SetPrivateParallelJobs_ShouldUpdateRequestedState()
         {
             // Arrange
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 1,
                 PrivateParallelJobs = 2
             };
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // Act
             state.SetPrivateParallelJobs(8);
@@ -122,13 +124,13 @@ namespace poolautoscaler.tests
         public void PreparePatch_WhenHostedJobsChanged_ShouldReturnPatchWithChanges()
         {
             // Arrange
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 1,
                 PrivateParallelJobs = 2
             };
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             state.SetHostedParallelJobs(5);
 
@@ -138,7 +140,7 @@ namespace poolautoscaler.tests
             // Assert
             Assert.True(patch.HasChanges);
             Assert.False(patch.Disruptive);
-            var patchData = (AzureDevOpsParallelJobsResourceState.ParallelJobsState)patch.PatchData;
+            var patchData = (ParallelJobsState)patch.PatchData;
             Assert.Equal(5, patchData.HostedParallelJobs);
             Assert.Equal(2, patchData.PrivateParallelJobs); // Unchanged
         }
@@ -147,13 +149,13 @@ namespace poolautoscaler.tests
         public void PreparePatch_WhenNoChanges_ShouldReturnPatchWithNoChanges()
         {
             // Arrange
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 5,
                 PrivateParallelJobs = 2
             };
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // No changes requested
 
@@ -162,7 +164,7 @@ namespace poolautoscaler.tests
 
             // Assert
             Assert.False(patch.HasChanges);
-            var patchData = (AzureDevOpsParallelJobsResourceState.ParallelJobsState)patch.PatchData;
+            var patchData = (ParallelJobsState)patch.PatchData;
             Assert.Equal(5, patchData.HostedParallelJobs);
             Assert.Equal(2, patchData.PrivateParallelJobs);
         }
@@ -171,13 +173,13 @@ namespace poolautoscaler.tests
         public void PreparePatch_WhenBothTypesChanged_ShouldReturnPatchWithAllChanges()
         {
             // Arrange
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 1,
                 PrivateParallelJobs = 2
             };
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             state.SetHostedParallelJobs(5);
             state.SetPrivateParallelJobs(10);
@@ -187,7 +189,7 @@ namespace poolautoscaler.tests
 
             // Assert
             Assert.True(patch.HasChanges);
-            var patchData = (AzureDevOpsParallelJobsResourceState.ParallelJobsState)patch.PatchData;
+            var patchData = (ParallelJobsState)patch.PatchData;
             Assert.Equal(5, patchData.HostedParallelJobs);
             Assert.Equal(10, patchData.PrivateParallelJobs);
         }
@@ -196,12 +198,12 @@ namespace poolautoscaler.tests
         public void SetHostedParallelJobs_ToZero_ShouldBeAllowed()
         {
             // Arrange - Scale to zero is a key feature
-            var state = CreateStateWithMockedClient(_validResourceId);
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient(this.validResourceId);
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 5
             };
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // Act
             state.SetHostedParallelJobs(0);
@@ -209,7 +211,7 @@ namespace poolautoscaler.tests
             // Assert
             var patch = state.PreparePatch();
             Assert.True(patch.HasChanges);
-            var patchData = (AzureDevOpsParallelJobsResourceState.ParallelJobsState)patch.PatchData;
+            var patchData = (ParallelJobsState)patch.PatchData;
             Assert.Equal(0, patchData.HostedParallelJobs);
         }
 
@@ -221,14 +223,14 @@ namespace poolautoscaler.tests
         public void Constructor_WithVariousValidResourceIds_ShouldSucceed(string resourceId)
         {
             // Act & Assert - Should not throw
-            var state = CreateStateWithMockedClient(resourceId);
+            var state = this.CreateStateWithMockedClient(resourceId);
             Assert.NotNull(state);
         }
 
         private AzureDevOpsParallelJobsResourceState CreateStateWithMockedClient(string resourceId)
         {
-            var clientMock = new Mock<AzureDevOpsClient>(_loggerMock.Object);
-            return new AzureDevOpsParallelJobsResourceState(resourceId, _loggerMock.Object, _config, clientMock.Object);
+            var clientMock = new Mock<AzureDevOpsClient>(this.loggerMock.Object);
+            return new AzureDevOpsParallelJobsResourceState(resourceId, this.loggerMock.Object, this.config, clientMock.Object);
         }
     }
 }

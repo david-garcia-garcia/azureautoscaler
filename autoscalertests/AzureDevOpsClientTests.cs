@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using Moq.Protected;
-using poolautoscaler.resources;
+using poolautoscaler.resources.AzureDevops;
 using System.Net;
 using System.Text;
 
@@ -9,11 +9,11 @@ namespace poolautoscaler.tests
 {
     public class AzureDevOpsClientTests
     {
-        private readonly Mock<ILogger> _loggerMock;
+        private readonly Mock<ILogger> loggerMock;
 
         public AzureDevOpsClientTests()
         {
-            _loggerMock = new Mock<ILogger>();
+            this.loggerMock = new Mock<ILogger>();
         }
 
         [Fact]
@@ -21,8 +21,8 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var responseJson = """{"token": "test-bearer-token-12345"}""";
-            var httpClient = CreateMockHttpClient(responseJson, HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient(responseJson, HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act
             var token = await client.GetBillingTokenAsync("myorg", "test-pat", CancellationToken.None);
@@ -36,8 +36,8 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var responseJson = """{"token": ""}""";
-            var httpClient = CreateMockHttpClient(responseJson, HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient(responseJson, HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act & Assert
             await Assert.ThrowsAsync<Exception>(() =>
@@ -64,8 +64,8 @@ namespace poolautoscaler.tests
                 ]
             }
             """;
-            var httpClient = CreateMockHttpClient(responseJson, HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient(responseJson, HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act
             var result = await client.GetParallelJobsAsync("org-guid", "test-token", CancellationToken.None);
@@ -80,8 +80,8 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var responseJson = """{"value": []}""";
-            var httpClient = CreateMockHttpClient(responseJson, HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient(responseJson, HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act
             var result = await client.GetParallelJobsAsync("org-guid", "test-token", CancellationToken.None);
@@ -105,8 +105,8 @@ namespace poolautoscaler.tests
                 ]
             }
             """;
-            var httpClient = CreateMockHttpClient(responseJson, HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient(responseJson, HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act
             var result = await client.GetParallelJobsAsync("org-guid", "test-token", CancellationToken.None);
@@ -129,8 +129,8 @@ namespace poolautoscaler.tests
                 ]
             }
             """;
-            var httpClient = CreateMockHttpClient(responseJson, HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient(responseJson, HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act
             var result = await client.GetQueuedJobsAsync("myorg", "test-pat", 1, CancellationToken.None);
@@ -145,8 +145,8 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var responseJson = """{"value": []}""";
-            var httpClient = CreateMockHttpClient(responseJson, HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient(responseJson, HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act
             var result = await client.GetQueuedJobsAsync("myorg", "test-pat", 1, CancellationToken.None);
@@ -160,8 +160,8 @@ namespace poolautoscaler.tests
         public async Task SetParallelJobsAsync_WithValidRequest_CompletesSuccessfully()
         {
             // Arrange
-            var httpClient = CreateMockHttpClient("{}", HttpStatusCode.OK);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient("{}", HttpStatusCode.OK);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act & Assert - Should not throw
             await client.SetParallelJobsAsync(
@@ -176,8 +176,8 @@ namespace poolautoscaler.tests
         public async Task SetParallelJobsAsync_WithErrorResponse_ThrowsHttpRequestException()
         {
             // Arrange
-            var httpClient = CreateMockHttpClient("{\"error\": \"unauthorized\"}", HttpStatusCode.Unauthorized);
-            var client = new AzureDevOpsClient(httpClient, _loggerMock.Object);
+            var httpClient = this.CreateMockHttpClient("{\"error\": \"unauthorized\"}", HttpStatusCode.Unauthorized);
+            var client = new AzureDevOpsClient(httpClient, this.loggerMock.Object);
 
             // Act & Assert
             await Assert.ThrowsAsync<HttpRequestException>(() =>

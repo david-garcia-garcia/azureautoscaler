@@ -4,19 +4,23 @@ namespace poolautoscaler.tests
 {
     public class LicenseServiceTests : IDisposable
     {
-        private string? _originalLicenseEnv;
+        private string? originalLicenseEnv;
 
         public LicenseServiceTests()
         {
-            _originalLicenseEnv = Environment.GetEnvironmentVariable("AUTOSCALER_LICENSE");
+            this.originalLicenseEnv = Environment.GetEnvironmentVariable("AUTOSCALER_LICENSE");
         }
 
         public void Dispose()
         {
-            if (_originalLicenseEnv != null)
-                Environment.SetEnvironmentVariable("AUTOSCALER_LICENSE", _originalLicenseEnv);
+            if (this.originalLicenseEnv != null)
+            {
+                Environment.SetEnvironmentVariable("AUTOSCALER_LICENSE", this.originalLicenseEnv);
+            }
             else
+            {
                 Environment.SetEnvironmentVariable("AUTOSCALER_LICENSE", null);
+            }
         }
 
         [Fact]

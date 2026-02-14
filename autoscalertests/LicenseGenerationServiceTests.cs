@@ -5,12 +5,14 @@ namespace poolautoscaler.tests
     /// <summary>Tests for the Generate() (license generation) path of <see cref="LicenseService"/>.</summary>
     public class LicenseServiceGenerationTests : IDisposable
     {
-        private string? _tempKeyPath;
+        private string? tempKeyPath;
 
         public void Dispose()
         {
-            if (_tempKeyPath != null && File.Exists(_tempKeyPath))
-                File.Delete(_tempKeyPath);
+            if (this.tempKeyPath != null && File.Exists(this.tempKeyPath))
+            {
+                File.Delete(this.tempKeyPath);
+            }
         }
 
         [Fact]
@@ -32,13 +34,13 @@ namespace poolautoscaler.tests
         [Fact]
         public void Generate_WhenExpirationDateInvalid_ReturnsFailure()
         {
-            _tempKeyPath = Path.GetTempFileName();
+            this.tempKeyPath = Path.GetTempFileName();
             try
             {
-                File.WriteAllText(_tempKeyPath, "dummy");
+                File.WriteAllText(this.tempKeyPath, "dummy");
                 var service = new LicenseService();
                 var result = service.Generate(
-                    _tempKeyPath,
+                    this.tempKeyPath,
                     "Acme Corp",
                     "not-a-date",
                     "10");
@@ -50,22 +52,25 @@ namespace poolautoscaler.tests
             }
             finally
             {
-                if (_tempKeyPath != null && File.Exists(_tempKeyPath))
-                    File.Delete(_tempKeyPath);
-                _tempKeyPath = null;
+                if (this.tempKeyPath != null && File.Exists(this.tempKeyPath))
+                {
+                    File.Delete(this.tempKeyPath);
+                }
+
+                this.tempKeyPath = null;
             }
         }
 
         [Fact]
         public void Generate_WhenMaxResourcesInvalid_ReturnsFailure()
         {
-            _tempKeyPath = Path.GetTempFileName();
+            this.tempKeyPath = Path.GetTempFileName();
             try
             {
-                File.WriteAllText(_tempKeyPath, "dummy");
+                File.WriteAllText(this.tempKeyPath, "dummy");
                 var service = new LicenseService();
                 var result = service.Generate(
-                    _tempKeyPath,
+                    this.tempKeyPath,
                     "Acme Corp",
                     "2025-12-31T23:59:59Z",
                     "zero");
@@ -77,22 +82,25 @@ namespace poolautoscaler.tests
             }
             finally
             {
-                if (_tempKeyPath != null && File.Exists(_tempKeyPath))
-                    File.Delete(_tempKeyPath);
-                _tempKeyPath = null;
+                if (this.tempKeyPath != null && File.Exists(this.tempKeyPath))
+                {
+                    File.Delete(this.tempKeyPath);
+                }
+
+                this.tempKeyPath = null;
             }
         }
 
         [Fact]
         public void Generate_WhenMaxResourcesZero_ReturnsFailure()
         {
-            _tempKeyPath = Path.GetTempFileName();
+            this.tempKeyPath = Path.GetTempFileName();
             try
             {
-                File.WriteAllText(_tempKeyPath, "dummy");
+                File.WriteAllText(this.tempKeyPath, "dummy");
                 var service = new LicenseService();
                 var result = service.Generate(
-                    _tempKeyPath,
+                    this.tempKeyPath,
                     "Acme Corp",
                     "2025-12-31T23:59:59Z",
                     "0");
@@ -102,9 +110,12 @@ namespace poolautoscaler.tests
             }
             finally
             {
-                if (_tempKeyPath != null && File.Exists(_tempKeyPath))
-                    File.Delete(_tempKeyPath);
-                _tempKeyPath = null;
+                if (this.tempKeyPath != null && File.Exists(this.tempKeyPath))
+                {
+                    File.Delete(this.tempKeyPath);
+                }
+
+                this.tempKeyPath = null;
             }
         }
     }

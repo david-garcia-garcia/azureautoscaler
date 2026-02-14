@@ -1,5 +1,6 @@
-﻿namespace poolautoscaler.utils
+namespace poolautoscaler.utils
 {
+    /// <summary>Burstable (B-series) VM credit and baseline data.</summary>
     public static class BurstableVmInfo
     {
         private static Dictionary<string, int> burstableMaxCredits = new Dictionary<string, int>
@@ -58,33 +59,45 @@
             { "Standard_B20ms", 17.0 }
         };
 
+        /// <summary>Returns baseline CPU % for the B-series SKU.</summary>
+        /// <param name="sku">The B-series SKU name.</param>
+        /// <returns>Baseline CPU percentage.</returns>
         public static double GetBurstableBaselinePerformance(string sku)
         {
             var key = (from p in burstableBaselineCpu.Keys
-                where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
-                select p).First();
+                       where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
+                       select p).First();
 
             return burstableBaselineCpu[key];
         }
 
+        /// <summary>Returns initial credits for the B-series SKU.</summary>
+        /// <param name="sku">The B-series SKU name.</param>
+        /// <returns>Initial credits.</returns>
         public static int GetBurstableInitialCredits(string sku)
         {
             var key = (from p in burstableInitialCredits.Keys
-                where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
-                select p).First();
+                       where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
+                       select p).First();
 
             return burstableInitialCredits[key];
         }
 
+        /// <summary>Returns credits earned per hour for the B-series SKU.</summary>
+        /// <param name="sku">The B-series SKU name.</param>
+        /// <returns>Credits per hour.</returns>
         public static int GetBurstableCreditsPerHour(string sku)
         {
             var key = (from p in burstableCreditsPerHour.Keys
-                where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
-                select p).First();
+                       where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
+                       select p).First();
 
             return burstableCreditsPerHour[key];
         }
 
+        /// <summary>Returns max credits for the B-series SKU.</summary>
+        /// <param name="sku">The B-series SKU name.</param>
+        /// <returns>Max credits for the VM size.</returns>
         public static int GetMaxCreditsPerVmSize(string sku)
         {
             var key = (from p in burstableMaxCredits.Keys
@@ -94,11 +107,14 @@
             return burstableMaxCredits[key];
         }
 
+        /// <summary>Returns true if the SKU is a B-series burstable VM.</summary>
+        /// <param name="sku">The SKU name.</param>
+        /// <returns>True if burstable B-series.</returns>
         public static bool IsBurstableSeries(string sku)
         {
             return (from p in burstableMaxCredits.Keys
-                where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
-                select p).Any();
+                    where p.Equals(sku, StringComparison.InvariantCultureIgnoreCase)
+                    select p).Any();
         }
 
     }

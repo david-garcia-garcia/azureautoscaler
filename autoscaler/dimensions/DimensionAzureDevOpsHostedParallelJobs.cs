@@ -1,7 +1,9 @@
 using Azure.Core;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.AzureDevops;
 
 namespace poolautoscaler.dimensions
 {

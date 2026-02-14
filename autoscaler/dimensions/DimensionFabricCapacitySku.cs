@@ -1,11 +1,13 @@
 using Azure.Core;
 using Azure.ResourceManager;
-using Azure.ResourceManager.Fabric;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.FabricCapacity;
 
 namespace poolautoscaler.dimensions
 {
+    /// <summary>Fabric capacity SKU dimension.</summary>
     internal class DimensionFabricCapacitySku : IDimension
     {
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)

@@ -1,26 +1,26 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.MySql.FlexibleServers;
 using Azure.ResourceManager.MySql.FlexibleServers.Models;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.MySqlFlexibleServer;
 
 namespace poolautoscaler.dimensions
 {
+    /// <summary>MySQL Flexible Server IOPS dimension.</summary>
     internal class DimensionMySqlFlexibleServerIops : IDimension
     {
-
-
         public DimensionMySqlFlexibleServerIops()
         {
         }
 
-        /// <summary>
-        /// Check that this rule can be applied to the given resource.
-        /// </summary>
-        /// <param name="resource"></param>
-        /// <param name="rule"></param>
-        /// <returns></returns>
+        /// <summary>Check that this rule can be applied to the given resource.</summary>
+        /// <param name="resource">The resource state.</param>
+        /// <param name="rule">The scaling rule.</param>
+        /// <param name="logger">The logger.</param>
+        /// <returns>True if the dimension can be applied.</returns>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource.Resource is MySqlFlexibleServerResource
@@ -39,21 +39,12 @@ namespace poolautoscaler.dimensions
             //this.ValidateDimensionValue(rule.DimensionValue);
         }
 
-        private void ValidateDimensionValue(string value)
-        {
-            if (!float.TryParse(value, out _))
-            {
-                throw new Exception("Invalid Iops value {value}");
-            }
-        }
-
-        /// <summary>
-        /// Compare two dimension values
-        /// </summary>
-        /// <param name="dimensionValue1"></param>
-        /// <param name="dimensionValue2"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentException"></exception>
+        /// <summary>Compare two dimension values.</summary>
+        /// <param name="resource">The ARM resource (unused).</param>
+        /// <param name="dimensionValue1">First dimension value.</param>
+        /// <param name="dimensionValue2">Second dimension value.</param>
+        /// <returns>Comparison result.</returns>
+        /// <exception cref="ArgumentException">Thrown when values are invalid.</exception>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             var value1 = float.Parse(dimensionValue1);
@@ -117,9 +108,17 @@ namespace poolautoscaler.dimensions
                 throw new ArgumentException("Resource is not a MySqlFlexibleServerResource.");
             }
 
-            ValidateDimensionValue(value);
+            this.ValidateDimensionValue(value);
 
             (resource as MySqlFlexibleServerResourceState).SetIops(value);
+        }
+
+        private void ValidateDimensionValue(string value)
+        {
+            if (!float.TryParse(value, out _))
+            {
+                throw new Exception("Invalid Iops value {value}");
+            }
         }
     }
 }
