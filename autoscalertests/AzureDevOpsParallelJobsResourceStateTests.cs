@@ -9,7 +9,6 @@ namespace poolautoscaler.tests
         private readonly Mock<ILogger> _loggerMock;
         private readonly Resource _config;
         private readonly string _validResourceId;
-        private readonly Mock<AzureDevOpsClient> _clientMock;
 
         public AzureDevOpsParallelJobsResourceStateTests()
         {
