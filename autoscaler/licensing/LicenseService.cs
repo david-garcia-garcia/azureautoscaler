@@ -19,6 +19,7 @@ namespace poolautoscaler.licensing
         private bool isValid;
         private string? lastError;
 
+        /// <summary>Initializes a new instance of the <see cref="LicenseService"/> class.</summary>
         public LicenseService()
         {
             this.publicKey = LoadPublicKey();

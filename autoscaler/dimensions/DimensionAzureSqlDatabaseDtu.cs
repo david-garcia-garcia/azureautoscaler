@@ -50,6 +50,7 @@ namespace poolautoscaler.dimensions
         /// <param name="rule">The scaling rule.</param>
         /// <param name="logger">The logger.</param>
         /// <returns>True if the dimension can be applied.</returns>
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource.Resource is SqlDatabaseResource sqlDatabaseResource
@@ -67,6 +68,7 @@ namespace poolautoscaler.dimensions
             return false;
         }
 
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
             // this.ValidateDimensionValue(rule.DimensionValueMin);
@@ -82,6 +84,7 @@ namespace poolautoscaler.dimensions
         /// <param name="dimensionValue2">Second dimension value.</param>
         /// <returns>Comparison result.</returns>
         /// <exception cref="ArgumentException">Thrown when values are not valid integers.</exception>
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             if (int.TryParse(dimensionValue1, out var value1) && int.TryParse(dimensionValue2, out var value2))
@@ -92,6 +95,7 @@ namespace poolautoscaler.dimensions
             throw new ArgumentException($"Invalid dimension values. Value1: '{dimensionValue1}', Value2: '{dimensionValue2}'");
         }
 
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (!(resource.Resource is SqlDatabaseResource sqlDatabase))
@@ -102,6 +106,7 @@ namespace poolautoscaler.dimensions
             return sqlDatabase.Data.Sku.Capacity.ToString()!;
         }
 
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             if (!(resource.Resource is SqlDatabaseResource sqlDatabase))
@@ -122,6 +127,7 @@ namespace poolautoscaler.dimensions
             return value;
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (!(resource is MsSqlDatabaseResourceState sqlDatabaseState))
@@ -132,6 +138,7 @@ namespace poolautoscaler.dimensions
             return sqlDatabaseState.RequestedMsSqlDatabaseState?.Sku?.Capacity?.ToString();
         }
 
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             if (!(resource.Resource is SqlDatabaseResource sqlDatabase))
@@ -152,6 +159,7 @@ namespace poolautoscaler.dimensions
             return capacityValues[position - 1].ToString();
         }
 
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,

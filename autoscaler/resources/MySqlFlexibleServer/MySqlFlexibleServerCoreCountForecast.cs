@@ -67,7 +67,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
 
             // El overhead que queremos tener en el pronóstico por encima
             // del consumo real
-            double CpuOverheadRequired = 0.3;
+            double cpuOverheadRequired = 0.3;
 
             // ##########################
             // END
@@ -86,9 +86,9 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
                 null,
                 null,
                 new List<MetricAggregationType>() { MetricAggregationType.Average, MetricAggregationType.Maximum },
+
                 // Hacer que las métricas empiecen en horas cerradas
-                new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0)
-            );
+                new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0));
             var cpuHistory = cpuHistoryResult.Values;
 
             // This is super important in burstable series, because consuming these credits can lead
@@ -103,9 +103,9 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
                 null,
                 null,
                 new List<MetricAggregationType>() { MetricAggregationType.Minimum, MetricAggregationType.Maximum, MetricAggregationType.Average },
+
                 // Hacer que las métricas empiecen en horas cerradas
-                new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0)
-            );
+                new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0));
             var cpuCreditsRemaining = cpuCreditsRemainingResult.Values;
 
             var cpuCreditsConsumedResult = await eval.RetrieveHistoryRaw(
@@ -118,9 +118,9 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
                 null,
                 null,
                 new List<MetricAggregationType>() { MetricAggregationType.Average },
+
                 // Hacer que las métricas empiecen en horas cerradas
-                new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0)
-            );
+                new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, DateTime.UtcNow.Hour, 0, 0));
             var cpuCreditsConsumed = cpuCreditsConsumedResult.Values;
 
             var now = DateTimeOffset.UtcNow;
@@ -259,7 +259,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
 
                         var usedCores = (cpuUsage * effectiveCoreCount);
 
-                        var recommendedCoreCount = Math.Ceiling((decimal)(usedCores) * (decimal)(1 + CpuOverheadRequired));
+                        var recommendedCoreCount = Math.Ceiling((decimal)(usedCores) * (decimal)(1 + cpuOverheadRequired));
                         if (recommendedCoreCount < minimumCoreCount)
                         {
                             recommendedCoreCount = minimumCoreCount;
@@ -268,7 +268,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
                         window.CapacitySamples.Add(new CapacitySample
                         {
                             UsedMillicores = (cpuAverage / 100) * effectiveCoreCount * 1000,
-                            RecommendedMillicores = (cpuAverage / 100) * effectiveCoreCount * 1000 * (1 + CpuOverheadRequired),
+                            RecommendedMillicores = (cpuAverage / 100) * effectiveCoreCount * 1000 * (1 + cpuOverheadRequired),
                             EffectiveAverageUsage = cpuUsage,
                             EffectiveValue = effectiveCoreCount,
                             RecommendedValue = (double)recommendedCoreCount,
@@ -281,8 +281,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
                         this.Logger.LogTrace(
                             "Unable to forecast for timestamp {Timestamp}: {Message}",
                             pointInTime,
-                            ex.Message
-                        );
+                            ex.Message);
                         continue;
                     }
                 }
@@ -426,15 +425,13 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             {
                 return (
                      TimeZoneInfo.ConvertTimeToUtc(new DateTime(date.Year, date.Month, date.Day, window.StartTimeParsed.Value.Hours, window.StartTimeParsed.Value.Minutes, 0, 0), window.TimeZoneParsed),
-                     TimeZoneInfo.ConvertTimeToUtc(new DateTime(date.Year, date.Month, date.Day, window.EndTimeParsed.Value.Hours, window.EndTimeParsed.Value.Minutes, 0, 0), window.TimeZoneParsed)
-                    );
+                     TimeZoneInfo.ConvertTimeToUtc(new DateTime(date.Year, date.Month, date.Day, window.EndTimeParsed.Value.Hours, window.EndTimeParsed.Value.Minutes, 0, 0), window.TimeZoneParsed));
             }
             else
             {
                 return (
                     TimeZoneInfo.ConvertTimeToUtc(new DateTime(date.Year, date.Month, date.Day, window.StartTimeParsed.Value.Hours, window.StartTimeParsed.Value.Minutes, 0, 0).AddDays(-1), window.TimeZoneParsed),
-                       TimeZoneInfo.ConvertTimeToUtc(new DateTime(date.Year, date.Month, date.Day, window.EndTimeParsed.Value.Hours, window.EndTimeParsed.Value.Minutes, 0, 0), window.TimeZoneParsed)
-                );
+                       TimeZoneInfo.ConvertTimeToUtc(new DateTime(date.Year, date.Month, date.Day, window.EndTimeParsed.Value.Hours, window.EndTimeParsed.Value.Minutes, 0, 0), window.TimeZoneParsed));
             }
         }
     }

@@ -170,6 +170,7 @@ namespace poolautoscaler.tests
             var patch = state.PreparePatch();
             Assert.True(patch.HasChanges);
             var patchData = (MsSqlDatabaseState)patch.PatchData;
+
             // The actual value will depend on FindClosestValidStorageSizeForDatabase
             Assert.NotEqual(1500000000, patchData.MaxSizeBytes);
         }

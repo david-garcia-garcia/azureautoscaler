@@ -26,6 +26,7 @@ namespace poolautoscaler.utils
             parsingConfig.AllowNewToEvaluateAnyType = false;
             parsingConfig.IsCaseSensitive = true;
             parsingConfig.AllowEqualsAndToStringMethodsOnObject = true;
+
             // parsingConfig.ExpressionPromoter = new CustomExpressionPromoter();
             parsingConfig.DisableMemberAccessToIndexAccessorFallback = true;
 

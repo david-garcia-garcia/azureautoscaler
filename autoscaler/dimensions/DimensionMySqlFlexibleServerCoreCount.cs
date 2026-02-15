@@ -11,6 +11,7 @@ namespace poolautoscaler.dimensions
     /// <summary>MySQL Flexible Server vCore count dimension.</summary>
     internal class DimensionMySqlFlexibleServerCoreCount : IDimension
     {
+        /// <summary>Initializes a new instance of the <see cref="DimensionMySqlFlexibleServerCoreCount"/> class.</summary>
         public DimensionMySqlFlexibleServerCoreCount()
         {
         }
@@ -31,6 +32,7 @@ namespace poolautoscaler.dimensions
             return false;
         }
 
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
             // this.ValidateDimensionValue(rule.DimensionValueMin);
@@ -51,6 +53,7 @@ namespace poolautoscaler.dimensions
             return value1.CompareTo(value2);
         }
 
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (!(resource.Resource is MySqlFlexibleServerResource sqlDatabase))
@@ -61,12 +64,14 @@ namespace poolautoscaler.dimensions
             return MySqlFlexibleServerResourceStateHelper.GetCoreCountFromSkuName(sqlDatabase.Data.Sku.Name).ToString();
         }
 
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             var current = int.Parse(value);
             return (current + 1).ToString();
         }
 
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             var current = int.Parse(value);
@@ -80,6 +85,7 @@ namespace poolautoscaler.dimensions
             return result.ToString();
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (!(resource is MySqlFlexibleServerResourceState mysqlState))
@@ -90,6 +96,7 @@ namespace poolautoscaler.dimensions
             return mysqlState.RequestedMySqlFlexibleServerState?.CoreCount?.ToString();
         }
 
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,

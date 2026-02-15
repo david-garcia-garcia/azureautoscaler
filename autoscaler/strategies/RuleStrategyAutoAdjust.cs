@@ -9,11 +9,10 @@ using poolautoscaler.strategies.Dto;
 
 namespace poolautoscaler.strategies
 {
-    /// <summary>
-    /// Adjust the dimension value based on the metric evaluation.
-    /// </summary>
+    /// <summary>Adjusts the dimension value based on the metric evaluation.</summary>
     internal class RuleStrategyAutoAdjust : IRuleStrategy
     {
+        /// <inheritdoc/>
         public async Task<string> EvaluateTargetDimensionValue(
             ScalingRule rule,
             IDimension dimension,

@@ -43,6 +43,8 @@ namespace poolautoscaler.metrics.Dto
         /// </summary>
         public string InvalidReason { get; set; }
 
+        /// <summary>Returns whether this result has any data (max, min, average, custom string, total, or count).</summary>
+        /// <returns>True if any value is set.</returns>
         public bool HasData()
         {
             return this.Maximum.HasValue ||

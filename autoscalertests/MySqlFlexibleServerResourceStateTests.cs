@@ -168,6 +168,7 @@ namespace poolautoscaler.tests
             Assert.True(patch.HasChanges);
             Assert.True(patch.Disruptive);
             var patchData = (MySqlFlexibleServerStateDto)patch.PatchData;
+
             // The actual SKU name will depend on MySqlFlexibleServerResourceStateHelper.GetMinimumSkuThatSatisfiesCoreCount
             Assert.NotEqual("Standard_B1ms", patchData.Sku.Name);
         }
@@ -326,6 +327,7 @@ namespace poolautoscaler.tests
             var patch = state.PreparePatch();
             Assert.True(patch.HasChanges);
             var patchData = (MySqlFlexibleServerStateDto)patch.PatchData;
+
             // IOPS should be rounded up to nearest 50 (as per PreparePatch logic: Math.Ceiling(527/50.0) * 50 = 550)
             Assert.Equal(550, patchData.Iops);
         }

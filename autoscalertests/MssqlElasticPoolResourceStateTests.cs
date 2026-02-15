@@ -142,6 +142,7 @@ namespace poolautoscaler.tests
             var patch = state.PreparePatch();
             Assert.True(patch.HasChanges);
             var patchData = (MssqlElasticPoolState)patch.PatchData;
+
             // The actual value will be normalized to a valid storage size
             Assert.NotEqual(160000000000, patchData.MaxSizeBytes);
             Assert.True(patchData.MaxSizeBytes >= state.ExistingMssqlElasticPoolState.CurrentUsedStorage);

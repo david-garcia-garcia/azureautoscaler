@@ -7,8 +7,7 @@
     <Nullable>enable</Nullable>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- SA1600 (documentation) suppressed until XML docs added per LINT_FIX_PLAN.md -->
-    <NoWarn>$(NoWarn);1591;1573;1712;SA1600</NoWarn>
+    <NoWarn>$(NoWarn);1591;1573;1712</NoWarn>
     <!-- Version will be set during build from environment variable or default to 0.0.0-dev -->
     <!-- Extract numeric part (before any dash/hyphen) for Version/AssemblyVersion/FileVersion -->
     <_VersionNumeric Condition="'$(VERSION)' == ''">0.0.0</_VersionNumeric>

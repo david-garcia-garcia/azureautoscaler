@@ -23,6 +23,7 @@ namespace poolautoscaler.dimensions
         /// <param name="rule">The scaling rule.</param>
         /// <param name="logger">The logger.</param>
         /// <returns>True if the dimension can be applied.</returns>
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource.Resource is ContainerServiceAgentPoolResource
@@ -36,6 +37,7 @@ namespace poolautoscaler.dimensions
 
         /// <summary>No rule validation required.</summary>
         /// <param name="rule">The scaling rule.</param>
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
         }
@@ -48,6 +50,7 @@ namespace poolautoscaler.dimensions
         /// <param name="dimensionValue2">Second dimension value.</param>
         /// <returns>Comparison result.</returns>
         /// <exception cref="ArgumentException">Thrown when values are not valid integers.</exception>
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             if (int.TryParse(dimensionValue1, out var value1) && int.TryParse(dimensionValue2, out var value2))
@@ -61,6 +64,7 @@ namespace poolautoscaler.dimensions
         /// <summary>Returns current min node count.</summary>
         /// <param name="resource">The resource state.</param>
         /// <returns>Current min node count as string.</returns>
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (!(resource.Resource is ContainerServiceAgentPoolResource agentPool))
@@ -75,6 +79,7 @@ namespace poolautoscaler.dimensions
         /// <param name="resource">The resource state.</param>
         /// <param name="value">The current dimension value.</param>
         /// <returns>Next min node count as string.</returns>
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             if (!(resource.Resource is ContainerServiceAgentPoolResource agentPool))
@@ -85,6 +90,7 @@ namespace poolautoscaler.dimensions
             return (int.Parse(value) + 1).ToString();
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (!(resource is AksNodePoolResourceState aksNodePoolState))
@@ -99,6 +105,7 @@ namespace poolautoscaler.dimensions
         /// <param name="resource">The resource state.</param>
         /// <param name="value">The current dimension value.</param>
         /// <returns>Previous min node count as string.</returns>
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             return (int.Parse(value) - 1).ToString();
@@ -111,6 +118,7 @@ namespace poolautoscaler.dimensions
         /// <param name="credential">The token credential.</param>
         /// <param name="value">The dimension value to set.</param>
         /// <returns>A task that completes when the value is set.</returns>
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,

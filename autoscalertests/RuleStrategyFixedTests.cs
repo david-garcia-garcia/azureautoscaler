@@ -43,8 +43,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("150", result);
@@ -67,8 +66,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("200", result);
@@ -91,8 +89,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("50", result);
@@ -115,8 +112,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("150", result);
@@ -139,8 +135,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("150", result);
@@ -163,8 +158,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("150", result);
@@ -187,8 +181,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("50", result);
@@ -211,8 +204,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("50", result);
@@ -235,8 +227,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("60", result);
@@ -259,8 +250,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert
             Assert.Equal("125", result);
@@ -284,8 +274,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Should round 47.3 up to 50 (nearest multiple of 10)
             // Parse as double to handle floating point formatting variations
@@ -311,8 +300,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Ceiling rounds 47 to 50, but max is 45, so should return 45
             Assert.Equal("45", result);
@@ -335,8 +323,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Ceiling rounds 23 to 30, which matches min, so should return 30
             Assert.Equal("30", result);
@@ -359,8 +346,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Ceiling rounds 47 to 50, which matches min, so should return 50
             Assert.Equal("50", result);
@@ -383,8 +369,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Should return original value since step is 0
             Assert.Equal("47", result);
@@ -407,8 +392,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Should return original value since step is negative
             Assert.Equal("47", result);
@@ -431,8 +415,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Should return original value since it can't be parsed
             Assert.Equal("invalid", result);
@@ -455,8 +438,7 @@ namespace poolautoscaler.tests
                 this.loggerMock.Object,
                 mockCredential.Object,
                 CancellationToken.None,
-                metrics
-            );
+                metrics);
 
             // Assert - Should return original value since step can't be parsed
             Assert.Equal("47", result);

@@ -26,6 +26,9 @@ dotnet_diagnostic.SA1028.severity = error
 # Single line comment should begin with a space (SA1005)
 dotnet_diagnostic.SA1005.severity = error
 
+# Closing parenthesis should be spaced correctly (SA1009)
+dotnet_diagnostic.SA1009.severity = error
+
 # Prefix local calls with this (SA1101)
 dotnet_diagnostic.SA1101.severity = error
 
@@ -104,8 +107,14 @@ dotnet_diagnostic.SA1513.severity = error
 # Element documentation header must be preceded by blank line (SA1514)
 dotnet_diagnostic.SA1514.severity = error
 
+# Single-line comment must be preceded by blank line (SA1515)
+dotnet_diagnostic.SA1515.severity = error
+
 # Elements should be separated by blank line (SA1516)
 dotnet_diagnostic.SA1516.severity = error
+
+# Variable names must begin with lowercase letter (SA1312)
+dotnet_diagnostic.SA1312.severity = error
 
 # Prefer 'var' when type is apparent (optional; use default or none to avoid churn)
 # dotnet_style_prefer_var_for_built_in_types = false:suggestion
@@ -113,28 +122,6 @@ dotnet_diagnostic.SA1516.severity = error
 
 # Prefer explicit types in member declarations (optional)
 # dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
-
-# SA1600 not required in test project
-[autoscalertests/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-
-# SA1600 relaxed for resource/dimension/strategy areas until XML docs are added (see LINT_FIX_PLAN.md)
-[**/resourcemanagement/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-[**/resources/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-[**/dimensions/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-[**/strategies/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-[**/metrics/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-[**/licensing/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-[**/configuration/**/*.cs]
-dotnet_diagnostic.SA1600.severity = none
-[**/Program.cs]
-dotnet_diagnostic.SA1600.severity = none
 
 [*.{json,yml,yaml}]
 indent_size = 2

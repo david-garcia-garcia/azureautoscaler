@@ -19,6 +19,9 @@ namespace AzureSqlElasticPoolAutoscaler
     /// <summary>Entry point and CLI (run service or generate license).</summary>
     class Program
     {
+        /// <summary>Creates the host builder for the autoscaler service.</summary>
+        /// <param name="args">Command-line arguments.</param>
+        /// <returns>The configured host builder.</returns>
         public static IHostBuilder CreateHostBuilder(string[] args)
         {
             var builder = Host.CreateDefaultBuilder(args);
@@ -192,6 +195,11 @@ namespace AzureSqlElasticPoolAutoscaler
             private readonly LicenseService licenseService;
             private readonly ResourceManager resourceManager;
 
+            /// <summary>Initializes a new instance of the <see cref="AutoscalerService"/> class.</summary>
+            /// <param name="configuration">Application configuration.</param>
+            /// <param name="factory">Logger factory.</param>
+            /// <param name="licenseService">License service.</param>
+            /// <param name="resourceManager">Resource manager.</param>
             public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService, ResourceManager resourceManager)
             {
                 this.RawConfiguration = configuration;
@@ -222,6 +230,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 this.Configuration.PrepareAndValidate(this.Logger);
             }
 
+            /// <inheritdoc/>
             protected override async Task ExecuteAsync(CancellationToken stoppingToken)
             {
                 List<IDimension> dimensions = new List<IDimension>();

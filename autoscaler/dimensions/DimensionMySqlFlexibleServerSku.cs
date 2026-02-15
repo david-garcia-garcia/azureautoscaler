@@ -11,6 +11,7 @@ namespace poolautoscaler.dimensions
     /// <summary>MySQL Flexible Server SKU/tier dimension.</summary>
     internal class DimensionMySqlFlexibleServerSku : IDimension
     {
+        /// <summary>Initializes a new instance of the <see cref="DimensionMySqlFlexibleServerSku"/> class.</summary>
         public DimensionMySqlFlexibleServerSku()
         {
         }
@@ -20,6 +21,7 @@ namespace poolautoscaler.dimensions
         /// <param name="rule">The scaling rule.</param>
         /// <param name="logger">The logger.</param>
         /// <returns>True if the dimension can be applied.</returns>
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource.Resource is MySqlFlexibleServerResource
@@ -31,6 +33,7 @@ namespace poolautoscaler.dimensions
             return false;
         }
 
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
             // this.ValidateDimensionValue(rule.DimensionValueMin);
@@ -44,11 +47,13 @@ namespace poolautoscaler.dimensions
         /// <param name="dimensionValue2">Second dimension value.</param>
         /// <returns>Comparison result.</returns>
         /// <exception cref="ArgumentException">Thrown when values are invalid.</exception>
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             return MySqlFlexibleServerResourceStateHelper.CompareSku((resource as MySqlFlexibleServerResource).Data.Sku.Tier.ToString(), dimensionValue1, dimensionValue2);
         }
 
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (!(resource.Resource is MySqlFlexibleServerResource sqlDatabase))
@@ -59,6 +64,7 @@ namespace poolautoscaler.dimensions
             return sqlDatabase.Data.Sku.Name.ToString()!;
         }
 
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             var capacityValues = MySqlFlexibleServerResourceStateHelper.GetCapacityValues(resource.Resource);
@@ -74,6 +80,7 @@ namespace poolautoscaler.dimensions
             return value;
         }
 
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             var capacityValues = MySqlFlexibleServerResourceStateHelper.GetCapacityValues(resource.Resource);
@@ -89,6 +96,7 @@ namespace poolautoscaler.dimensions
             return capacityValues[position - 1].ToString();
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (!(resource is MySqlFlexibleServerResourceState mysqlState))
@@ -99,6 +107,7 @@ namespace poolautoscaler.dimensions
             return mysqlState.RequestedMySqlFlexibleServerState?.Sku?.Name;
         }
 
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,

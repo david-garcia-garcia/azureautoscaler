@@ -38,8 +38,7 @@ namespace poolautoscaler.metrics
             CancellationToken cancellationToken,
             string splitName,
             string splitValue,
-            IList<MetricAggregationType> aggregations = null
-            )
+            IList<MetricAggregationType> aggregations = null)
         {
             var result = await this.RetrieveHistoryRaw(client, resourceId, metricName, timeRange, granularity, cancellationToken, splitName, splitValue, aggregations);
             return result;
@@ -67,8 +66,7 @@ namespace poolautoscaler.metrics
             string splitName,
             string splitValue,
             IList<MetricAggregationType> aggregations = null,
-            DateTime? now = null
-            )
+            DateTime? now = null)
         {
             aggregations = aggregations ?? new List<MetricAggregationType>() { MetricAggregationType.Average };
 
@@ -156,6 +154,7 @@ namespace poolautoscaler.metrics
                 Count = i.Count,
                 TimeStamp = i.TimeStamp,
                 Total = i.Total
+
                 // Note: Default is populated in RetrieveHistory() based on executed aggregations
             }).ToList();
 
