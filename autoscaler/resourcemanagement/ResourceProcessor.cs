@@ -207,7 +207,7 @@ namespace poolautoscaler.resourcemanagement
 
                     if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1)
                     {
-                        if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds < rule.ScaleDownCooldownSeconds)
+                        if (state.LastScale != null && (utcNow - state.LastScale.Value).TotalSeconds < rule.ScaleDownCooldownSeconds)
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale down from {Current} to {Target} because ScaleDownCooldownSeconds {Seconds}s have not yet passed.",
@@ -217,7 +217,7 @@ namespace poolautoscaler.resourcemanagement
                             continue;
                         }
 
-                        if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute < setting.ScaleDownLockWindowMinutes)
+                        if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute < setting.ScaleDownLockWindowMinutes)
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale down from {Current} to {Target} not allowed before minute {Minute} of a billable hour.",
@@ -230,7 +230,7 @@ namespace poolautoscaler.resourcemanagement
 
                     if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == 1)
                     {
-                        if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds < rule.ScaleUpCooldownSeconds)
+                        if (state.LastScale != null && (utcNow - state.LastScale.Value).TotalSeconds < rule.ScaleUpCooldownSeconds)
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale up from {Current} to {Target} because ScaleUpCooldownSeconds {Seconds}s have not yet passed.",
@@ -240,7 +240,7 @@ namespace poolautoscaler.resourcemanagement
                             continue;
                         }
 
-                        if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute > setting.ScaleUpAllowWindowMinutes)
+                        if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute > setting.ScaleUpAllowWindowMinutes)
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale up from {Current} to {Target} not allowed after minute {Minute} of a billable hour.",
@@ -293,7 +293,7 @@ namespace poolautoscaler.resourcemanagement
                     await state.ApplyChanges(patchOperation, stoppingToken);
                 }
 
-                state.LastScale = DateTime.UtcNow;
+                state.LastScale = this.utcNowProvider();
             }
             else
             {

@@ -228,6 +228,262 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
+        public async Task ProcessOneAsync_WhenScaleDownWithinCooldown_SkipsScaleDown()
+        {
+            // Arrange: Metric triggers scale down (10 -> 5), but LastScale was 30s ago and ScaleDownCooldownSeconds = 60.
+            var utcNow = new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
+                scaleDownCooldownSeconds: 60);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+                LastScale = utcNow.AddSeconds(-30),
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Scale down skipped due to cooldown; SetDimensionValue never called, RequestedCapacity remains null.
+            Assert.Null(state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenScaleDownBeyondCooldown_AllowsScaleDown()
+        {
+            // Arrange: Metric triggers scale down (10 -> 5), LastScale was 2 min ago, ScaleDownCooldownSeconds = 60.
+            var utcNow = new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
+                scaleDownCooldownSeconds: 60);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+                LastScale = utcNow.AddSeconds(-120),
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Cooldown passed; scale down allowed, target 5 applied.
+            Assert.Equal(5, state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenScaleUpWithinCooldown_SkipsScaleUp()
+        {
+            // Arrange: Metric triggers scale up (10 -> 20), but LastScale was 30s ago and ScaleUpCooldownSeconds = 60.
+            var utcNow = new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")",
+                scaleUpCooldownSeconds: 60);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                LastScale = utcNow.AddSeconds(-30),
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Scale up skipped due to cooldown; SetDimensionValue never called, RequestedCapacity remains null.
+            Assert.Null(state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenScaleUpBeyondCooldown_AllowsScaleUp()
+        {
+            // Arrange: Metric triggers scale up (10 -> 20), LastScale was 2 min ago, ScaleUpCooldownSeconds = 60.
+            var utcNow = new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")",
+                scaleUpCooldownSeconds: 60);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                LastScale = utcNow.AddSeconds(-120),
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Cooldown passed; scale up allowed, target 20 applied.
+            Assert.Equal(20, state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenScaleDownBeforeLockWindow_SkipsScaleDown()
+        {
+            // Arrange: Metric triggers scale down (10 -> 5). ScaleDownLockWindowMinutes = 50: scale down only allowed at minute >= 50.
+            // Current time: 12:30 (minute 30) -> scale down blocked.
+            var utcNow = new DateTime(2025, 6, 16, 12, 30, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
+                scaleDownLockWindowMinutes: 50);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Scale down skipped (minute 30 < 50); RequestedCapacity remains null.
+            Assert.Null(state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenScaleDownAtOrAfterLockWindow_AllowsScaleDown()
+        {
+            // Arrange: Scale down only allowed at minute >= 50. Current time: 12:55 -> scale down allowed.
+            var utcNow = new DateTime(2025, 6, 16, 12, 55, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
+                scaleDownLockWindowMinutes: 50);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Scale down allowed (minute 55 >= 50); target 5 applied.
+            Assert.Equal(5, state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenScaleUpAfterAllowWindow_SkipsScaleUp()
+        {
+            // Arrange: ScaleUpAllowWindowMinutes = 58: scale up only allowed when minute <= 58.
+            // Current time: 12:59 -> scale up blocked.
+            var utcNow = new DateTime(2025, 6, 16, 12, 59, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")",
+                scaleDownLockWindowMinutes: 50,
+                scaleUpAllowWindowMinutes: 58);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Scale up skipped (minute 59 > 58); RequestedCapacity remains null.
+            Assert.Null(state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenScaleUpWithinAllowWindow_AllowsScaleUp()
+        {
+            // Arrange: ScaleUpAllowWindowMinutes = 58. Current time: 12:50 -> scale up allowed (50 <= 58).
+            var utcNow = new DateTime(2025, 6, 16, 12, 50, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")",
+                scaleDownLockWindowMinutes: 50,
+                scaleUpAllowWindowMinutes: 58);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => utcNow);
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Scale up allowed (minute 50 <= 58); target 20 applied.
+            Assert.Equal(20, state.RequestedCapacity);
+        }
+
+        [Fact]
         public async Task ProcessOneAsync_WhenNoScalingConfigurations_ExitsEarlyWithoutRefresh()
         {
             // Arrange: Empty ScalingConfigurations
@@ -249,7 +505,12 @@ namespace poolautoscaler.tests
             Assert.False(state.RefreshWasCalled);
         }
 
-        private static ScalingConfiguration CreateScalingConfigurationWithMetricAndRule(string scaleTargetExpression)
+        private static ScalingConfiguration CreateScalingConfigurationWithMetricAndRule(
+            string scaleTargetExpression,
+            int scaleUpCooldownSeconds = 0,
+            int scaleDownCooldownSeconds = 0,
+            int? scaleDownLockWindowMinutes = null,
+            int? scaleUpAllowWindowMinutes = null)
         {
             var rule = new ScalingRule
             {
@@ -257,6 +518,8 @@ namespace poolautoscaler.tests
                 Dimension = "TestCapacity",
                 ScalingStrategy = "Fixed",
                 ScaleTarget = scaleTargetExpression,
+                ScaleUpCooldownSeconds = scaleUpCooldownSeconds,
+                ScaleDownCooldownSeconds = scaleDownCooldownSeconds,
             };
             rule.ScaleTargetExpression = (Func<poolautoscaler.strategies.Dto.MetricEvalDto, string>)ExpressionParserUtils.ParseExpression(
                 rule.ScaleTarget,
@@ -272,7 +535,7 @@ namespace poolautoscaler.tests
                 TransformExpression = a => a,
             };
 
-            return new ScalingConfiguration
+            var config = new ScalingConfiguration
             {
                 Id = "scale-by-cpu",
                 TimeWindow = new TimeWindow
@@ -288,6 +551,17 @@ namespace poolautoscaler.tests
                 ScalingRules = new Dictionary<string, ScalingRule> { ["rule1"] = rule },
                 Metrics = new Dictionary<string, Metric> { ["cpu"] = metric },
             };
+            if (scaleDownLockWindowMinutes.HasValue)
+            {
+                config.ScaleDownLockWindowMinutes = scaleDownLockWindowMinutes;
+            }
+
+            if (scaleUpAllowWindowMinutes.HasValue)
+            {
+                config.ScaleUpAllowWindowMinutes = scaleUpAllowWindowMinutes;
+            }
+
+            return config;
         }
 
         private static ScalingConfiguration CreateScalingConfiguration(
