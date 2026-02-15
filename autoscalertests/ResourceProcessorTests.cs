@@ -6,6 +6,7 @@ using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
 using poolautoscaler.licensing;
 using poolautoscaler.resourcemanagement;
+using poolautoscaler.utils;
 
 namespace poolautoscaler.tests
 {
@@ -140,6 +141,93 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
+        public async Task ProcessOneAsync_WhenMetricsIndicateScaleUp_EvaluatesLambdaAndScalesUp()
+        {
+            // Arrange: ScaleTarget expression returns 20 when cpu > 80, else 10. Metric value 90 triggers scale up.
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")");
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Lambda evaluated cpu > 80 (90 > 80 = true), target = 20. Scale up from 10 to 20.
+            Assert.Equal(20, state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenMetricsIndicateScaleDown_EvaluatesLambdaAndScalesDown()
+        {
+            // Arrange: ScaleTarget expression returns 5 when cpu < 20, else 10. Metric value 15 triggers scale down.
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")");
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Lambda evaluated cpu < 20 (15 < 20 = true), target = 5. Scale down from 10 to 5.
+            Assert.Equal(5, state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenMetricsIndicateNoChange_DoesNotScale()
+        {
+            // Arrange: ScaleTarget returns 10 when cpu between 20-80. Metric 50 = no change from current 10.
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")");
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 50 },
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientMock.Object,
+                this.licenseInfo,
+                () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: Target = 10, same as current. RequestedCapacity is still set by SetDimensionValue (to 10).
+            Assert.Equal(10, state.RequestedCapacity);
+        }
+
+        [Fact]
         public async Task ProcessOneAsync_WhenNoScalingConfigurations_ExitsEarlyWithoutRefresh()
         {
             // Arrange: Empty ScalingConfigurations
@@ -159,6 +247,47 @@ namespace poolautoscaler.tests
 
             // Assert
             Assert.False(state.RefreshWasCalled);
+        }
+
+        private static ScalingConfiguration CreateScalingConfigurationWithMetricAndRule(string scaleTargetExpression)
+        {
+            var rule = new ScalingRule
+            {
+                Id = "rule1",
+                Dimension = "TestCapacity",
+                ScalingStrategy = "Fixed",
+                ScaleTarget = scaleTargetExpression,
+            };
+            rule.ScaleTargetExpression = (Func<poolautoscaler.strategies.Dto.MetricEvalDto, string>)ExpressionParserUtils.ParseExpression(
+                rule.ScaleTarget,
+                "data",
+                typeof(poolautoscaler.strategies.Dto.MetricEvalDto),
+                typeof(string),
+                1);
+
+            var metric = new Metric
+            {
+                Id = "cpu",
+                Name = "custom_test_cpu",
+                TransformExpression = a => a,
+            };
+
+            return new ScalingConfiguration
+            {
+                Id = "scale-by-cpu",
+                TimeWindow = new TimeWindow
+                {
+                    TimeZone = "UTC",
+                    Days = "All",
+                    Months = "All",
+                    StartTime = "00:00",
+                    EndTime = "23:59",
+                    StartTimeParsed = TimeSpan.Zero,
+                    EndTimeParsed = new TimeSpan(23, 59, 59),
+                },
+                ScalingRules = new Dictionary<string, ScalingRule> { ["rule1"] = rule },
+                Metrics = new Dictionary<string, Metric> { ["cpu"] = metric },
+            };
         }
 
         private static ScalingConfiguration CreateScalingConfiguration(

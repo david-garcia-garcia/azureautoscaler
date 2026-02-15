@@ -19,11 +19,20 @@ namespace poolautoscaler.tests
         {
         }
 
-        public override object ExistingStateRaw { get; } = new object();
+        public override object ExistingStateRaw => new { Capacity = this.CurrentCapacity };
 
-        public override object RequestedStateRaw { get; } = new object();
+        public override object RequestedStateRaw => new { Capacity = this.RequestedCapacity ?? this.CurrentCapacity };
 
         public bool RefreshWasCalled { get; private set; }
+
+        public int CurrentCapacity { get; set; } = 10;
+
+        public int? RequestedCapacity { get; set; }
+
+        /// <summary>
+        /// Metric values keyed by metric name (e.g. "custom_test_cpu"). Used by CustomMetric to return configurable data.
+        /// </summary>
+        public Dictionary<string, double> CustomMetricValues { get; set; } = new Dictionary<string, double>();
 
         public override Task<MetricEvalDtoResult> CustomMetric(
             ArmClient client,
@@ -32,7 +41,21 @@ namespace poolautoscaler.tests
             ScalingConfiguration setting,
             string name)
         {
-            return Task.FromResult(new MetricEvalDtoResult { Values = new List<MetricEvalDtoResultValue>() });
+            var value = this.CustomMetricValues.TryGetValue(name, out var v) ? v : 0;
+            var result = new MetricEvalDtoResult
+            {
+                Values = new List<MetricEvalDtoResultValue>
+                {
+                    new MetricEvalDtoResultValue
+                    {
+                        Average = value,
+                        Default = value,
+                        TimeStamp = DateTimeOffset.UtcNow,
+                    },
+                },
+                ExecutedAggregations = new List<Azure.Monitor.Query.Models.MetricAggregationType> { Azure.Monitor.Query.Models.MetricAggregationType.Average },
+            };
+            return Task.FromResult(result);
         }
 
         public override async Task Refresh(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
@@ -43,7 +66,12 @@ namespace poolautoscaler.tests
 
         public override ResourcePatchOperation PreparePatch()
         {
-            return new ResourcePatchOperation { HasChanges = false };
+            var hasChanges = this.RequestedCapacity.HasValue && this.RequestedCapacity.Value != this.CurrentCapacity;
+            return new ResourcePatchOperation
+            {
+                HasChanges = hasChanges,
+                PatchData = new { Capacity = this.RequestedCapacity ?? this.CurrentCapacity },
+            };
         }
 
         public override Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
