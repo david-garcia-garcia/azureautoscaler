@@ -356,10 +356,10 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
-        public async Task ProcessOneAsync_WhenScaleDownBeforeLockWindow_SkipsScaleDown()
+        public async Task ProcessOneAsync_WhenScaleDownBeforeLockWindow_AllowsScaleDown()
         {
-            // Arrange: Metric triggers scale down (10 -> 5). ScaleDownLockWindowMinutes = 50: scale down only allowed at minute >= 50.
-            // Current time: 12:30 (minute 30) -> scale down blocked.
+            // Arrange: ScaleDownLockWindowMinutes = 50 means scale down is LOCKED from minute 50-59.
+            // Current time: 12:30 (minute 30) -> outside lock window, scale down allowed.
             var utcNow = new DateTime(2025, 6, 16, 12, 30, 0, DateTimeKind.Utc);
             var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
                 scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
@@ -383,14 +383,15 @@ namespace poolautoscaler.tests
             // Act
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
-            // Assert: Scale down skipped (minute 30 < 50); RequestedCapacity remains null.
-            Assert.Null(state.RequestedCapacity);
+            // Assert: Scale down allowed (minute 30 < 50, outside lock window); target 5 applied.
+            Assert.Equal(5, state.RequestedCapacity);
         }
 
         [Fact]
-        public async Task ProcessOneAsync_WhenScaleDownAtOrAfterLockWindow_AllowsScaleDown()
+        public async Task ProcessOneAsync_WhenScaleDownAtOrAfterLockWindow_SkipsScaleDown()
         {
-            // Arrange: Scale down only allowed at minute >= 50. Current time: 12:55 -> scale down allowed.
+            // Arrange: ScaleDownLockWindowMinutes = 50 means scale down is LOCKED from minute 50-59.
+            // Current time: 12:55 (minute 55) -> inside lock window, scale down blocked.
             var utcNow = new DateTime(2025, 6, 16, 12, 55, 0, DateTimeKind.Utc);
             var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
                 scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
@@ -414,8 +415,8 @@ namespace poolautoscaler.tests
             // Act
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
-            // Assert: Scale down allowed (minute 55 >= 50); target 5 applied.
-            Assert.Equal(5, state.RequestedCapacity);
+            // Assert: Scale down skipped (minute 55 >= 50, inside lock window); RequestedCapacity remains null.
+            Assert.Null(state.RequestedCapacity);
         }
 
         [Fact]

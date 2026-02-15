@@ -167,7 +167,11 @@ namespace poolautoscaler.resourcemanagement
                         invalidReason);
                 }
 
-                capturingLogger.LogTrace("Evaluating scale configuration {Id}", setting.Id);
+                capturingLogger.LogDebug(
+                    "Evaluating scale configuration {Id}: ScaleDownLockWindowMinutes={ScaleDownLockWindowMinutes}, ScaleUpAllowWindowMinutes={ScaleUpAllowWindowMinutes}",
+                    setting.Id,
+                    setting.ScaleDownLockWindowMinutes,
+                    setting.ScaleUpAllowWindowMinutes);
 
                 var invalidMetrics = metrics.Where(m => !m.Value.Valid).ToList();
                 if (invalidMetrics.Any())
@@ -217,10 +221,10 @@ namespace poolautoscaler.resourcemanagement
                             continue;
                         }
 
-                        if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute < setting.ScaleDownLockWindowMinutes)
+                        if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute >= setting.ScaleDownLockWindowMinutes)
                         {
                             capturingLogger.LogTrace(
-                                "Skipping scale down from {Current} to {Target} not allowed before minute {Minute} of a billable hour.",
+                                "Skipping scale down from {Current} to {Target} not allowed from minute {Minute} onward (lock window) of a billable hour.",
                                 currentDimensionValue,
                                 targetDimensionValue,
                                 setting.ScaleDownLockWindowMinutes);
