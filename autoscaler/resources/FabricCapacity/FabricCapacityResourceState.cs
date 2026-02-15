@@ -10,18 +10,35 @@ using poolautoscaler.resources.FabricCapacity.Dto;
 
 namespace poolautoscaler.resources.FabricCapacity
 {
+    /// <summary>
+    /// Resource state for a Fabric capacity.
+    /// </summary>
     public class FabricCapacityResourceState : ResourceState
     {
+        /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingFabricCapacityState;
 
+        /// <inheritdoc />
         public override object RequestedStateRaw => this.RequestedFabricCapacityState;
 
+        /// <summary>
+        /// Gets or sets the requested Fabric capacity state (SKU).
+        /// </summary>
         public FabricCapacityState RequestedFabricCapacityState { get; set; }
 
+        /// <summary>
+        /// Gets or sets the current existing Fabric capacity state from Azure.
+        /// </summary>
         public FabricCapacityState ExistingFabricCapacityState { get; set; }
 
         private FabricCapacityResource? CapacityResourceCasted { get => this.Resource as FabricCapacityResource; }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="FabricCapacityResourceState"/> class.
+        /// </summary>
+        /// <param name="id">The Fabric capacity resource ID.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
         public FabricCapacityResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
         {
             if (!ResourceStateFactory.FabricCapacity.IsMatch(id))
@@ -30,6 +47,10 @@ namespace poolautoscaler.resources.FabricCapacity
             }
         }
 
+        /// <summary>
+        /// Sets the requested SKU (only increases if already set).
+        /// </summary>
+        /// <param name="sku">The SKU name (e.g. F2, F4, F8).</param>
         public void SetSku(string sku)
         {
             if (this.RequestedFabricCapacityState.Sku == null)
@@ -44,6 +65,7 @@ namespace poolautoscaler.resources.FabricCapacity
             }
         }
 
+        /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
             ResourcePatchOperation result = new ResourcePatchOperation();
@@ -61,6 +83,7 @@ namespace poolautoscaler.resources.FabricCapacity
             return result;
         }
 
+        /// <inheritdoc />
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             if (!(operation.PatchData is FabricCapacityState internalPatch))
@@ -87,6 +110,7 @@ namespace poolautoscaler.resources.FabricCapacity
             this.ValidateArmResult(result);
         }
 
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Resource = await client.GetFabricCapacityResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);

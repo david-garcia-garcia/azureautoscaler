@@ -11,21 +11,34 @@ namespace poolautoscaler.resources.AzureDevops
     /// </summary>
     public class AzureDevOpsClient
     {
-        // Meter IDs for Azure DevOps billing (fixed platform-level constants, same for all organizations)
-        // Source: VSTeam PowerShell module - https://www.powershellgallery.com/packages/VSTeam
-        // See also: https://stackoverflow.com/questions/71822758/pricing-of-agents-and-parallel-jobs-in-azure-devops
+        /// <summary>
+        /// Meter ID for hosted (MS-hosted) pipeline parallel jobs billing.
+        /// </summary>
         public const string MeterIdHostedPipeline = "4bad9897-8d87-43bb-80be-5e6e8fefa3de";
+
+        /// <summary>
+        /// Meter ID for private (self-hosted) pipeline parallel jobs billing.
+        /// </summary>
         public const string MeterIdPrivatePipeline = "f44a67f2-53ae-4044-bd58-1c8aca386b98";
 
         private readonly HttpClient httpClient;
         private readonly ILogger logger;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AzureDevOpsClient"/> class.
+        /// </summary>
+        /// <param name="logger">The logger.</param>
         public AzureDevOpsClient(ILogger logger)
         {
             this.httpClient = new HttpClient();
             this.logger = logger;
         }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AzureDevOpsClient"/> class.
+        /// </summary>
+        /// <param name="httpClient">The HTTP client to use.</param>
+        /// <param name="logger">The logger.</param>
         public AzureDevOpsClient(HttpClient httpClient, ILogger logger)
         {
             this.httpClient = httpClient;

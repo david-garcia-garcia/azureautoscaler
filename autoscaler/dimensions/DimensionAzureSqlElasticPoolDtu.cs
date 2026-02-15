@@ -31,9 +31,9 @@ namespace poolautoscaler.dimensions
         /// <param name="rule">The scaling rule.</param>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
-            //this.ValidateDimensionValue(rule.DimensionValueMin);
-            //this.ValidateDimensionValue(rule.DimensionValueMax);
-            //this.ValidateDimensionValue(rule.DimensionValue);
+            // this.ValidateDimensionValue(rule.DimensionValueMin);
+            // this.ValidateDimensionValue(rule.DimensionValueMax);
+            // this.ValidateDimensionValue(rule.DimensionValue);
         }
 
         /// <summary>Compare two dimension values.</summary>

@@ -69,9 +69,9 @@ namespace poolautoscaler.dimensions
 
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
-            //this.ValidateDimensionValue(rule.DimensionValueMin);
-            //this.ValidateDimensionValue(rule.DimensionValueMax);
-            //this.ValidateDimensionValue(rule.DimensionValue);
+            // this.ValidateDimensionValue(rule.DimensionValueMin);
+            // this.ValidateDimensionValue(rule.DimensionValueMax);
+            // this.ValidateDimensionValue(rule.DimensionValue);
         }
 
         /// <summary>

@@ -6,19 +6,32 @@ using poolautoscaler.resourcemanagement;
 
 namespace poolautoscaler.resources.StorageFileShare
 {
+    /// <summary>
+    /// Helper for storage file share quota, IOPS and throughput calculations.
+    /// </summary>
     public static class StorageFileShareResourceStateHelper
     {
+        /// <summary>Gets the IOPS for a given quota in GB.</summary>
+        /// <param name="quotaGb">Share quota in GB.</param>
+        /// <returns>IOPS value.</returns>
         public static int GetIopsFromQuota(int quotaGb)
         {
             return Math.Min(3000 + quotaGb, 102400);
         }
 
+        /// <summary>Gets the throughput (MiB/s) for a given quota in GB.</summary>
+        /// <param name="quotaGb">Share quota in GB.</param>
+        /// <returns>Throughput in MiB/s.</returns>
         public static double GetThroughputFromQuota(int quotaGb)
         {
             var throughput = 100 + Math.Ceiling(0.04 * quotaGb) + Math.Ceiling(0.06 * quotaGb);
             return throughput;
         }
 
+        /// <summary>Gets the minimum quota (GB) needed to achieve the target throughput.</summary>
+        /// <param name="targetThroughputMbps">Target throughput in MiB/s.</param>
+        /// <param name="quotaIncrementGb">Quota increment in GB for the search.</param>
+        /// <returns>Quota in GB.</returns>
         public static int GetQuotaFromThroughput(double targetThroughputMbps, int quotaIncrementGb = 10)
         {
             for (int quota = 100; quota <= 102400; quota += quotaIncrementGb)
@@ -33,6 +46,13 @@ namespace poolautoscaler.resources.StorageFileShare
             return 102400;
         }
 
+        /// <summary>Expands a file share resource ID that may contain wildcards into concrete resource IDs.</summary>
+        /// <param name="client">The ARM client.</param>
+        /// <param name="key">The key for the resource entry.</param>
+        /// <param name="resourceId">The resource ID or wildcard pattern.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="stoppingToken">Cancellation token.</param>
+        /// <returns>A dictionary of key to expanded resource IDs.</returns>
         public static async Task<Dictionary<string, string>> ExpandFileShareWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
             var result = new Dictionary<string, string>();

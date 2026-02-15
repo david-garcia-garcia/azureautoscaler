@@ -26,6 +26,14 @@ namespace poolautoscaler.resourcemanagement
         private readonly ArmClient armClient;
         private readonly LicenseInfo licenseInfo;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ResourceProcessor"/> class.
+        /// </summary>
+        /// <param name="logFactory">The logger factory.</param>
+        /// <param name="dimensions">The list of dimension handlers.</param>
+        /// <param name="credential">The token credential for Azure and metrics.</param>
+        /// <param name="armClient">The ARM client.</param>
+        /// <param name="licenseInfo">The license information.</param>
         internal ResourceProcessor(
             ILoggerFactory logFactory,
             IReadOnlyList<IDimension> dimensions,
@@ -145,7 +153,7 @@ namespace poolautoscaler.resourcemanagement
 
                     var aggregationType = metricResult.Values.First().GetAggregationType();
                     var valuesDetail = string.Join(",", metricResult.Values.Select(v => v.RenderValueWithStatus()));
-                    var invalidReason = metricResult.Valid ? "" : $", reason=\"{metricResult.InvalidReason}\"";
+                    var invalidReason = metricResult.Valid ? string.Empty : $", reason=\"{metricResult.InvalidReason}\"";
                     capturingLogger.LogDebug(
                         "Metric={MetricId}, valid={Valid}, values={Count}, aggregation={Aggregation}, valuedetail={Detail}{InvalidReason}",
                         metricId,
@@ -200,7 +208,9 @@ namespace poolautoscaler.resourcemanagement
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale down from {Current} to {Target} because ScaleDownCooldownSeconds {Seconds}s have not yet passed.",
-                                currentDimensionValue, targetDimensionValue, rule.ScaleDownCooldownSeconds);
+                                currentDimensionValue,
+                                targetDimensionValue,
+                                rule.ScaleDownCooldownSeconds);
                             continue;
                         }
 
@@ -208,7 +218,9 @@ namespace poolautoscaler.resourcemanagement
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale down from {Current} to {Target} not allowed before minute {Minute} of a billable hour.",
-                                currentDimensionValue, targetDimensionValue, setting.ScaleDownLockWindowMinutes);
+                                currentDimensionValue,
+                                targetDimensionValue,
+                                setting.ScaleDownLockWindowMinutes);
                             continue;
                         }
                     }
@@ -219,7 +231,9 @@ namespace poolautoscaler.resourcemanagement
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale up from {Current} to {Target} because ScaleUpCooldownSeconds {Seconds}s have not yet passed.",
-                                currentDimensionValue, targetDimensionValue, rule.ScaleUpCooldownSeconds);
+                                currentDimensionValue,
+                                targetDimensionValue,
+                                rule.ScaleUpCooldownSeconds);
                             continue;
                         }
 
@@ -227,7 +241,9 @@ namespace poolautoscaler.resourcemanagement
                         {
                             capturingLogger.LogTrace(
                                 "Skipping scale up from {Current} to {Target} not allowed after minute {Minute} of a billable hour.",
-                                currentDimensionValue, targetDimensionValue, setting.ScaleUpAllowWindowMinutes);
+                                currentDimensionValue,
+                                targetDimensionValue,
+                                setting.ScaleUpAllowWindowMinutes);
                             continue;
                         }
                     }

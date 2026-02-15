@@ -7,24 +7,46 @@ using poolautoscaler.resourcemanagement;
 
 namespace poolautoscaler.resources.MsSqlDatabase
 {
+    /// <summary>
+    /// Helper for Azure SQL Database SKU, storage sizes and DTU calculations.
+    /// </summary>
     public static class MsSqlDatabaseResourceStateHelper
     {
+        /// <summary>Standard tier DTU capacity options (GB per tier).</summary>
         public static readonly int[] StandardDtuCapacities = [10, 20, 50, 100, 200, 400, 800, 1600, 3000];
+
+        /// <summary>Standard tier max data sizes (GB) per DTU capacity index.</summary>
         public static readonly long[] StandardDataMaxSize = [250, 250, 250, 1024, 1024, 1024, 1024, 1024, 1024];
 
+        /// <summary>Premium tier DTU capacity options.</summary>
         public static readonly int[] PremiumDtuCapacities = [125, 250, 500, 1000, 1750, 4000];
+
+        /// <summary>Premium tier max data sizes (GB) per DTU capacity index.</summary>
         public static readonly long[] PremiumDataMaxSize = [1204, 1024, 1024, 1024, 4096, 4096];
 
+        /// <summary>Valid storage sizes (GB) for Basic DTU.</summary>
         public static readonly double[] DtuBasicValidStorage = [0.1, 0.5, 1, 2];
+
+        /// <summary>Valid storage sizes (GB) for Elastic Pool DTU.</summary>
         public static readonly double[] DtuElasticPoolValidStorage = [0.1, 0.5, 1, 2, 5, 10, 20, 30, 40, 50, 100, 150, 200, 250, 300, 400, 500, 750, 1024];
+
+        /// <summary>Valid storage sizes (GB) for Standard DTU.</summary>
         public static readonly double[] DtuStandardValidStorage = [0.1, 0.5, 1, 2, 5, 10, 20, 30, 40, 50, 100, 150, 200, 250];
+
+        /// <summary>Valid storage sizes (GB) for Premium DTU.</summary>
         public static readonly double[] DtuPremiumValidStorage = [0.1, 0.5, 1, 2, 5, 10, 20, 30, 40, 50, 100, 150, 200, 250, 300, 400, 500, 750, 1024];
 
+        /// <summary>Returns true if the SKU is a DTU-based model (Basic, Standard, Premium, ElasticPool).</summary>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <returns>True if DTU model.</returns>
         public static bool IsDtuModel(SqlSku sku)
         {
             return sku.Name == "Basic" || sku.Name == "Standard" || sku.Name == "Premium" || sku.Name == "ElasticPool";
         }
 
+        /// <summary>Gets valid storage sizes in GB for the given database SKU.</summary>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <returns>Array of valid storage sizes in GB.</returns>
         public static double[] GetValidStorageSizesForDatabase(SqlSku sku)
         {
             if (IsDtuModel(sku))
@@ -51,9 +73,9 @@ namespace poolautoscaler.resources.MsSqlDatabase
             }
             else
             {
-                var skuName = sku.Name ?? "";
-                var family = sku.Family ?? "";
-                var tier = sku.Tier?.ToString() ?? "";
+                var skuName = sku.Name ?? string.Empty;
+                var family = sku.Family ?? string.Empty;
+                var tier = sku.Tier?.ToString() ?? string.Empty;
                 skuName = skuName.ToUpperInvariant();
                 family = family.ToUpperInvariant();
                 tier = tier.ToUpperInvariant();
@@ -109,6 +131,10 @@ namespace poolautoscaler.resources.MsSqlDatabase
             throw new ArgumentException($"Could not determine valid storage sizes for SKU: {sku.Name}");
         }
 
+        /// <summary>Finds the closest valid storage size (in bytes) for the database SKU that is at least sizeBytes.</summary>
+        /// <param name="sizeBytes">Desired size in bytes.</param>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <returns>Valid storage size in bytes.</returns>
         public static long FindClosestValidStorageSizeForDatabase(long sizeBytes, SqlSku sku)
         {
             var validSizesGb = GetValidStorageSizesForDatabase(sku);
@@ -124,6 +150,10 @@ namespace poolautoscaler.resources.MsSqlDatabase
             throw new Exception($"Could not find valid storage size for {sizeGb} GB with SKU {sku.Name}");
         }
 
+        /// <summary>Gets the next valid storage size (in bytes) above the given size for the SKU.</summary>
+        /// <param name="sizeBytes">Current size in bytes.</param>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <returns>Next valid storage size in bytes.</returns>
         public static long GetNextValidStorageSizeForDatabase(long sizeBytes, SqlSku sku)
         {
             var validSizesGb = GetValidStorageSizesForDatabase(sku);
@@ -156,6 +186,10 @@ namespace poolautoscaler.resources.MsSqlDatabase
             throw new Exception($"Could not find next storage size for {sizeGb} GB with SKU {sku.Name}");
         }
 
+        /// <summary>Gets the previous valid storage size (in bytes) below the given size for the SKU.</summary>
+        /// <param name="sizeBytes">Current size in bytes.</param>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <returns>Previous valid storage size in bytes.</returns>
         public static long GetPreviousValidStorageSizeForDatabase(long sizeBytes, SqlSku sku)
         {
             var validSizesGb = GetValidStorageSizesForDatabase(sku);
@@ -188,6 +222,9 @@ namespace poolautoscaler.resources.MsSqlDatabase
             throw new Exception($"Could not find previous storage size for {sizeGb} GB with SKU {sku.Name}");
         }
 
+        /// <summary>Gets DTU capacity values for the given SKU (Standard or Premium).</summary>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <returns>Array of DTU capacities.</returns>
         public static int[] GetCapacityValues(SqlSku sku)
         {
             switch (sku.Name)
@@ -198,6 +235,9 @@ namespace poolautoscaler.resources.MsSqlDatabase
             }
         }
 
+        /// <summary>Gets max storage capacity values (GB) for the given SKU.</summary>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <returns>Array of max data sizes in GB.</returns>
         public static long[] GetStorageCapacityValues(SqlSku sku)
         {
             switch (sku.Name)
@@ -208,6 +248,11 @@ namespace poolautoscaler.resources.MsSqlDatabase
             }
         }
 
+        /// <summary>Finds the closest DTU tier that can hold the given storage size.</summary>
+        /// <param name="sku">The SQL SKU.</param>
+        /// <param name="dtu">Minimum DTU.</param>
+        /// <param name="storageBytes">Required storage in bytes.</param>
+        /// <returns>Tuple of (dtu, maxCapacityBytes).</returns>
         public static (long dtu, long capacity) FindClosestDtuThatCanHoldStorage(SqlSku sku, int dtu, long storageBytes)
         {
             var capacityValues = GetCapacityValues(sku);
@@ -232,6 +277,13 @@ namespace poolautoscaler.resources.MsSqlDatabase
             throw new Exception("No tier can accomodate DTU and/or capacity request.");
         }
 
+        /// <summary>Expands a SQL database resource ID that may contain wildcards into concrete resource IDs.</summary>
+        /// <param name="client">The ARM client.</param>
+        /// <param name="key">The key for the resource entry.</param>
+        /// <param name="resourceId">The resource ID or wildcard pattern.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="stoppingToken">Cancellation token.</param>
+        /// <returns>A dictionary of key to expanded resource IDs.</returns>
         public static async Task<Dictionary<string, string>> ExpandSqlDatabaseWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
             var result = new Dictionary<string, string>();

@@ -13,16 +13,33 @@ using poolautoscaler.utils;
 
 namespace poolautoscaler.resources.MsSqlDatabase
 {
+    /// <summary>
+    /// Resource state for an Azure SQL Database.
+    /// </summary>
     public class MsSqlDatabaseResourceState : ResourceState
     {
+        /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingMsSqlDatabaseState;
 
+        /// <inheritdoc />
         public override object RequestedStateRaw => this.RequestedMsSqlDatabaseState;
 
+        /// <summary>
+        /// Gets or sets the requested database state (SKU, max size).
+        /// </summary>
         public MsSqlDatabaseState RequestedMsSqlDatabaseState { get; set; }
 
+        /// <summary>
+        /// Gets or sets the current existing database state from Azure.
+        /// </summary>
         public MsSqlDatabaseState ExistingMsSqlDatabaseState { get; set; }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MsSqlDatabaseResourceState"/> class.
+        /// </summary>
+        /// <param name="id">The SQL database resource ID.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
         public MsSqlDatabaseResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
         {
             if (!ResourceStateFactory.SqlDatabase.IsMatch(id))
@@ -31,6 +48,10 @@ namespace poolautoscaler.resources.MsSqlDatabase
             }
         }
 
+        /// <summary>
+        /// Sets the requested DTU capacity (only increases if already set).
+        /// </summary>
+        /// <param name="dtuCapacity">The DTU capacity.</param>
         public void SetDtuCapacity(int dtuCapacity)
         {
             if (this.RequestedMsSqlDatabaseState.Sku == null)
@@ -46,6 +67,10 @@ namespace poolautoscaler.resources.MsSqlDatabase
             }
         }
 
+        /// <summary>
+        /// Sets the requested max size in bytes (only increases if already set).
+        /// </summary>
+        /// <param name="maxSizeBytes">The maximum size in bytes.</param>
         public void SetMaxSizeBytes(long maxSizeBytes)
         {
             if (this.RequestedMsSqlDatabaseState.MaxSizeBytes == null)
@@ -62,6 +87,7 @@ namespace poolautoscaler.resources.MsSqlDatabase
             this.RequestedMsSqlDatabaseState.MaxSizeBytes = maxSizeBytes;
         }
 
+        /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
             ResourcePatchOperation result = new ResourcePatchOperation();
@@ -97,6 +123,7 @@ namespace poolautoscaler.resources.MsSqlDatabase
             return result;
         }
 
+        /// <inheritdoc />
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             var database = (SqlDatabaseResource)this.Resource;
@@ -114,6 +141,7 @@ namespace poolautoscaler.resources.MsSqlDatabase
             this.ValidateArmResult(result);
         }
 
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Resource = await client.GetSqlDatabaseResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);

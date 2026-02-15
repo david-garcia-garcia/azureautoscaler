@@ -15,28 +15,45 @@ namespace poolautoscaler.resources.AzureDevops
     /// </summary>
     public class AzureDevOpsParallelJobsResourceState : ResourceState
     {
+        /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingParallelJobsState;
 
+        /// <inheritdoc />
         public override object RequestedStateRaw => this.RequestedParallelJobsState;
 
+        /// <summary>
+        /// Gets or sets the requested parallel jobs state (hosted and private counts).
+        /// </summary>
         public ParallelJobsState RequestedParallelJobsState { get; set; } = new ParallelJobsState();
 
+        /// <summary>
+        /// Gets or sets the current existing parallel jobs state from Azure DevOps.
+        /// </summary>
         public ParallelJobsState ExistingParallelJobsState { get; set; } = new ParallelJobsState();
 
-        // Azure DevOps configuration (extracted from resource ID)
+        /// <summary>
+        /// Gets the Azure DevOps organization name (from resource ID).
+        /// </summary>
         public string Organization { get; private set; }
 
+        /// <summary>
+        /// Gets the personal access token used for API calls.
+        /// </summary>
         public string PersonalAccessToken { get; private set; }
 
-        // Organization ID is resolved on first API call
         private string? organizationId;
-
-        // Cache the billing token
         private string? billingToken;
         private DateTime billingTokenExpiry = DateTime.MinValue;
 
         private readonly AzureDevOpsClient devOpsClient;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AzureDevOpsParallelJobsResourceState"/> class.
+        /// </summary>
+        /// <param name="resourceId">The resource ID (azuredevops://organization).</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
+        /// <param name="resourceInstance">Optional resource instance (must contain Pat in Settings).</param>
         public AzureDevOpsParallelJobsResourceState(string resourceId, ILogger logger, Resource resourceConfiguration, ResourceInstance? resourceInstance = null)
             : base(resourceId, logger, resourceConfiguration)
         {
@@ -62,7 +79,14 @@ namespace poolautoscaler.resources.AzureDevops
             this.devOpsClient = new AzureDevOpsClient(logger);
         }
 
-        // Constructor for testing with injected client
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AzureDevOpsParallelJobsResourceState"/> class (for testing with injected client).
+        /// </summary>
+        /// <param name="resourceId">The resource ID.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
+        /// <param name="client">The Azure DevOps client to use.</param>
+        /// <param name="testOrganizationId">Optional organization ID for tests.</param>
         internal AzureDevOpsParallelJobsResourceState(string resourceId, ILogger logger, Resource resourceConfiguration, AzureDevOpsClient client, string? testOrganizationId = null)
             : base(resourceId, logger, resourceConfiguration)
         {
@@ -78,6 +102,10 @@ namespace poolautoscaler.resources.AzureDevops
             this.devOpsClient = client;
         }
 
+        /// <summary>
+        /// Sets the requested hosted (MS-hosted) parallel jobs count.
+        /// </summary>
+        /// <param name="count">The requested count (must be non-negative).</param>
         public void SetHostedParallelJobs(int count)
         {
             if (count < 0)
@@ -93,6 +121,10 @@ namespace poolautoscaler.resources.AzureDevops
             }
         }
 
+        /// <summary>
+        /// Sets the requested private (self-hosted) parallel jobs count.
+        /// </summary>
+        /// <param name="count">The requested count (must be non-negative).</param>
         public void SetPrivateParallelJobs(int count)
         {
             if (count < 0)
@@ -108,6 +140,7 @@ namespace poolautoscaler.resources.AzureDevops
             }
         }
 
+        /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
             var result = new ResourcePatchOperation();
@@ -126,6 +159,7 @@ namespace poolautoscaler.resources.AzureDevops
             return result;
         }
 
+        /// <inheritdoc />
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             if (!(operation.PatchData is ParallelJobsState patch))
@@ -300,6 +334,7 @@ namespace poolautoscaler.resources.AzureDevops
             return result;
         }
 
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Logger.LogDebug("Refreshing Azure DevOps parallel jobs state for organization {Organization}", this.Organization);
@@ -321,6 +356,7 @@ namespace poolautoscaler.resources.AzureDevops
             this.ResourceTags["organizationId"] = this.organizationId!;
         }
 
+        /// <inheritdoc />
         protected override string GetResourceIdForChangeHistory()
         {
             return null;

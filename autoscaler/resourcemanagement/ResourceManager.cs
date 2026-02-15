@@ -15,6 +15,10 @@ namespace poolautoscaler.resourcemanagement
         private readonly ILoggerFactory logFactory;
         private DateTime lastDiscovery = DateTime.MinValue;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ResourceManager"/> class.
+        /// </summary>
+        /// <param name="logFactory">The logger factory for creating resource loggers.</param>
         public ResourceManager(ILoggerFactory logFactory)
         {
             this.logFactory = logFactory;
@@ -87,7 +91,7 @@ namespace poolautoscaler.resourcemanagement
                 {
                     this.logger.LogTrace(
                         "Skipping disabled resource: {Ids}",
-                        resource.Resources != null ? string.Join(",", resource.Resources.Values.Select(i => i.Id)) : "");
+                        resource.Resources != null ? string.Join(",", resource.Resources.Values.Select(i => i.Id)) : string.Empty);
                     continue;
                 }
 

@@ -12,21 +12,53 @@ using poolautoscaler.resources.StorageFileShare;
 
 namespace poolautoscaler.resourcemanagement
 {
+    /// <summary>
+    /// Factory for creating and expanding resource states by resource ID pattern.
+    /// </summary>
     public static class ResourceStateFactory
     {
+        /// <summary>
+        /// Regex matching SQL elastic pool resource IDs.
+        /// </summary>
         public static readonly Regex ElasticPools = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.Sql/servers/(?<serverName>[^/]+)/elasticPools/(?<elasticPoolName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Regex matching SQL database resource IDs.
+        /// </summary>
         public static readonly Regex SqlDatabase = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.Sql/servers/(?<serverName>[^/]+)/databases/(?<databaseName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Regex matching MySQL flexible server resource IDs.
+        /// </summary>
         public static readonly Regex MySqlFlexibleServer = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.DBforMySQL/flexibleServers/(?<serverName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Regex matching AKS node pool resource IDs.
+        /// </summary>
         public static readonly Regex AksNodePool = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.ContainerService/managedClusters/(?<clusterName>[^/]+)/agentPools/(?<nodePoolName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Regex matching storage file share resource IDs.
+        /// </summary>
         public static readonly Regex FileShare = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.Storage/storageAccounts/(?<storageAccountName>[^/]+)/fileServices/default/shares/(?<fileShareName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Regex matching Fabric capacity resource IDs.
+        /// </summary>
         public static readonly Regex FabricCapacity = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.Fabric/capacities/(?<capacityName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        // Azure DevOps Parallel Jobs - uses a custom URI scheme since it's not an ARM resource
-        // Format: azuredevops://{organization} (organization ID is resolved automatically via API)
+        /// <summary>
+        /// Regex matching Azure DevOps parallel jobs URIs (azuredevops://organization).
+        /// </summary>
         public static readonly Regex AzureDevOpsParallelJobs = new Regex(@"^azuredevops://(?<organization>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         private static readonly Regex RegexPattern = new Regex(@"\{(.*?)\}", RegexOptions.Compiled);
 
+        /// <summary>
+        /// Converts a wildcard pattern (e.g. "*" or "{regex}") into a Regex.
+        /// </summary>
+        /// <param name="pattern">The pattern string.</param>
+        /// <returns>A compiled Regex, or null if the pattern is not a valid regex.</returns>
         public static Regex GetResourcePattern(string pattern)
         {
             if (pattern == "*")
@@ -43,6 +75,15 @@ namespace poolautoscaler.resourcemanagement
             return null;
         }
 
+        /// <summary>
+        /// Expands a resource ID that may contain wildcards into a dictionary of key to resource ID.
+        /// </summary>
+        /// <param name="client">The ARM client.</param>
+        /// <param name="key">The key for the resource entry.</param>
+        /// <param name="resourceId">The resource ID or wildcard pattern.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="stoppingToken">Cancellation token.</param>
+        /// <returns>A dictionary of key to expanded resource IDs.</returns>
         public static async Task<Dictionary<string, string>> ExpandResources(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
             // Make sure these are ordered from most specific to least specific
@@ -72,6 +113,15 @@ namespace poolautoscaler.resourcemanagement
             return result;
         }
 
+        /// <summary>
+        /// Creates a <see cref="ResourceState"/> for the given resource ID and configuration.
+        /// </summary>
+        /// <param name="resourceId">The resource ID or URI.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
+        /// <param name="resourceInstance">Optional resource instance (e.g. for Azure DevOps).</param>
+        /// <returns>A new resource state instance.</returns>
+        /// <exception cref="ArgumentException">Thrown when the resource type is not supported.</exception>
         public static ResourceState Create(string resourceId, ILogger logger, Resource resourceConfiguration, ResourceInstance? resourceInstance = null)
         {
             // Make sure these are ordered from most specific to least specific
@@ -124,6 +174,11 @@ namespace poolautoscaler.resourcemanagement
             throw new ArgumentException($"Unsupported resource type: {resourceId}");
         }
 
+        /// <summary>
+        /// Populates the resource state's ResourceParts from the regex match groups.
+        /// </summary>
+        /// <param name="state">The resource state to populate.</param>
+        /// <param name="match">The regex match containing named groups.</param>
         private static void PopulateResourceParts(ResourceState state, Match match)
         {
             foreach (Group group in match.Groups)

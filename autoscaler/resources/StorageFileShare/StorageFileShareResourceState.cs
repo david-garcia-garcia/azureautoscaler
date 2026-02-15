@@ -10,16 +10,29 @@ using poolautoscaler.resources.StorageFileShare.Dto;
 
 namespace poolautoscaler.resources.StorageFileShare
 {
+    /// <summary>
+    /// Resource state for a storage file share.
+    /// </summary>
     public class StorageFileShareResourceState : ResourceState
     {
+        /// <summary>Gets or sets the requested file share state (quota).</summary>
         public StorageFileShareState RequestedStorageFileShareState { get; set; }
 
+        /// <summary>Gets or sets the current existing file share state from Azure.</summary>
         public StorageFileShareState ExistingStorageFileShareState { get; set; }
 
+        /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingStorageFileShareState;
 
+        /// <inheritdoc />
         public override object RequestedStateRaw => this.RequestedStorageFileShareState;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="StorageFileShareResourceState"/> class.
+        /// </summary>
+        /// <param name="id">The file share resource ID.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
         public StorageFileShareResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
         {
             if (!ResourceStateFactory.FileShare.IsMatch(id))
@@ -28,6 +41,8 @@ namespace poolautoscaler.resources.StorageFileShare
             }
         }
 
+        /// <summary>Sets the requested provisioned storage (share quota) in GB.</summary>
+        /// <param name="provisionedStorage">Provisioned storage in GB.</param>
         public void SetProvisionedStorage(double provisionedStorage)
         {
             if (this.RequestedStorageFileShareState.ShareQuotaGb.HasValue && this.RequestedStorageFileShareState.ShareQuotaGb > provisionedStorage)
@@ -39,6 +54,8 @@ namespace poolautoscaler.resources.StorageFileShare
             this.RequestedStorageFileShareState.ShareQuotaGb = (int)provisionedStorage;
         }
 
+        /// <summary>Sets the requested throughput by computing the required quota (MiB/s).</summary>
+        /// <param name="targetThroughputMbps">Target throughput in MiB/s.</param>
         public void SetThroughput(double targetThroughputMbps)
         {
             int requiredQuota = StorageFileShareResourceStateHelper.GetQuotaFromThroughput(targetThroughputMbps);
@@ -48,6 +65,7 @@ namespace poolautoscaler.resources.StorageFileShare
             this.SetProvisionedStorage(requiredQuota);
         }
 
+        /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
             ResourcePatchOperation operation = new ResourcePatchOperation();
@@ -85,6 +103,7 @@ namespace poolautoscaler.resources.StorageFileShare
             return operation;
         }
 
+        /// <inheritdoc />
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             var fileShare = (FileShareResource)this.Resource;
@@ -116,11 +135,13 @@ namespace poolautoscaler.resources.StorageFileShare
             }
         }
 
+        /// <inheritdoc />
         protected override string GetResourceIdForChangeHistory()
         {
             return null;
         }
 
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Resource = await client.GetFileShareResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken: cancellationToken);

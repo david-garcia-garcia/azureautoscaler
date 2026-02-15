@@ -44,7 +44,7 @@ namespace poolautoscaler.tests
         [Fact]
         public void ValidateAndLoadLicense_WhenEmptyLicenseProvided_ShouldReturnExpiredDefaultLicense()
         {
-            Environment.SetEnvironmentVariable("AUTOSCALER_LICENSE", "");
+            Environment.SetEnvironmentVariable("AUTOSCALER_LICENSE", string.Empty);
             var service = new LicenseService();
 
             var info = service.GetLicenseInfo();

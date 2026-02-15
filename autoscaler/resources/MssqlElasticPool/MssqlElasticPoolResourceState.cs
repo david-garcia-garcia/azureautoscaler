@@ -13,18 +13,38 @@ using poolautoscaler.utils;
 
 namespace poolautoscaler.resources.MssqlElasticPool
 {
+    /// <summary>
+    /// Resource state for an Azure SQL Elastic Pool.
+    /// </summary>
     public class MssqlElasticPoolResourceState : ResourceState
     {
+        /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingMssqlElasticPoolState;
 
+        /// <inheritdoc />
         public override object RequestedStateRaw => this.RequestedMssqlElasticPoolState;
 
+        /// <summary>
+        /// Gets or sets the requested elastic pool state (SKU, max size).
+        /// </summary>
         public MssqlElasticPoolState RequestedMssqlElasticPoolState { get; set; }
 
+        /// <summary>
+        /// Gets or sets the current existing elastic pool state from Azure.
+        /// </summary>
         public MssqlElasticPoolState ExistingMssqlElasticPoolState { get; set; }
 
+        /// <summary>
+        /// Gets the elastic pool ARM resource (strongly typed).
+        /// </summary>
         public new ElasticPoolResource Resource => (ElasticPoolResource)base.Resource;
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MssqlElasticPoolResourceState"/> class.
+        /// </summary>
+        /// <param name="id">The elastic pool resource ID.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
         public MssqlElasticPoolResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
         {
             if (!ResourceStateFactory.ElasticPools.IsMatch(id))
@@ -33,6 +53,10 @@ namespace poolautoscaler.resources.MssqlElasticPool
             }
         }
 
+        /// <summary>
+        /// Sets the requested DTU capacity (only increases if already set).
+        /// </summary>
+        /// <param name="dtuCapacity">The DTU capacity.</param>
         public void SetDtuCapacity(int dtuCapacity)
         {
             if (this.RequestedMssqlElasticPoolState.Sku == null)
@@ -50,6 +74,10 @@ namespace poolautoscaler.resources.MssqlElasticPool
             this.RequestedMssqlElasticPoolState.Sku.Capacity = dtuCapacity;
         }
 
+        /// <summary>
+        /// Sets the requested max size in bytes (only increases if already set).
+        /// </summary>
+        /// <param name="maxSizeBytes">The maximum size in bytes.</param>
         public void SetMaxSizeBytes(long maxSizeBytes)
         {
             if (this.RequestedMssqlElasticPoolState.MaxSizeBytes == null)
@@ -66,6 +94,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
             this.RequestedMssqlElasticPoolState.MaxSizeBytes = maxSizeBytes;
         }
 
+        /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
             ResourcePatchOperation result = new ResourcePatchOperation();
@@ -98,6 +127,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
             return result;
         }
 
+        /// <inheritdoc />
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             if (!(operation.PatchData is MssqlElasticPoolState internalPatch))
@@ -117,6 +147,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
             this.ValidateArmResult(result);
         }
 
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             base.Resource = await client.GetElasticPoolResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);

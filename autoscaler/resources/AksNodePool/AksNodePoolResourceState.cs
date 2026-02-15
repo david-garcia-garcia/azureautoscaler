@@ -15,16 +15,33 @@ using poolautoscaler.utils;
 
 namespace poolautoscaler.resources.AksNodePool
 {
+    /// <summary>
+    /// Resource state for an AKS node pool.
+    /// </summary>
     public class AksNodePoolResourceState : ResourceState
     {
+        /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingAksNodePoolState;
 
+        /// <inheritdoc />
         public override object RequestedStateRaw => this.RequestedAksNodePoolState;
 
+        /// <summary>
+        /// Gets or sets the requested node pool state (min/max count).
+        /// </summary>
         public AksNodePoolState RequestedAksNodePoolState { get; set; }
 
+        /// <summary>
+        /// Gets or sets the current existing node pool state from Azure.
+        /// </summary>
         public AksNodePoolState ExistingAksNodePoolState { get; set; }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="AksNodePoolResourceState"/> class.
+        /// </summary>
+        /// <param name="id">The AKS node pool resource ID.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
         public AksNodePoolResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
         {
             if (!ResourceStateFactory.AksNodePool.IsMatch(id))
@@ -33,6 +50,10 @@ namespace poolautoscaler.resources.AksNodePool
             }
         }
 
+        /// <summary>
+        /// Sets the requested minimum node count (only increases if already set).
+        /// </summary>
+        /// <param name="minNodeCount">The minimum node count.</param>
         public void SetMinNodeCount(int minNodeCount)
         {
             if (this.RequestedAksNodePoolState.MinNodeCount == null)
@@ -47,6 +68,7 @@ namespace poolautoscaler.resources.AksNodePool
             }
         }
 
+        /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
             ResourcePatchOperation result = new ResourcePatchOperation();
@@ -74,6 +96,7 @@ namespace poolautoscaler.resources.AksNodePool
             return result;
         }
 
+        /// <inheritdoc />
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             var nodePool = (ContainerServiceAgentPoolResource)this.Resource;
@@ -92,8 +115,19 @@ namespace poolautoscaler.resources.AksNodePool
             this.ValidateArmResult(result);
         }
 
-        protected async Task<string> GetVmssIdForNodePool(ArmClient client, TokenCredential credential,
-            CancellationToken cancellationToken, ContainerServiceAgentPoolResource nodePool)
+        /// <summary>
+        /// Gets the Virtual Machine Scale Set ID for the node pool (cached when possible).
+        /// </summary>
+        /// <param name="client">The ARM client.</param>
+        /// <param name="credential">The token credential.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <param name="nodePool">The agent pool resource.</param>
+        /// <returns>The VMSS resource ID.</returns>
+        protected async Task<string> GetVmssIdForNodePool(
+            ArmClient client,
+            TokenCredential credential,
+            CancellationToken cancellationToken,
+            ContainerServiceAgentPoolResource nodePool)
         {
             var cacheKey = "vmss-for-pool-" + nodePool.Data.Name;
 
@@ -141,6 +175,7 @@ namespace poolautoscaler.resources.AksNodePool
             throw new Exception("Could not find Virtual Machine Scale Set for Node Pool.");
         }
 
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Resource = await client.GetContainerServiceAgentPoolResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);
@@ -177,6 +212,7 @@ namespace poolautoscaler.resources.AksNodePool
             };
         }
 
+        /// <inheritdoc />
         protected override string GetResourceIdForChangeHistory()
         {
             if (this.IsDisabled())

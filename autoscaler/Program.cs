@@ -241,18 +241,24 @@ namespace AzureSqlElasticPoolAutoscaler
 
                 TokenCredential credential;
 
-                switch (this.Configuration.AzureCredentialType)
+                var credType = this.Configuration.AzureCredentialType;
+                if (string.IsNullOrEmpty(credType))
                 {
-                    case "DeviceCodeCredential":
-                        credential = new DeviceCodeCredential();
-                        break;
-                    case "DefaultAzureCredential":
-                    case "":
-                    case null:
-                        credential = new DefaultAzureCredential();
-                        break;
-                    default:
-                        throw new Exception("Unsupported AzureCredentialType. Available options are DeviceCodeCredential, DefaultAzureCredential.");
+                    credential = new DefaultAzureCredential();
+                }
+                else
+                {
+                    switch (credType)
+                    {
+                        case "DeviceCodeCredential":
+                            credential = new DeviceCodeCredential();
+                            break;
+                        case "DefaultAzureCredential":
+                            credential = new DefaultAzureCredential();
+                            break;
+                        default:
+                            throw new Exception("Unsupported AzureCredentialType. Available options are DeviceCodeCredential, DefaultAzureCredential.");
+                    }
                 }
 
                 if (Debugger.IsAttached && string.IsNullOrWhiteSpace(this.Configuration.AzureCredentialType))

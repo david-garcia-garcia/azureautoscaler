@@ -79,15 +79,18 @@ namespace poolautoscaler.strategies
                     {
                         logger.LogDebug(
                             "Cannot scale below minimum configured value. Current {0}. Target {1}. Min {2}. Adjusting to minimum.",
-
-                            currentDimensionValue, nextDimensionValue, rule.DimensionValueMin);
+                            currentDimensionValue,
+                            nextDimensionValue,
+                            rule.DimensionValueMin);
                         return rule.DimensionValueMin;
                     }
                     else if (aboveMaximum)
                     {
                         logger.LogDebug(
                             "Cannot scale above maximum configured value. Current {0}. Target {1}. Max {2}. Adjusting to maximum.",
-                            currentDimensionValue, nextDimensionValue, rule.DimensionValueMax);
+                            currentDimensionValue,
+                            nextDimensionValue,
+                            rule.DimensionValueMax);
 
                         return rule.DimensionValueMax;
                     }

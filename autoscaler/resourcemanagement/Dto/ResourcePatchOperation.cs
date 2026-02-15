@@ -1,20 +1,22 @@
 namespace poolautoscaler.resourcemanagement.Dto
 {
-    /// <summary>Describes a patch to apply to a resource (data, disruptive flag, has-changes).</summary>
+    /// <summary>
+    /// Describes a patch to apply to a resource (data, disruptive flag, has-changes).
+    /// </summary>
     public class ResourcePatchOperation
     {
         /// <summary>
-        /// The patch object.
+        /// Gets or sets the patch data object.
         /// </summary>
         public Object PatchData { get; set; }
 
         /// <summary>
-        /// If there is associated downtime with patching the resource.
+        /// Gets or sets a value indicating whether patching the resource is disruptive (e.g. downtime).
         /// </summary>
         public bool Disruptive { get; set; }
 
         /// <summary>
-        /// If there are any changes to apply to the actual resource.
+        /// Gets or sets a value indicating whether there are changes to apply to the actual resource.
         /// </summary>
         public bool HasChanges { get; set; }
     }

@@ -12,16 +12,29 @@ using poolautoscaler.utils;
 
 namespace poolautoscaler.resources.MySqlFlexibleServer
 {
+    /// <summary>
+    /// Resource state for a MySQL Flexible Server.
+    /// </summary>
     public class MySqlFlexibleServerResourceState : ResourceState
     {
+        /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingMySqlFlexibleServerState;
 
+        /// <inheritdoc />
         public override object RequestedStateRaw => this.RequestedMySqlFlexibleServerState;
 
+        /// <summary>Gets or sets the requested server state (SKU, IOPS, core count).</summary>
         public Dto.MySqlFlexibleServerState RequestedMySqlFlexibleServerState { get; set; }
 
+        /// <summary>Gets or sets the current existing server state from Azure.</summary>
         public Dto.MySqlFlexibleServerState ExistingMySqlFlexibleServerState { get; set; }
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="MySqlFlexibleServerResourceState"/> class.
+        /// </summary>
+        /// <param name="id">The MySQL flexible server resource ID.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="resourceConfiguration">The resource configuration.</param>
         public MySqlFlexibleServerResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
         {
             if (!ResourceStateFactory.MySqlFlexibleServer.IsMatch(id))
@@ -30,6 +43,8 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             }
         }
 
+        /// <summary>Sets the requested IOPS (only increases if already set).</summary>
+        /// <param name="iops">The IOPS value as string.</param>
         public void SetIops(string iops)
         {
             int parsedIops = (int)double.Parse(iops);
@@ -48,6 +63,8 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             this.RequestedMySqlFlexibleServerState.Iops = parsedIops;
         }
 
+        /// <summary>Sets the requested SKU name (only increases tier if already set).</summary>
+        /// <param name="sku">The SKU name.</param>
         public void SetSku(string sku)
         {
             if (this.RequestedMySqlFlexibleServerState.Sku == null)
@@ -65,6 +82,8 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             this.RequestedMySqlFlexibleServerState.Sku.Name = sku;
         }
 
+        /// <summary>Sets the requested core count (only increases if already set).</summary>
+        /// <param name="coreCount">The core count as string.</param>
         public void SetCoreCount(string coreCount)
         {
             int intCoreCount = (int)double.Parse(coreCount);
@@ -81,6 +100,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             }
         }
 
+        /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
             ResourcePatchOperation operation = new ResourcePatchOperation();
@@ -152,6 +172,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             return operation;
         }
 
+        /// <inheritdoc />
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             var server = this.ResourceCasted;
@@ -175,6 +196,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             this.ValidateArmResult(result);
         }
 
+        /// <inheritdoc />
         public override async Task<MetricEvalDtoResult> CustomMetric(
             ArmClient client,
             TokenCredential credential,
@@ -201,6 +223,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             }
         }
 
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Resource = await client.GetMySqlFlexibleServerResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);

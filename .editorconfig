@@ -23,6 +23,9 @@ dotnet_diagnostic.SA1402.severity = error
 # No trailing whitespace (SA1028)
 dotnet_diagnostic.SA1028.severity = error
 
+# Single line comment should begin with a space (SA1005)
+dotnet_diagnostic.SA1005.severity = error
+
 # Prefix local calls with this (SA1101)
 dotnet_diagnostic.SA1101.severity = error
 
@@ -53,6 +56,9 @@ dotnet_diagnostic.SA1124.severity = error
 # Parameters should begin on the line after the declaration when spanning multiple lines (SA1116)
 dotnet_diagnostic.SA1116.severity = error
 
+# Parameters must be on same line or separate lines (SA1117)
+dotnet_diagnostic.SA1117.severity = error
+
 # Element parameters must be documented (SA1611)
 dotnet_diagnostic.SA1611.severity = error
 
@@ -68,6 +74,9 @@ dotnet_diagnostic.SA1629.severity = error
 # Element documentation must not be copied and pasted (SA1625)
 dotnet_diagnostic.SA1625.severity = error
 
+# Documentation text must not be empty (SA1627)
+dotnet_diagnostic.SA1627.severity = error
+
 # Property summary documentation must match accessors (SA1623) - disabled
 dotnet_diagnostic.SA1623.severity = none
 
@@ -77,6 +86,12 @@ dotnet_diagnostic.SA1139.severity = none
 # Constructor summary must begin with standard text (SA1642)
 dotnet_diagnostic.SA1642.severity = error
 
+# Use string.Empty for empty strings (SA1122)
+dotnet_diagnostic.SA1122.severity = error
+
+# Conditional expressions must declare precedence (SA1408)
+dotnet_diagnostic.SA1408.severity = error
+
 # Statement must not be on single line (SA1501)
 dotnet_diagnostic.SA1501.severity = error
 
@@ -85,6 +100,9 @@ dotnet_diagnostic.SA1507.severity = error
 
 # Closing brace should be followed by blank line (SA1513)
 dotnet_diagnostic.SA1513.severity = error
+
+# Element documentation header must be preceded by blank line (SA1514)
+dotnet_diagnostic.SA1514.severity = error
 
 # Elements should be separated by blank line (SA1516)
 dotnet_diagnostic.SA1516.severity = error

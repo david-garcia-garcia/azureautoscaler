@@ -6,8 +6,20 @@ using poolautoscaler.resourcemanagement;
 
 namespace poolautoscaler.resources.AksNodePool
 {
+    /// <summary>
+    /// Helper for expanding and resolving AKS node pool resource IDs.
+    /// </summary>
     public static class AksNodePoolResourceStateHelper
     {
+        /// <summary>
+        /// Expands a node pool resource ID that may contain wildcards into concrete resource IDs.
+        /// </summary>
+        /// <param name="client">The ARM client.</param>
+        /// <param name="key">The key for the resource entry.</param>
+        /// <param name="resourceId">The resource ID or wildcard pattern.</param>
+        /// <param name="logger">The logger.</param>
+        /// <param name="stoppingToken">Cancellation token.</param>
+        /// <returns>A dictionary of key to expanded resource IDs.</returns>
         public static async Task<Dictionary<string, string>> ExpandNodePoolWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
             var result = new Dictionary<string, string>();

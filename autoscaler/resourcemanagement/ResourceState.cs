@@ -18,16 +18,30 @@ namespace poolautoscaler.resourcemanagement
     /// </summary>
     public abstract class ResourceState
     {
-        // A resource can be disabled for multiple reasons.
+        /// <summary>
+        /// Gets or sets a dictionary of reasons and until when the resource is disabled.
+        /// </summary>
         public Dictionary<string, DateTime> DisabledUntil { get; set; } = new Dictionary<string, DateTime>();
 
-        // Track when the "disabled" message was last logged to avoid log spam
+        /// <summary>
+        /// Gets or sets when the "disabled" message was last logged to avoid log spam.
+        /// </summary>
         public DateTime LastDisabledMessageLogged { get; set; } = DateTime.MinValue;
 
+        /// <summary>
+        /// Gets the raw existing state of the resource.
+        /// </summary>
         public abstract object ExistingStateRaw { get; }
 
+        /// <summary>
+        /// Gets the raw requested state of the resource.
+        /// </summary>
         public abstract object RequestedStateRaw { get; }
 
+        /// <summary>
+        /// Determines whether the resource is currently disabled.
+        /// </summary>
+        /// <returns>True if the resource is disabled; otherwise false.</returns>
         public bool IsDisabled()
         {
             // Cleanup unused resources
@@ -51,6 +65,10 @@ namespace poolautoscaler.resourcemanagement
             return false;
         }
 
+        /// <summary>
+        /// Gets the number of seconds until the next evaluation.
+        /// </summary>
+        /// <returns>Seconds until next evaluation, or 0 if not applicable.</returns>
         public int NextEvaluationSeconds()
         {
             if (this.LastEvaluation == null)
@@ -61,25 +79,52 @@ namespace poolautoscaler.resourcemanagement
             return (int)this.Configuration.FrequencyParsed.TotalSeconds - (int)(DateTime.UtcNow - this.LastEvaluation.Value).TotalSeconds;
         }
 
+        /// <summary>
+        /// Resets the last evaluation timestamp to now.
+        /// </summary>
         public void ResetEvaluation()
         {
             this.LastEvaluation = DateTime.UtcNow;
         }
 
+        /// <summary>
+        /// Gets or sets the resource URI path parts (e.g. subscriptionId, resourceGroupName).
+        /// </summary>
         public Dictionary<string, string> ResourceParts = new Dictionary<string, string>();
 
+        /// <summary>
+        /// Gets or sets the resource tags.
+        /// </summary>
         public Dictionary<string, string> ResourceTags = new Dictionary<string, string>();
 
+        /// <summary>
+        /// Gets the logger instance.
+        /// </summary>
         public readonly ILogger Logger;
 
+        /// <summary>
+        /// Gets or sets the ARM resource instance.
+        /// </summary>
         public ArmResource? Resource;
 
+        /// <summary>
+        /// Gets the resource configuration.
+        /// </summary>
         public readonly Resource Configuration;
 
+        /// <summary>
+        /// Gets or sets the change history snapshots.
+        /// </summary>
         public List<ResourceHistoryItem> ChangeHistory { get; set; }
 
+        /// <summary>
+        /// Gets or sets the memory cache for this resource state.
+        /// </summary>
         protected IMemoryCache Cache { get; set; }
 
+        /// <summary>
+        /// Gets the resource identifier.
+        /// </summary>
         protected readonly string ResourceId;
 
         /// <summary>
@@ -113,8 +158,15 @@ namespace poolautoscaler.resourcemanagement
         /// <summary>
         /// Last time this resources was scaled.
         /// </summary>
+        /// <summary>
+        /// Gets or sets the last time this resource was scaled.
+        /// </summary>
         public DateTime? LastScale { get; set; }
 
+        /// <summary>
+        /// Gets the resource ID used for change history queries.
+        /// </summary>
+        /// <returns>The resource ID.</returns>
         protected virtual string GetResourceIdForChangeHistory()
         {
             return this.ResourceId;
@@ -190,7 +242,7 @@ namespace poolautoscaler.resourcemanagement
             }
 
             // Grab the activity logs. Ojo porque no es el registro de cambios...
-            //LogsQueryClient c = new LogsQueryClient(credential, new LogsQueryClientOptions() { });
+            // LogsQueryClient c = new LogsQueryClient(credential, new LogsQueryClientOptions() { });
             // var r = await c.QueryResourceAsync(this.Resource.Id, "AzureActivity", QueryTimeRange.All, new LogsQueryOptions(), cancellationToken);
 
             // Grab the changelogs
@@ -213,7 +265,7 @@ namespace poolautoscaler.resourcemanagement
             }
 
             var mostRecentTimestamp = this.ChangeHistory.FirstOrDefault()?.Timestamp;
-            var timeFilter = mostRecentTimestamp.HasValue ? $"and timestamp > datetime('{mostRecentTimestamp.Value:O}')" : "";
+            var timeFilter = mostRecentTimestamp.HasValue ? $"and timestamp > datetime('{mostRecentTimestamp.Value:O}')" : string.Empty;
             var resourceIdFilter = this.GetResourceIdForChangeHistory();
 
             // Null here means no resource history should be loaded.
@@ -347,7 +399,7 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="targetTime">Target time.</param>
         /// <param name="useSmallestSku">Use smallest SKU.</param>
         /// <returns>Effective SKU name.</returns>
-        /// <exception cref="InvalidOperationException"></exception>
+        /// <exception cref="InvalidOperationException">Thrown when no change history is available or no history exists before the target time.</exception>
         public string GetEffectiveSkuAtPointInTime(DateTimeOffset targetTime, bool useSmallestSku = true)
         {
             if (this.ChangeHistory == null || !this.ChangeHistory.Any())
@@ -373,6 +425,10 @@ namespace poolautoscaler.resourcemanagement
                 .Name;
         }
 
+        /// <summary>
+        /// Gets the timestamp of the latest SKU change in history, or null if none.
+        /// </summary>
+        /// <returns>Timestamp of latest SKU change, or null.</returns>
         public DateTimeOffset? GetLatestSkuChange()
         {
             if (this.ChangeHistory == null || !this.ChangeHistory.Any())
@@ -398,6 +454,11 @@ namespace poolautoscaler.resourcemanagement
             return null;
         }
 
+        /// <summary>
+        /// Replaces placeholders in the value with resource parts (e.g. ${subscriptionId}).
+        /// </summary>
+        /// <param name="value">The string containing placeholders.</param>
+        /// <returns>The string with placeholders replaced.</returns>
         public string ReplaceResourceParts(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -413,11 +474,20 @@ namespace poolautoscaler.resourcemanagement
             return value;
         }
 
+        /// <summary>
+        /// Performs the actual refresh of resource state from Azure.
+        /// </summary>
+        /// <param name="client">The ARM client.</param>
+        /// <param name="credential">The token credential.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when refresh is done.</returns>
         protected abstract Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken);
 
-        /// <summary>Validates that the ARM operation completed successfully.</summary>
-        /// <param name="operation">The ARM operation to validate.</param>
+        /// <summary>
+        /// Validates that the ARM operation completed successfully.
+        /// </summary>
         /// <typeparam name="T">The result type of the operation.</typeparam>
+        /// <param name="operation">The ARM operation to validate.</param>
         protected void ValidateArmResult<T>(ArmOperation<T> operation)
             where T : notnull
         {
@@ -440,7 +510,7 @@ namespace poolautoscaler.resourcemanagement
             var message = ex.Message ?? string.Empty;
 
             return message.ToLowerInvariant().Contains("scope is invalid") ||
-                   message.ToLowerInvariant().Contains("scope") && message.ToLowerInvariant().Contains("invalid");
+                   (message.ToLowerInvariant().Contains("scope") && message.ToLowerInvariant().Contains("invalid"));
         }
     }
 }
