@@ -2,9 +2,8 @@ using Azure.Core;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
-using poolautoscaler.resourcemanagement;
-
 using poolautoscaler.metrics.Dto;
+using poolautoscaler.resourcemanagement;
 
 namespace poolautoscaler.strategies
 {

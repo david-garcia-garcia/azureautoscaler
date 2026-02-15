@@ -1,7 +1,7 @@
-using Azure.ResourceManager.Sql.Models;
 using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.Sql;
+using Azure.ResourceManager.Sql.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.resourcemanagement;
 
@@ -252,8 +252,8 @@ namespace poolautoscaler.resources.MsSqlDatabase
         /// <param name="sku">The SQL SKU.</param>
         /// <param name="dtu">Minimum DTU.</param>
         /// <param name="storageBytes">Required storage in bytes.</param>
-        /// <returns>Tuple of (dtu, maxCapacityBytes).</returns>
-        public static (long dtu, long capacity) FindClosestDtuThatCanHoldStorage(SqlSku sku, int dtu, long storageBytes)
+        /// <returns>Tuple of (Dtu, Capacity) in maxCapacityBytes.</returns>
+        public static (long Dtu, long Capacity) FindClosestDtuThatCanHoldStorage(SqlSku sku, int dtu, long storageBytes)
         {
             var capacityValues = GetCapacityValues(sku);
             var maxDataSizeValues = GetStorageCapacityValues(sku);

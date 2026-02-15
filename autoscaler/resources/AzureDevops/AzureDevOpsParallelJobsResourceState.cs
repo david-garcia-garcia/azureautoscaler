@@ -2,10 +2,10 @@ using Azure.Core;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.resources.AzureDevops.Dto;
-using poolautoscaler.metrics.Dto;
 
 namespace poolautoscaler.resources.AzureDevops
 {

@@ -4,10 +4,10 @@ using Azure.ResourceManager.MySql.FlexibleServers;
 using Azure.ResourceManager.MySql.FlexibleServers.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.resources.MySqlFlexibleServer.Dto;
-using poolautoscaler.metrics.Dto;
 using poolautoscaler.utils;
 
 namespace poolautoscaler.resources.MySqlFlexibleServer

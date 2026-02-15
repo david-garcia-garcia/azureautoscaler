@@ -7,8 +7,8 @@ using Azure.ResourceManager.ResourceGraph.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
-using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.metrics.Dto;
+using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.utils;
 
 namespace poolautoscaler.resourcemanagement

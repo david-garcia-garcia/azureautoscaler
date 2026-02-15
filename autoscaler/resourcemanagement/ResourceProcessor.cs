@@ -8,8 +8,8 @@ using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
 using poolautoscaler.licensing;
 using poolautoscaler.metrics;
-using poolautoscaler.strategies;
 using poolautoscaler.metrics.Dto;
+using poolautoscaler.strategies;
 using poolautoscaler.utils;
 
 namespace poolautoscaler.resourcemanagement

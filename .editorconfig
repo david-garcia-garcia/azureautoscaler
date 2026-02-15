@@ -53,6 +53,9 @@ dotnet_diagnostic.SA1203.severity = error
 # SA1200: Using directive should appear within a namespace - disabled
 dotnet_diagnostic.SA1200.severity = none
 
+# Using directives must be ordered alphabetically by namespace (SA1210)
+dotnet_diagnostic.SA1210.severity = error
+
 # SA1300: Element should begin with an uppercase letter (e.g. namespace) - disabled
 dotnet_diagnostic.SA1300.severity = none
 
@@ -121,6 +124,9 @@ dotnet_diagnostic.SA1516.severity = error
 
 # Variable names must begin with lowercase letter (SA1312)
 dotnet_diagnostic.SA1312.severity = error
+
+# Tuple element names should use correct casing (SA1316) - PascalCase
+dotnet_diagnostic.SA1316.severity = error
 
 # Prefer 'var' when type is apparent (optional; use default or none to avoid churn)
 # dotnet_style_prefer_var_for_built_in_types = false:suggestion

@@ -4,10 +4,10 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
+using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resources.MssqlElasticPool;
 using poolautoscaler.strategies;
-using poolautoscaler.metrics.Dto;
 using poolautoscaler.strategies.Dto;
 using poolautoscaler.utils;
 
