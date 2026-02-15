@@ -35,6 +35,9 @@ dotnet_diagnostic.SA1101.severity = error
 # Field names should not begin with underscore (SA1309)
 dotnet_diagnostic.SA1309.severity = error
 
+# Const field names must begin with uppercase letter (SA1303)
+dotnet_diagnostic.SA1303.severity = error
+
 # SA1413: Use trailing comma in multi-line initializers - disabled
 dotnet_diagnostic.SA1413.severity = none
 
@@ -43,6 +46,9 @@ dotnet_diagnostic.SA1600.severity = error
 
 # Public members should come before private members (SA1202)
 dotnet_diagnostic.SA1202.severity = error
+
+# Constants must appear before fields (SA1203)
+dotnet_diagnostic.SA1203.severity = error
 
 # SA1200: Using directive should appear within a namespace - disabled
 dotnet_diagnostic.SA1200.severity = none

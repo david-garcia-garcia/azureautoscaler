@@ -172,9 +172,9 @@ namespace poolautoscaler.resourcemanagement
             return this.ResourceId;
         }
 
-        private DateTime? LastEvaluation;
+        private const string AutoscalerDisabledTag = "autoscaler.disabled";
 
-        private const string autoscalerDisabledTag = "autoscaler.disabled";
+        private DateTime? LastEvaluation;
 
         /// <summary>
         /// Refreshes the resource state from Azure.
@@ -183,11 +183,11 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="credential">The token credential.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task that completes when refresh is done.</returns>
-        public async Task Refresh(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
+        public virtual async Task Refresh(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Logger.LogTrace("Starting resource refresh");
 
-            var isCurrentlyDisabled = this.DisabledUntil.ContainsKey(autoscalerDisabledTag);
+            var isCurrentlyDisabled = this.DisabledUntil.ContainsKey(AutoscalerDisabledTag);
 
             try
             {
@@ -205,26 +205,26 @@ namespace poolautoscaler.resourcemanagement
                 ExceptionDispatchInfo.Capture(ex).Throw();
             }
 
-            if (this.ResourceTags.TryGetValue(autoscalerDisabledTag, out var autoscalerDisabled) &&
+            if (this.ResourceTags.TryGetValue(AutoscalerDisabledTag, out var autoscalerDisabled) &&
                 autoscalerDisabled.ToLower() == "true")
             {
-                this.DisabledUntil[autoscalerDisabledTag] = DateTime.MaxValue;
+                this.DisabledUntil[AutoscalerDisabledTag] = DateTime.MaxValue;
             }
             else
             {
-                this.DisabledUntil.TryRemove(autoscalerDisabledTag);
+                this.DisabledUntil.TryRemove(AutoscalerDisabledTag);
             }
 
             // This gives visiblity - wihtout flooding the logs - that the resource was disabled externally
-            if (isCurrentlyDisabled != this.DisabledUntil.ContainsKey(autoscalerDisabledTag))
+            if (isCurrentlyDisabled != this.DisabledUntil.ContainsKey(AutoscalerDisabledTag))
             {
                 if (isCurrentlyDisabled)
                 {
-                    this.Logger.LogInformation($"Tag '{autoscalerDisabledTag}' was externally removed from resource.");
+                    this.Logger.LogInformation($"Tag '{AutoscalerDisabledTag}' was externally removed from resource.");
                 }
                 else
                 {
-                    this.Logger.LogInformation($"Tag '{autoscalerDisabledTag}' was externally added to resource.");
+                    this.Logger.LogInformation($"Tag '{AutoscalerDisabledTag}' was externally added to resource.");
                 }
             }
 

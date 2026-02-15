@@ -25,6 +25,7 @@ namespace poolautoscaler.resourcemanagement
         private readonly TokenCredential credential;
         private readonly ArmClient armClient;
         private readonly LicenseInfo licenseInfo;
+        private readonly Func<DateTime> utcNowProvider;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ResourceProcessor"/> class.
@@ -34,18 +35,21 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="credential">The token credential for Azure and metrics.</param>
         /// <param name="armClient">The ARM client.</param>
         /// <param name="licenseInfo">The license information.</param>
+        /// <param name="utcNowProvider">Optional. Provides current UTC time for TimeWindow evaluation. Defaults to <see cref="DateTime.UtcNow"/>.</param>
         internal ResourceProcessor(
             ILoggerFactory logFactory,
             IReadOnlyList<IDimension> dimensions,
             TokenCredential credential,
             ArmClient armClient,
-            LicenseInfo licenseInfo)
+            LicenseInfo licenseInfo,
+            Func<DateTime>? utcNowProvider = null)
         {
             this.logger = logFactory.CreateLogger("ResourceProcessor");
             this.dimensions = dimensions;
             this.credential = credential;
             this.armClient = armClient;
             this.licenseInfo = licenseInfo;
+            this.utcNowProvider = utcNowProvider ?? (() => DateTime.UtcNow);
         }
 
         /// <summary>
@@ -99,8 +103,9 @@ namespace poolautoscaler.resourcemanagement
             var logger = state.Logger;
             var finder = new ConfigFinder();
 
+            var utcNow = this.utcNowProvider();
             var scalingConfigurations = (from p in state.Configuration.ScalingConfigurations.Values
-                                         where finder.SettingIsActive(p, DateTime.UtcNow)
+                                         where finder.SettingIsActive(p, utcNow)
                                          select p).ToList();
 
             if (!scalingConfigurations.Any())
