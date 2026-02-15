@@ -113,6 +113,16 @@ namespace poolautoscaler.configuration
                             {
                                 metric.TransformExpression = a => a;
                             }
+
+                            if (metric.ForecastEnable && !string.IsNullOrEmpty(metric.ForecastTimeRange))
+                            {
+                                metric.ForecastTimeRangeParsed = DurationParser.ParseDuration(metric.ForecastTimeRange);
+                            }
+
+                            if (metric.ForecastEnable && !string.IsNullOrEmpty(metric.ForecastGranularity))
+                            {
+                                metric.ForecastGranularityParsed = DurationParser.ParseDuration(metric.ForecastGranularity);
+                            }
                         }
                     }
 
