@@ -1,41 +1,17 @@
-using Microsoft.Extensions.Logging;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace poolautoscaler.utils
 {
-    /// <summary>
-    /// Extension methods for ILogger
-    /// </summary>
-    public static class LoggerExtension
-    {
-        /// <summary>
-        /// Gets the current minimum log level enabled for the logger.
-        /// Iterates through all log levels and returns the first one that is enabled.
-        /// </summary>
-        /// <param name="logger">The logger instance</param>
-        /// <returns>The minimum enabled LogLevel, or LogLevel.None if no level is enabled</returns>
-        public static LogLevel CurrentLogLevel(this ILogger logger)
-        {
-            foreach (LogLevel logLevel in Enum.GetValues(typeof(LogLevel)))
-            {
-                if (logger.IsEnabled(logLevel))
-                    return logLevel;
-            }
-
-            return LogLevel.None;
-        }
-    }
-
+    /// <summary>Extension methods and serialization helpers.</summary>
     public static class HelperExtensions
     {
         /// <summary>
         /// Convert a single element to a list.
         /// </summary>
-        /// <typeparam name="TObjectType"></typeparam>
-        /// <param name="source"></param>
-        /// <returns></returns>
+        /// <typeparam name="TObjectType">Element type.</typeparam>
+        /// <param name="source">Source enumerable.</param>
+        /// <returns>The source sequence or an empty list if null.</returns>
         public static IEnumerable<TObjectType> AsIterable<TObjectType>(this IEnumerable<TObjectType> source)
         {
             if (source != null)
@@ -46,11 +22,18 @@ namespace poolautoscaler.utils
             return new List<TObjectType>();
         }
 
+        /// <summary>Serializes to JSON (nulls omitted).</summary>
+        /// <param name="data">The object to serialize.</param>
+        /// <returns>JSON string.</returns>
         public static string SerializeSimple(object data)
         {
             return JsonSerializer.Serialize(data, new JsonSerializerOptions() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
         }
 
+        /// <summary>Deep clone via JSON round-trip.</summary>
+        /// <param name="self">The object to clone.</param>
+        /// <typeparam name="T">The type of the object.</typeparam>
+        /// <returns>Deep copy of the object.</returns>
         public static T DeepCopy<T>(this T self)
         {
             var serialized = JsonSerializer.Serialize(self);
@@ -61,11 +44,11 @@ namespace poolautoscaler.utils
         /// Attempts to remove the value with the specified key from the dictionary.
         /// Returns true if the key was found and removed; otherwise, false.
         /// </summary>
-        /// <typeparam name="TKey">The type of keys in the dictionary</typeparam>
-        /// <typeparam name="TValue">The type of values in the dictionary</typeparam>
-        /// <param name="dictionary">The dictionary to remove from</param>
-        /// <param name="key">The key to remove</param>
-        /// <returns>True if the key was found and removed; otherwise, false</returns>
+        /// <typeparam name="TKey">The type of keys in the dictionary.</typeparam>
+        /// <typeparam name="TValue">The type of values in the dictionary.</typeparam>
+        /// <param name="dictionary">The dictionary to remove from.</param>
+        /// <param name="key">The key to remove.</param>
+        /// <returns>True if the key was found and removed; otherwise, false.</returns>
         public static bool TryRemove<TKey, TValue>(this IDictionary<TKey, TValue> dictionary, TKey key)
         {
             if (dictionary == null)

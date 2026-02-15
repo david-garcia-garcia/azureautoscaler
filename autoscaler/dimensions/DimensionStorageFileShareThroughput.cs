@@ -1,26 +1,26 @@
 using Azure.Core;
 using Azure.ResourceManager;
-using Azure.ResourceManager.ContainerService;
-using Azure.ResourceManager.MySql.FlexibleServers;
-using Azure.ResourceManager.Sql;
-using Azure.ResourceManager.Storage;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.StorageFileShare;
 
 namespace poolautoscaler.dimensions
 {
+    /// <summary>Storage file share throughput dimension.</summary>
     public class DimensionStorageFileShareThroughput : IDimension
     {
+        /// <summary>Initializes a new instance of the <see cref="DimensionStorageFileShareThroughput"/> class.</summary>
         public DimensionStorageFileShareThroughput()
         {
         }
 
-        /// <summary>
-        /// Check that this rule can be applied to the given resource.
-        /// </summary>
-        /// <param name="resource"></param>
-        /// <param name="rule"></param>
-        /// <returns></returns>
+        /// <summary>Check that this rule can be applied to the given resource.</summary>
+        /// <param name="resource">The resource state.</param>
+        /// <param name="rule">The scaling rule.</param>
+        /// <param name="logger">The logger.</param>
+        /// <returns>True if the dimension can be applied.</returns>
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource is StorageFileShareResourceState
@@ -32,21 +32,18 @@ namespace poolautoscaler.dimensions
             return false;
         }
 
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
         }
 
-        private void ValidateDimensionValue(string value)
-        {
-        }
-
-        /// <summary>
-        /// Compare two dimension values
-        /// </summary>
-        /// <param name="dimensionValue1"></param>
-        /// <param name="dimensionValue2"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentException"></exception>
+        /// <summary>Compare two dimension values.</summary>
+        /// <param name="resource">The ARM resource (unused).</param>
+        /// <param name="dimensionValue1">First dimension value.</param>
+        /// <param name="dimensionValue2">Second dimension value.</param>
+        /// <returns>Comparison result.</returns>
+        /// <exception cref="ArgumentException">Thrown when values are invalid.</exception>
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             if (double.TryParse(dimensionValue1, out var value1) && double.TryParse(dimensionValue2, out var value2))
@@ -57,6 +54,7 @@ namespace poolautoscaler.dimensions
             throw new ArgumentException($"Invalid dimension values. Value1: '{dimensionValue1}', Value2: '{dimensionValue2}'");
         }
 
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (!(resource is StorageFileShareResourceState fileShareState))
@@ -75,6 +73,7 @@ namespace poolautoscaler.dimensions
             return currentThroughput.ToString();
         }
 
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             if (!(resource is StorageFileShareResourceState))
@@ -87,6 +86,7 @@ namespace poolautoscaler.dimensions
             return nextThroughput.ToString();
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (!(resource is StorageFileShareResourceState fileShareState))
@@ -96,12 +96,16 @@ namespace poolautoscaler.dimensions
 
             // Calculate throughput from the requested quota (returns null if no quota requested)
             var requestedQuota = fileShareState.RequestedStorageFileShareState?.ShareQuotaGb;
-            if (requestedQuota == null) return null;
-            
+            if (requestedQuota == null)
+            {
+                return null;
+            }
+
             var requestedThroughput = StorageFileShareResourceStateHelper.GetThroughputFromQuota(requestedQuota.Value);
             return requestedThroughput.ToString();
         }
 
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             var currentThroughput = double.Parse(value);
@@ -117,6 +121,7 @@ namespace poolautoscaler.dimensions
             return previousThroughput.ToString();
         }
 
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,
@@ -129,10 +134,14 @@ namespace poolautoscaler.dimensions
                 throw new ArgumentException("Resource is not a StorageFileShareResourceState.");
             }
 
-            ValidateDimensionValue(value);
+            this.ValidateDimensionValue(value);
 
             var targetThroughput = double.Parse(value);
             fileShareState.SetThroughput(targetThroughput);
         }
+
+        private void ValidateDimensionValue(string value)
+        {
+        }
     }
-} 
+}

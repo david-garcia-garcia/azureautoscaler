@@ -1,34 +1,36 @@
 using Microsoft.Extensions.Logging;
 using Moq;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resources.FabricCapacity;
+using poolautoscaler.resources.FabricCapacity.Dto;
 
 namespace poolautoscaler.tests
 {
     public class FabricCapacityResourceStateTests
     {
-        private readonly Mock<ILogger> _loggerMock;
-        private readonly Resource _config;
-        private readonly string _resourceId;
+        private readonly Mock<ILogger> loggerMock;
+        private readonly Resource config;
+        private readonly string resourceId;
 
         public FabricCapacityResourceStateTests()
         {
-            _loggerMock = new Mock<ILogger>();
-            _resourceId = "/subscriptions/test/resourceGroups/test/providers/Microsoft.Fabric/capacities/test";
-            _config = new Resource { };
+            this.loggerMock = new Mock<ILogger>();
+            this.resourceId = "/subscriptions/test/resourceGroups/test/providers/Microsoft.Fabric/capacities/test";
+            this.config = new Resource { };
         }
 
         [Fact]
         public void SetSku_WhenCurrentIsLower_ShouldUpdateSku()
         {
             // Arrange
-            var state = new FabricCapacityResourceState(_resourceId, _loggerMock.Object, _config);
+            var state = new FabricCapacityResourceState(this.resourceId, this.loggerMock.Object, this.config);
 
-            state.ExistingFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            state.ExistingFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F2"
             };
 
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState();
+            state.RequestedFabricCapacityState = new FabricCapacityState();
 
             // Act
             state.SetSku("F4");
@@ -37,7 +39,7 @@ namespace poolautoscaler.tests
             var patch = state.PreparePatch();
             Assert.True(patch.HasChanges);
             Assert.True(patch.Disruptive);
-            var patchData = (FabricCapacityResourceState.FabricCapacityState)patch.PatchData;
+            var patchData = (FabricCapacityState)patch.PatchData;
             Assert.Equal("F4", patchData.Sku);
         }
 
@@ -45,14 +47,14 @@ namespace poolautoscaler.tests
         public void SetSku_WithMultipleUpdates_ShouldKeepHighestValue()
         {
             // Arrange
-            var state = new FabricCapacityResourceState(_resourceId, _loggerMock.Object, _config);
+            var state = new FabricCapacityResourceState(this.resourceId, this.loggerMock.Object, this.config);
 
-            state.ExistingFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            state.ExistingFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F2"
             };
 
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState();
+            state.RequestedFabricCapacityState = new FabricCapacityState();
 
             // Act
             state.SetSku("F4");  // First update
@@ -62,7 +64,7 @@ namespace poolautoscaler.tests
             // Assert
             var patch = state.PreparePatch();
             Assert.True(patch.HasChanges);
-            var patchData = (FabricCapacityResourceState.FabricCapacityState)patch.PatchData;
+            var patchData = (FabricCapacityState)patch.PatchData;
             Assert.Equal("F8", patchData.Sku);
         }
 
@@ -70,14 +72,14 @@ namespace poolautoscaler.tests
         public void SetSku_WhenNewSkuIsLower_ShouldKeepExistingSku()
         {
             // Arrange
-            var state = new FabricCapacityResourceState(_resourceId, _loggerMock.Object, _config);
+            var state = new FabricCapacityResourceState(this.resourceId, this.loggerMock.Object, this.config);
 
-            state.ExistingFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            state.ExistingFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F8"
             };
 
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            state.RequestedFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F8" // Already set to F8
             };
@@ -88,7 +90,7 @@ namespace poolautoscaler.tests
             // Assert
             var patch = state.PreparePatch();
             Assert.False(patch.HasChanges); // No changes because requested (F8) equals existing (F8)
-            var patchData = (FabricCapacityResourceState.FabricCapacityState)patch.PatchData;
+            var patchData = (FabricCapacityState)patch.PatchData;
             Assert.Equal("F8", patchData.Sku);
         }
 
@@ -96,14 +98,14 @@ namespace poolautoscaler.tests
         public void PreparePatch_WhenNoChanges_ShouldReturnNoChanges()
         {
             // Arrange
-            var state = new FabricCapacityResourceState(_resourceId, _loggerMock.Object, _config);
+            var state = new FabricCapacityResourceState(this.resourceId, this.loggerMock.Object, this.config);
 
-            state.ExistingFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            state.ExistingFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F4"
             };
 
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState();
+            state.RequestedFabricCapacityState = new FabricCapacityState();
 
             // Act
             var patch = state.PreparePatch();
@@ -111,7 +113,7 @@ namespace poolautoscaler.tests
             // Assert
             Assert.False(patch.HasChanges);
             Assert.False(patch.Disruptive);
-            var patchData = (FabricCapacityResourceState.FabricCapacityState)patch.PatchData;
+            var patchData = (FabricCapacityState)patch.PatchData;
             Assert.Equal("F4", patchData.Sku);
         }
 
@@ -119,21 +121,21 @@ namespace poolautoscaler.tests
         public void PreparePatch_WhenRequestedSkuIsNull_ShouldUseExistingSku()
         {
             // Arrange
-            var state = new FabricCapacityResourceState(_resourceId, _loggerMock.Object, _config);
+            var state = new FabricCapacityResourceState(this.resourceId, this.loggerMock.Object, this.config);
 
-            state.ExistingFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            state.ExistingFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F4"
             };
 
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState();
+            state.RequestedFabricCapacityState = new FabricCapacityState();
 
             // Act
             var patch = state.PreparePatch();
 
             // Assert
             Assert.False(patch.HasChanges);
-            var patchData = (FabricCapacityResourceState.FabricCapacityState)patch.PatchData;
+            var patchData = (FabricCapacityState)patch.PatchData;
             Assert.Equal("F4", patchData.Sku);
         }
 
@@ -144,8 +146,8 @@ namespace poolautoscaler.tests
             var invalidResourceId = "/subscriptions/test/resourceGroups/test/providers/Microsoft.Sql/servers/test";
 
             // Act & Assert
-            Assert.Throws<ArgumentException>(() => 
-                new FabricCapacityResourceState(invalidResourceId, _loggerMock.Object, _config));
+            Assert.Throws<ArgumentException>(() =>
+                new FabricCapacityResourceState(invalidResourceId, this.loggerMock.Object, this.config));
         }
     }
 }

@@ -1,15 +1,19 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.dimensions;
+using poolautoscaler.metrics.Dto;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.strategies.Dto;
 
 namespace poolautoscaler.strategies
 {
-    /// <summary>
-    /// Allows metric evaluation, and an expression for a target metric value.
-    /// </summary>
+    /// <summary>Allows metric evaluation and an expression for a target metric value.</summary>
     internal class RuleStrategyFixed : IRuleStrategy
     {
-        public async Task<string> EvaluateTargetDimensionValue(ScalingRule rule,
+        /// <inheritdoc/>
+        public async Task<string> EvaluateTargetDimensionValue(
+            ScalingRule rule,
             IDimension dimension,
             ResourceState resource,
             ILogger logger,

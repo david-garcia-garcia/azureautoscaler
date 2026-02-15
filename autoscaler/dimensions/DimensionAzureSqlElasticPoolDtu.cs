@@ -1,19 +1,22 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.Sql;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.MssqlElasticPool;
 
 namespace poolautoscaler.dimensions
 {
+    /// <summary>SQL Elastic Pool DTU dimension.</summary>
     internal class DimensionAzureSqlElasticPoolDtu : IDimension
     {
-        /// <summary>
-        /// Check that this rule can be applied to the given resource.
-        /// </summary>
-        /// <param name="resource"></param>
-        /// <param name="rule"></param>
-        /// <returns></returns>
+        /// <summary>Returns true if resource is elastic pool and rule dimension is Dtu.</summary>
+        /// <param name="resource">The resource state.</param>
+        /// <param name="rule">The scaling rule.</param>
+        /// <param name="logger">The logger.</param>
+        /// <returns>True if the dimension can be applied.</returns>
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource.Resource is ElasticPoolResource
@@ -25,35 +28,23 @@ namespace poolautoscaler.dimensions
             return false;
         }
 
+        /// <summary>Validates rule dimension values.</summary>
+        /// <param name="rule">The scaling rule.</param>
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
-            //this.ValidateDimensionValue(rule.DimensionValueMin);
-            //this.ValidateDimensionValue(rule.DimensionValueMax);
-            //this.ValidateDimensionValue(rule.DimensionValue);
+            // this.ValidateDimensionValue(rule.DimensionValueMin);
+            // this.ValidateDimensionValue(rule.DimensionValueMax);
+            // this.ValidateDimensionValue(rule.DimensionValue);
         }
 
-        private void ValidateDimensionValue(string value)
-        {
-            if (int.TryParse(value, out var parsed))
-            {
-                if (MssqlElasticPoolResourceStateHelper.StandardDtuCapacities.Contains(parsed)
-                    || MssqlElasticPoolResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
-                {
-                    return;
-
-                }
-            }
-
-            throw new ArgumentException("DimensionAzureSqlElasticPoolCapacity value not supported.");
-        }
-
-        /// <summary>
-        /// Compare two dimension values
-        /// </summary>
-        /// <param name="dimensionValue1"></param>
-        /// <param name="dimensionValue2"></param>
-        /// <returns></returns>
-        /// <exception cref="ArgumentException"></exception>
+        /// <summary>Compare two dimension values.</summary>
+        /// <param name="resource">The ARM resource (unused).</param>
+        /// <param name="dimensionValue1">First dimension value.</param>
+        /// <param name="dimensionValue2">Second dimension value.</param>
+        /// <returns>Comparison result.</returns>
+        /// <exception cref="ArgumentException">Thrown when values are invalid.</exception>
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             if (int.TryParse(dimensionValue1, out var value1) && int.TryParse(dimensionValue2, out var value2))
@@ -64,6 +55,10 @@ namespace poolautoscaler.dimensions
             throw new ArgumentException($"Invalid dimension values. Value1: '{dimensionValue1}', Value2: '{dimensionValue2}'");
         }
 
+        /// <summary>Returns current DTU capacity.</summary>
+        /// <param name="resource">The resource state.</param>
+        /// <returns>Current DTU capacity as string.</returns>
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (!(resource.Resource is ElasticPoolResource elasticPool))
@@ -74,6 +69,7 @@ namespace poolautoscaler.dimensions
             return elasticPool.Data.Sku.Capacity.ToString()!;
         }
 
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             if (!(resource.Resource is ElasticPoolResource elasticPool))
@@ -94,6 +90,7 @@ namespace poolautoscaler.dimensions
             return value;
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (!(resource is MssqlElasticPoolResourceState elasticPoolState))
@@ -104,24 +101,22 @@ namespace poolautoscaler.dimensions
             return elasticPoolState.RequestedMssqlElasticPoolState?.Sku?.Capacity?.ToString();
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="resource"></param>
-        /// <param name="value"></param>
-        /// <returns></returns>
+        /// <summary>Gets the previous dimension value.</summary>
+        /// <param name="resource">The resource state.</param>
+        /// <param name="value">The current dimension value.</param>
+        /// <returns>The previous dimension value.</returns>
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
-            var previous = InternalGetPreviousDimensionValue(resource, value);
+            var previous = this.InternalGetPreviousDimensionValue(resource, value);
             return previous;
         }
 
-        /// <summary>
-        /// 
-        /// </summary>
-        /// <param name="resource"></param>
-        /// <param name="value"></param>
-        /// <returns></returns>
+        /// <summary>Gets the previous dimension value internally.</summary>
+        /// <param name="resource">The resource state.</param>
+        /// <param name="value">The current dimension value.</param>
+        /// <returns>The previous dimension value.</returns>
+        /// <inheritdoc/>
         public string InternalGetPreviousDimensionValue(ResourceState resource, string value)
         {
             if (!(resource.Resource is ElasticPoolResource elasticPool))
@@ -138,10 +133,12 @@ namespace poolautoscaler.dimensions
                 // If current one is the lowest, then this is the target.
                 return value;
             }
+
             position--;
             return capacityValues[position].ToString();
         }
 
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,
@@ -154,9 +151,24 @@ namespace poolautoscaler.dimensions
                 throw new ArgumentException($"Resource is not {nameof(ElasticPoolResource)}.");
             }
 
-            ValidateDimensionValue(value);
+            this.ValidateDimensionValue(value);
 
             (resource as MssqlElasticPoolResourceState).SetDtuCapacity(int.Parse(value));
+        }
+
+        private void ValidateDimensionValue(string value)
+        {
+            if (int.TryParse(value, out var parsed))
+            {
+                if (MssqlElasticPoolResourceStateHelper.StandardDtuCapacities.Contains(parsed)
+                    || MssqlElasticPoolResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
+                {
+                    return;
+
+                }
+            }
+
+            throw new ArgumentException("DimensionAzureSqlElasticPoolCapacity value not supported.");
         }
     }
 }

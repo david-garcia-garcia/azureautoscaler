@@ -1,13 +1,16 @@
 using Azure.Core;
 using Azure.ResourceManager;
-using Azure.ResourceManager.Fabric;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.FabricCapacity;
 
 namespace poolautoscaler.dimensions
 {
+    /// <summary>Fabric capacity SKU dimension.</summary>
     internal class DimensionFabricCapacitySku : IDimension
     {
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             if (resource is FabricCapacityResourceState
@@ -19,6 +22,7 @@ namespace poolautoscaler.dimensions
             return false;
         }
 
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
             if (!string.IsNullOrEmpty(rule.DimensionValueMin) && !FabricCapacityResourceStateHelper.IsValidSku(rule.DimensionValueMin))
@@ -32,6 +36,7 @@ namespace poolautoscaler.dimensions
             }
         }
 
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             // For Fabric capacities, we can use the helper method
@@ -39,6 +44,7 @@ namespace poolautoscaler.dimensions
             return FabricCapacityResourceStateHelper.CompareSku(dimensionValue1, dimensionValue2);
         }
 
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (!(resource is FabricCapacityResourceState fabricCapacityState))
@@ -49,6 +55,7 @@ namespace poolautoscaler.dimensions
             return fabricCapacityState.ExistingFabricCapacityState.Sku ?? "F2";
         }
 
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             var capacityValues = FabricCapacityResourceStateHelper.GetCapacityValues();
@@ -68,6 +75,7 @@ namespace poolautoscaler.dimensions
             return value;
         }
 
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             var capacityValues = FabricCapacityResourceStateHelper.GetCapacityValues();
@@ -87,6 +95,7 @@ namespace poolautoscaler.dimensions
             return capacityValues[position - 1];
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (!(resource is FabricCapacityResourceState fabricCapacityState))
@@ -97,6 +106,7 @@ namespace poolautoscaler.dimensions
             return fabricCapacityState.RequestedFabricCapacityState?.Sku;
         }
 
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,

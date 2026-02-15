@@ -1,35 +1,36 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
-using poolautoscaler.resources;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.AzureDevops;
+using poolautoscaler.resources.AzureDevops.Dto;
 
 namespace poolautoscaler.tests
 {
     public class DimensionAzureDevOpsParallelJobsTests
     {
-        private readonly Mock<ILogger> _loggerMock;
-        private readonly Resource _config;
-        private readonly string _resourceId;
+        private readonly Mock<ILogger> loggerMock;
+        private readonly Resource config;
+        private readonly string resourceId;
 
         public DimensionAzureDevOpsParallelJobsTests()
         {
-            _loggerMock = new Mock<ILogger>();
-            _resourceId = "azuredevops://myorg";
-            _config = new Resource { };
+            this.loggerMock = new Mock<ILogger>();
+            this.resourceId = "azuredevops://myorg";
+            this.config = new Resource { };
         }
-
-        #region Hosted Parallel Jobs Dimension Tests
 
         [Fact]
         public void HostedDimension_CanApplyDimension_WithCorrectResourceAndDimension_ReturnsTrue()
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsHostedParallelJobs();
-            var state = CreateStateWithMockedClient();
+            var state = this.CreateStateWithMockedClient();
             var rule = new ScalingRule { Dimension = "HostedParallelJobs" };
 
             // Act
-            var result = dimension.CanApplyDimension(state, rule, _loggerMock.Object);
+            var result = dimension.CanApplyDimension(state, rule, this.loggerMock.Object);
 
             // Assert
             Assert.True(result);
@@ -40,11 +41,11 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsHostedParallelJobs();
-            var state = CreateStateWithMockedClient();
+            var state = this.CreateStateWithMockedClient();
             var rule = new ScalingRule { Dimension = "PrivateParallelJobs" };
 
             // Act
-            var result = dimension.CanApplyDimension(state, rule, _loggerMock.Object);
+            var result = dimension.CanApplyDimension(state, rule, this.loggerMock.Object);
 
             // Assert
             Assert.False(result);
@@ -55,8 +56,8 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsHostedParallelJobs();
-            var state = CreateStateWithMockedClient();
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient();
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 HostedParallelJobs = 5
             };
@@ -73,7 +74,7 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsHostedParallelJobs();
-            var state = CreateStateWithMockedClient();
+            var state = this.CreateStateWithMockedClient();
 
             // Act
             var result = dimension.GetNextDimensionValue(state, "5");
@@ -87,7 +88,7 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsHostedParallelJobs();
-            var state = CreateStateWithMockedClient();
+            var state = this.CreateStateWithMockedClient();
 
             // Act
             var result = dimension.GetPreviousDimensionValue(state, "5");
@@ -101,7 +102,7 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsHostedParallelJobs();
-            var state = CreateStateWithMockedClient();
+            var state = this.CreateStateWithMockedClient();
 
             // Act
             var result = dimension.GetPreviousDimensionValue(state, "0");
@@ -127,12 +128,12 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsHostedParallelJobs();
-            var state = CreateStateWithMockedClient();
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            var state = this.CreateStateWithMockedClient();
+            state.ExistingParallelJobsState = new ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // Act
-            await dimension.SetDimensionValue(CancellationToken.None, state, _loggerMock.Object, null!, "7");
+            await dimension.SetDimensionValue(CancellationToken.None, state, this.loggerMock.Object, null!, "7");
 
             // Assert
             Assert.Equal(7, state.RequestedParallelJobsState.HostedParallelJobs);
@@ -160,20 +161,16 @@ namespace poolautoscaler.tests
             Assert.Throws<ArgumentException>(() => dimension.ValidateRuleConfiguration(rule));
         }
 
-        #endregion
-
-        #region Private Parallel Jobs Dimension Tests
-
         [Fact]
         public void PrivateDimension_CanApplyDimension_WithCorrectResourceAndDimension_ReturnsTrue()
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsPrivateParallelJobs();
-            var state = CreateStateWithMockedClient();
+            var state = this.CreateStateWithMockedClient();
             var rule = new ScalingRule { Dimension = "PrivateParallelJobs" };
 
             // Act
-            var result = dimension.CanApplyDimension(state, rule, _loggerMock.Object);
+            var result = dimension.CanApplyDimension(state, rule, this.loggerMock.Object);
 
             // Assert
             Assert.True(result);
@@ -184,11 +181,11 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsPrivateParallelJobs();
-            var state = CreateStateWithMockedClient();
+            var state = this.CreateStateWithMockedClient();
             var rule = new ScalingRule { Dimension = "HostedParallelJobs" };
 
             // Act
-            var result = dimension.CanApplyDimension(state, rule, _loggerMock.Object);
+            var result = dimension.CanApplyDimension(state, rule, this.loggerMock.Object);
 
             // Assert
             Assert.False(result);
@@ -199,8 +196,8 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsPrivateParallelJobs();
-            var state = CreateStateWithMockedClient();
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState
+            var state = this.CreateStateWithMockedClient();
+            state.ExistingParallelJobsState = new ParallelJobsState
             {
                 PrivateParallelJobs = 3
             };
@@ -217,20 +214,16 @@ namespace poolautoscaler.tests
         {
             // Arrange
             var dimension = new DimensionAzureDevOpsPrivateParallelJobs();
-            var state = CreateStateWithMockedClient();
-            state.ExistingParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
-            state.RequestedParallelJobsState = new AzureDevOpsParallelJobsResourceState.ParallelJobsState();
+            var state = this.CreateStateWithMockedClient();
+            state.ExistingParallelJobsState = new ParallelJobsState();
+            state.RequestedParallelJobsState = new ParallelJobsState();
 
             // Act
-            await dimension.SetDimensionValue(CancellationToken.None, state, _loggerMock.Object, null!, "12");
+            await dimension.SetDimensionValue(CancellationToken.None, state, this.loggerMock.Object, null!, "12");
 
             // Assert
             Assert.Equal(12, state.RequestedParallelJobsState.PrivateParallelJobs);
         }
-
-        #endregion
-
-        #region ResourceStateFactory Tests
 
         [Fact]
         public void ResourceStateFactory_AzureDevOpsParallelJobsRegex_MatchesValidPattern()
@@ -286,12 +279,10 @@ namespace poolautoscaler.tests
             Assert.True(match.Success);
         }
 
-        #endregion
-
         private AzureDevOpsParallelJobsResourceState CreateStateWithMockedClient()
         {
-            var clientMock = new Mock<AzureDevOpsClient>(_loggerMock.Object);
-            return new AzureDevOpsParallelJobsResourceState(_resourceId, _loggerMock.Object, _config, clientMock.Object);
+            var clientMock = new Mock<AzureDevOpsClient>(this.loggerMock.Object);
+            return new AzureDevOpsParallelJobsResourceState(this.resourceId, this.loggerMock.Object, this.config, clientMock.Object);
         }
     }
 }

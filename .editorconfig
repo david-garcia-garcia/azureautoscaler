@@ -1,0 +1,139 @@
+# EditorConfig: https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csx,vb,vbx}]
+# Unnecessary using directive (IDE0005)
+dotnet_diagnostic.IDE0005.severity = error
+
+# Require braces for all control flow (if, else, for, foreach, while, etc.)
+# IDE0011: Add braces
+dotnet_diagnostic.IDE0011.severity = error
+csharp_prefer_braces = true:error
+
+# One type per file (StyleCop.Analyzers SA1402)
+dotnet_diagnostic.SA1402.severity = error
+
+# No trailing whitespace (SA1028)
+dotnet_diagnostic.SA1028.severity = error
+
+# Single line comment should begin with a space (SA1005)
+dotnet_diagnostic.SA1005.severity = error
+
+# Closing parenthesis should be spaced correctly (SA1009)
+dotnet_diagnostic.SA1009.severity = error
+
+# Prefix local calls with this (SA1101)
+dotnet_diagnostic.SA1101.severity = error
+
+# Field names should not begin with underscore (SA1309)
+dotnet_diagnostic.SA1309.severity = error
+
+# Const field names must begin with uppercase letter (SA1303)
+dotnet_diagnostic.SA1303.severity = error
+
+# SA1413: Use trailing comma in multi-line initializers - disabled
+dotnet_diagnostic.SA1413.severity = none
+
+# Elements should be documented (SA1600)
+dotnet_diagnostic.SA1600.severity = error
+
+# Public members should come before private members (SA1202)
+dotnet_diagnostic.SA1202.severity = error
+
+# Constants must appear before fields (SA1203)
+dotnet_diagnostic.SA1203.severity = error
+
+# SA1200: Using directive should appear within a namespace - disabled
+dotnet_diagnostic.SA1200.severity = none
+
+# Using directives must be ordered alphabetically by namespace (SA1210)
+dotnet_diagnostic.SA1210.severity = error
+
+# SA1300: Element should begin with an uppercase letter (e.g. namespace) - disabled
+dotnet_diagnostic.SA1300.severity = none
+
+# SA1633: File header must be at top of file - disabled (no license headers required)
+dotnet_diagnostic.SA1633.severity = none
+
+# Do not use regions (SA1124)
+dotnet_diagnostic.SA1124.severity = error
+
+# Parameters should begin on the line after the declaration when spanning multiple lines (SA1116)
+dotnet_diagnostic.SA1116.severity = error
+
+# Parameters must be on same line or separate lines (SA1117)
+dotnet_diagnostic.SA1117.severity = error
+
+# Element parameters must be documented (SA1611)
+dotnet_diagnostic.SA1611.severity = error
+
+# Element parameter documentation should have text (SA1614)
+dotnet_diagnostic.SA1614.severity = error
+
+# Element return value should be documented (SA1615)
+dotnet_diagnostic.SA1615.severity = error
+
+# Documentation text should end with a period (SA1629)
+dotnet_diagnostic.SA1629.severity = error
+
+# Element documentation must not be copied and pasted (SA1625)
+dotnet_diagnostic.SA1625.severity = error
+
+# Documentation text must not be empty (SA1627)
+dotnet_diagnostic.SA1627.severity = error
+
+# Property summary documentation must match accessors (SA1623) - disabled
+dotnet_diagnostic.SA1623.severity = none
+
+# Use literal suffix notation instead of casting (SA1139) - disabled
+dotnet_diagnostic.SA1139.severity = none
+
+# Constructor summary must begin with standard text (SA1642)
+dotnet_diagnostic.SA1642.severity = error
+
+# Use string.Empty for empty strings (SA1122)
+dotnet_diagnostic.SA1122.severity = error
+
+# Conditional expressions must declare precedence (SA1408)
+dotnet_diagnostic.SA1408.severity = error
+
+# Statement must not be on single line (SA1501)
+dotnet_diagnostic.SA1501.severity = error
+
+# Code should not contain multiple blank lines in a row (SA1507)
+dotnet_diagnostic.SA1507.severity = error
+
+# Closing brace should be followed by blank line (SA1513)
+dotnet_diagnostic.SA1513.severity = error
+
+# Element documentation header must be preceded by blank line (SA1514)
+dotnet_diagnostic.SA1514.severity = error
+
+# Single-line comment must be preceded by blank line (SA1515)
+dotnet_diagnostic.SA1515.severity = error
+
+# Elements should be separated by blank line (SA1516)
+dotnet_diagnostic.SA1516.severity = error
+
+# Variable names must begin with lowercase letter (SA1312)
+dotnet_diagnostic.SA1312.severity = error
+
+# Tuple element names should use correct casing (SA1316) - PascalCase
+dotnet_diagnostic.SA1316.severity = error
+
+# Prefer 'var' when type is apparent (optional; use default or none to avoid churn)
+# dotnet_style_prefer_var_for_built_in_types = false:suggestion
+# dotnet_style_prefer_var_when_type_is_apparent = true:suggestion
+
+# Prefer explicit types in member declarations (optional)
+# dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+
+[*.{json,yml,yaml}]
+indent_size = 2

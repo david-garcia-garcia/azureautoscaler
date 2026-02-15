@@ -1,18 +1,18 @@
-﻿using System.Linq.Dynamic.Core;
-using System.Linq.Dynamic.Core.CustomTypeProviders;
+using System.Linq.Dynamic.Core;
 using System.Linq.Expressions;
-using poolautoscaler.strategies;
 
 namespace poolautoscaler.utils
 {
-    public class MyCustomTypeProvider : DefaultDynamicLinqCustomTypeProvider
-    {
-        public override HashSet<Type> GetCustomTypes() =>
-            new[] { typeof(MetricEvalDto), typeof(MetricEvalDtoResultValue) }.ToHashSet();
-    }
-
+    /// <summary>Parses scaling expressions into delegates.</summary>
     public static class ExpressionParserUtils
     {
+        /// <summary>Compiles an expression string to a delegate.</summary>
+        /// <param name="expression">The expression string.</param>
+        /// <param name="parameter">The parameter name used in the expression.</param>
+        /// <param name="parameterType">The type of the parameter.</param>
+        /// <param name="returnType">The return type of the delegate.</param>
+        /// <param name="expectedParameterCount">Expected number of parameters.</param>
+        /// <returns>Compiled delegate.</returns>
         public static Delegate ParseExpression(
             string expression,
             string parameter,
@@ -26,6 +26,7 @@ namespace poolautoscaler.utils
             parsingConfig.AllowNewToEvaluateAnyType = false;
             parsingConfig.IsCaseSensitive = true;
             parsingConfig.AllowEqualsAndToStringMethodsOnObject = true;
+
             // parsingConfig.ExpressionPromoter = new CustomExpressionPromoter();
             parsingConfig.DisableMemberAccessToIndexAccessorFallback = true;
 

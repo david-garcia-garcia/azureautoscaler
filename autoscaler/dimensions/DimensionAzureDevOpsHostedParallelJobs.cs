@@ -1,7 +1,9 @@
 using Azure.Core;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.resources.AzureDevops;
 
 namespace poolautoscaler.dimensions
 {
@@ -11,12 +13,14 @@ namespace poolautoscaler.dimensions
     /// </summary>
     internal class DimensionAzureDevOpsHostedParallelJobs : IDimension
     {
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
             return resource is AzureDevOpsParallelJobsResourceState
                 && rule.Dimension == "HostedParallelJobs";
         }
 
+        /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
             // Validate min/max if specified
@@ -37,6 +41,7 @@ namespace poolautoscaler.dimensions
             }
         }
 
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             if (int.TryParse(dimensionValue1, out var value1) && int.TryParse(dimensionValue2, out var value2))
@@ -47,6 +52,7 @@ namespace poolautoscaler.dimensions
             throw new ArgumentException($"Invalid dimension values for comparison. Value1: '{dimensionValue1}', Value2: '{dimensionValue2}'");
         }
 
+        /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
             if (resource is not AzureDevOpsParallelJobsResourceState state)
@@ -57,6 +63,7 @@ namespace poolautoscaler.dimensions
             return (state.ExistingParallelJobsState.HostedParallelJobs ?? 0).ToString();
         }
 
+        /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
             if (resource is not AzureDevOpsParallelJobsResourceState state)
@@ -67,17 +74,20 @@ namespace poolautoscaler.dimensions
             return state.RequestedParallelJobsState.HostedParallelJobs?.ToString();
         }
 
+        /// <inheritdoc/>
         public string GetNextDimensionValue(ResourceState resource, string value)
         {
             return (int.Parse(value) + 1).ToString();
         }
 
+        /// <inheritdoc/>
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             var current = int.Parse(value);
             return Math.Max(0, current - 1).ToString();
         }
 
+        /// <inheritdoc/>
         public async Task SetDimensionValue(
             CancellationToken stoppingToken,
             ResourceState resource,

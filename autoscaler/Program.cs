@@ -1,29 +1,96 @@
-using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
-using System.Runtime.ExceptionServices;
 using Azure.Core;
 using Azure.Identity;
-using Azure.Monitor.Query;
-using Azure.Monitor.Query.Models;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using poolautoscaler;
+using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
 using poolautoscaler.licensing;
-using poolautoscaler.resources;
-using poolautoscaler.strategies;
-using poolautoscaler.utils;
+using poolautoscaler.resourcemanagement;
 using InteractiveBrowserCredential = Azure.Identity.InteractiveBrowserCredential;
 
 namespace AzureSqlElasticPoolAutoscaler
 {
+    /// <summary>Entry point and CLI (run service or generate license).</summary>
     class Program
     {
+        /// <summary>Creates the host builder for the autoscaler service.</summary>
+        /// <param name="args">Command-line arguments.</param>
+        /// <returns>The configured host builder.</returns>
+        public static IHostBuilder CreateHostBuilder(string[] args)
+        {
+            var builder = Host.CreateDefaultBuilder(args);
+
+            return builder
+                .ConfigureAppConfiguration((hostingContext, config) =>
+                {
+                    string file = Environment.GetEnvironmentVariable("CONFIG_FILE", EnvironmentVariableTarget.Process);
+
+                    if (!File.Exists(file))
+                    {
+                        file = "/app/config.yml";
+                    }
+
+                    if (!File.Exists(file))
+                    {
+                        // Find the configuration file recursively upwards from the current bin directory
+                        var currentDirectory = Directory.GetCurrentDirectory();
+                        var parentDirectory = Directory.GetParent(currentDirectory);
+
+                        while (parentDirectory != null)
+                        {
+                            var configFile = Path.Combine(parentDirectory.FullName, "config.yml");
+
+                            if (File.Exists(configFile))
+                            {
+                                file = configFile;
+                                break;
+                            }
+
+                            parentDirectory = parentDirectory.Parent;
+                        }
+                    }
+
+                    config.AddYamlFile(file, optional: false, reloadOnChange: true);
+                })
+                .ConfigureServices((hostContext, services) =>
+                {
+                    services.AddLogging();
+                    services.AddSingleton<LicenseService>();
+                    services.AddSingleton<ResourceManager>();
+                    services.AddHostedService<AutoscalerService>();
+                })
+                .ConfigureLogging((hostContext, logging) =>
+                {
+                    // These are just defaults, actual setup can be set through config.yml
+                    // https://learn.microsoft.com/en-us/dotnet/core/extensions/console-log-formatter#set-formatter-with-configuration
+                    logging.ClearProviders();
+                    logging.AddSimpleConsole(options =>
+                    {
+                        options.IncludeScopes = true;
+                        options.SingleLine = true;
+                        options.TimestampFormat = "HH:mm:ss ";
+                    });
+
+                    // Check if license is expired/invalid and force trace mode
+                    var licenseService = new LicenseService();
+                    var licenseInfo = licenseService.GetLicenseInfo();
+                    if (licenseInfo.IsRestricted)
+                    {
+                        logging.SetMinimumLevel(LogLevel.Trace);
+                    }
+                    else
+                    {
+                        logging.SetMinimumLevel(LogLevel.Debug);
+                    }
+                });
+        }
+
         static async Task Main(string[] args)
         {
             // There are hardcoded numbers in both config lambda expressions and tests, we don't want locale
@@ -91,155 +158,32 @@ namespace AzureSqlElasticPoolAutoscaler
                 return;
             }
 
-            var privateKeyPath = args[0];
-            var licensedTo = args[1];
-            var expirationDateStr = args[2];
-            var maxResourcesStr = args[3];
+            var service = new poolautoscaler.licensing.LicenseService();
+            var result = service.Generate(args[0], args[1], args[2], args[3]);
 
-            if (!File.Exists(privateKeyPath))
+            if (!result.Success)
             {
-                Console.Error.WriteLine($"Error: Private key file not found: {privateKeyPath}");
+                Console.Error.WriteLine($"Error: {result.ErrorMessage}");
                 Environment.Exit(1);
                 return;
             }
 
-            DateTimeOffset expirationDateOffset;
-            try
-            {
-                // Parse as DateTimeOffset using ParseExact to ensure correct UTC handling
-                // Try ISO 8601 format with Z suffix first
-                if (expirationDateStr.EndsWith("Z", StringComparison.OrdinalIgnoreCase))
-                {
-                    expirationDateOffset = DateTimeOffset.ParseExact(
-                        expirationDateStr,
-                        "yyyy-MM-ddTHH:mm:ssZ",
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AssumeUniversal);
-                }
-                else
-                {
-                    // Fallback to general parse
-                    expirationDateOffset = DateTimeOffset.Parse(expirationDateStr, null, System.Globalization.DateTimeStyles.RoundtripKind);
-                }
-            }
-            catch (FormatException)
-            {
-                Console.Error.WriteLine($"Error: Invalid expiration date format: {expirationDateStr}");
-                Console.Error.WriteLine("Expected ISO 8601 format (e.g., 2025-12-31T23:59:59Z)");
-                Environment.Exit(1);
-                return;
-            }
-
-            if (!int.TryParse(maxResourcesStr, out var maxResources) || maxResources < 1)
-            {
-                Console.Error.WriteLine($"Error: maxResources must be a positive integer: {maxResourcesStr}");
-                Environment.Exit(1);
-                return;
-            }
-
-            try
-            {
-                var privateKeyPem = File.ReadAllText(privateKeyPath);
-                // Pass the DateTimeOffset directly to avoid conversion issues
-                var jwt = poolautoscaler.licensing.LicenseGenerator.GenerateLicense(
-                    licensedTo,
-                    expirationDateOffset,
-                    maxResources,
-                    privateKeyPem);
-
-                Console.WriteLine("========================================");
-                Console.WriteLine("License JWT Generated Successfully");
-                Console.WriteLine("========================================");
-                Console.WriteLine();
-                Console.WriteLine("Set this environment variable:");
-                Console.WriteLine();
-                Console.WriteLine($"export AUTOSCALER_LICENSE='{jwt}'");
-                Console.WriteLine();
-                Console.WriteLine("Or in PowerShell:");
-                Console.WriteLine();
-                Console.WriteLine($"$env:AUTOSCALER_LICENSE='{jwt}'");
-                Console.WriteLine();
-                Console.WriteLine("========================================");
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Error generating license: {ex.Message}");
-                Environment.Exit(1);
-            }
+            Console.WriteLine("========================================");
+            Console.WriteLine("License JWT Generated Successfully");
+            Console.WriteLine("========================================");
+            Console.WriteLine();
+            Console.WriteLine("Set this environment variable:");
+            Console.WriteLine();
+            Console.WriteLine($"export AUTOSCALER_LICENSE='{result.Jwt}'");
+            Console.WriteLine();
+            Console.WriteLine("Or in PowerShell:");
+            Console.WriteLine();
+            Console.WriteLine($"$env:AUTOSCALER_LICENSE='{result.Jwt}'");
+            Console.WriteLine();
+            Console.WriteLine("========================================");
         }
 
-        public static IHostBuilder CreateHostBuilder(string[] args)
-        {
-            var builder = Host.CreateDefaultBuilder(args);
-
-            return builder
-                .ConfigureAppConfiguration((hostingContext, config) =>
-                {
-                    string file = Environment.GetEnvironmentVariable("CONFIG_FILE", EnvironmentVariableTarget.Process);
-
-                    if (!File.Exists(file))
-                    {
-                        file = "/app/config.yml";
-                    }
-
-                    if (!File.Exists(file))
-                    {
-                        // Find the configuration file recursively upwards from the current bin directory
-                        var currentDirectory = Directory.GetCurrentDirectory();
-                        var parentDirectory = Directory.GetParent(currentDirectory);
-
-                        while (parentDirectory != null)
-                        {
-                            var configFile = Path.Combine(parentDirectory.FullName, "config.yml");
-
-                            if (File.Exists(configFile))
-                            {
-                                file = configFile;
-                                break;
-                            }
-
-                            parentDirectory = parentDirectory.Parent;
-                        }
-                    }
-
-                    config.AddYamlFile(file, optional: false, reloadOnChange: true);
-                })
-                .ConfigureServices((hostContext, services) =>
-                {
-                    services.AddLogging();
-                    services.AddHostedService<AutoscalerService>();
-                })
-                .ConfigureLogging((hostContext, logging) =>
-                {
-                    // These are just defaults, actual setup can be set through config.yml
-                    // https://learn.microsoft.com/en-us/dotnet/core/extensions/console-log-formatter#set-formatter-with-configuration
-                    logging.ClearProviders();
-                    logging.AddSimpleConsole(options =>
-                    {
-                        options.IncludeScopes = true;
-                        options.SingleLine = true;
-                        options.TimestampFormat = "HH:mm:ss ";
-                    });
-
-                    // Check if license is expired/invalid and force trace mode
-                    var licenseJwt = Environment.GetEnvironmentVariable("AUTOSCALER_LICENSE");
-                    var validator = new LicenseValidator();
-                    var license = validator.ValidateAndLoadLicense();
-                    var isExpired = license != null && validator.IsExpired(license);
-                    var isValid = validator.IsValid;
-
-                    if (!isValid || isExpired || string.IsNullOrEmpty(licenseJwt))
-                    {
-                        // Expired, invalid, or no license: trace mode only
-                        logging.SetMinimumLevel(LogLevel.Trace);
-                    }
-                    else
-                    {
-                        logging.SetMinimumLevel(LogLevel.Debug);
-                    }
-                });
-        }
-
+        /// <summary>Background service that discovers resources and runs the scaling loop.</summary>
         public class AutoscalerService : BackgroundService
         {
             private readonly IConfiguration RawConfiguration;
@@ -247,33 +191,34 @@ namespace AzureSqlElasticPoolAutoscaler
             private readonly ILogger Logger;
             private readonly Configuration Configuration;
             private readonly LicenseInfo LicenseInfo;
-            private readonly DateTime _startTime;
-            private readonly LicenseValidator _licenseValidator;
+            private readonly DateTime startTime;
+            private readonly LicenseService licenseService;
+            private readonly ResourceManager resourceManager;
 
-            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory)
+            /// <summary>Initializes a new instance of the <see cref="AutoscalerService"/> class.</summary>
+            /// <param name="configuration">Application configuration.</param>
+            /// <param name="factory">Logger factory.</param>
+            /// <param name="licenseService">License service.</param>
+            /// <param name="resourceManager">Resource manager.</param>
+            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService, ResourceManager resourceManager)
             {
                 this.RawConfiguration = configuration;
                 this.Configuration = configuration.Get<Configuration>();
                 this.LogFactory = factory;
                 this.Logger = factory.CreateLogger("autoscaler");
+                this.licenseService = licenseService;
+                this.resourceManager = resourceManager;
 
-                // Validate and load license
-                var validator = new LicenseValidator();
-                var license = validator.ValidateAndLoadLicense();
-                var isExpired = license != null && validator.IsExpired(license);
-                this.LicenseInfo = new LicenseInfo(license ?? validator.CreateExpiredDefaultLicense(), validator.IsValid, isExpired);
-
-                // Store validator for error reporting
-                _licenseValidator = validator;
+                this.LicenseInfo = this.licenseService.GetLicenseInfo();
 
                 // Track startup time for expired license error checking
-                _startTime = DateTime.UtcNow;
+                this.startTime = DateTime.UtcNow;
 
                 // Log version information
-                PrintVersionInfo();
+                this.PrintVersionInfo();
 
                 // Log license information
-                PrintLicenseInfo();
+                this.licenseService.LogLicenseInfo(this.Logger);
 
                 // Apply logging restrictions for expired or invalid licenses
                 if (this.LicenseInfo.IsRestricted)
@@ -285,9 +230,120 @@ namespace AzureSqlElasticPoolAutoscaler
                 this.Configuration.PrepareAndValidate(this.Logger);
             }
 
+            /// <inheritdoc/>
+            protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+            {
+                List<IDimension> dimensions = new List<IDimension>();
+                dimensions.Add(new DimensionAzureSqlElasticPoolDtu());
+                dimensions.Add(new DimensionAzureSqlElasticPoolMaxDataBytes());
+                dimensions.Add(new DimensionAzureSqlDatabaseDtu());
+                dimensions.Add(new DimensionAzureSqlDatabaseMaxDataBytes());
+                dimensions.Add(new DimensionMySqlFlexibleServerSku());
+                dimensions.Add(new DimensionMySqlFlexibleServerCoreCount());
+                dimensions.Add(new DimensionAzureAksNodePoolMinNodeCount());
+                dimensions.Add(new DimensionStorageFileShareProvisionedStorage());
+                dimensions.Add(new DimensionMySqlFlexibleServerIops());
+                dimensions.Add(new DimensionStorageFileShareThroughput());
+                dimensions.Add(new DimensionFabricCapacitySku());
+                dimensions.Add(new DimensionAzureDevOpsHostedParallelJobs());
+                dimensions.Add(new DimensionAzureDevOpsPrivateParallelJobs());
+
+                TokenCredential credential;
+
+                var credType = this.Configuration.AzureCredentialType;
+                if (string.IsNullOrEmpty(credType))
+                {
+                    credential = new DefaultAzureCredential();
+                }
+                else
+                {
+                    switch (credType)
+                    {
+                        case "DeviceCodeCredential":
+                            credential = new DeviceCodeCredential();
+                            break;
+                        case "DefaultAzureCredential":
+                            credential = new DefaultAzureCredential();
+                            break;
+                        default:
+                            throw new Exception("Unsupported AzureCredentialType. Available options are DeviceCodeCredential, DefaultAzureCredential.");
+                    }
+                }
+
+                if (Debugger.IsAttached && string.IsNullOrWhiteSpace(this.Configuration.AzureCredentialType))
+                {
+                    this.Logger.LogInformation("Using interactive browser credentials when debugger is attached.");
+                    credential = new InteractiveBrowserCredential();
+                }
+
+                ArmClient client = new ArmClient(credential);
+
+                var resourceProcessor = new ResourceProcessor(this.LogFactory, dimensions, credential, client, this.LicenseInfo);
+
+                const int MinIterationIntervalSeconds = 2;
+
+                while (!stoppingToken.IsCancellationRequested)
+                {
+                    var iterationStart = DateTime.UtcNow;
+
+                    // Expired or invalid license: throw error after 12 hours of runtime
+                    if (this.LicenseInfo.IsRestricted)
+                    {
+                        this.CheckAndThrowErrorAfter12Hours();
+                    }
+
+                    // Discover resources when due (first call runs immediately; then every ResourceDiscoveryFrequency)
+                    await this.resourceManager.DiscoverAsync(client, this.Configuration.Resources, this.Configuration.ResourceDiscoveryFrequencyParsed, stoppingToken);
+
+                    // Process each resource (one at a time; ResourceProcessor does enabled/eval checks and RunLoop)
+                    int processedCount = 0;
+                    foreach (var resourceState in this.resourceManager.Resources.Values)
+                    {
+                        if (stoppingToken.IsCancellationRequested)
+                        {
+                            this.Logger.LogWarning("Program::ExecuteAsync IsCancellationRequested=true");
+                            break;
+                        }
+
+                        if (this.LicenseInfo.IsRestricted && processedCount >= this.LicenseInfo.License.MaxResources)
+                        {
+                            resourceState.Logger.LogWarning(
+                                "License {0}: Skipping resource (limit: {1} resources)",
+                                this.LicenseInfo.Reason,
+                                this.LicenseInfo.License.MaxResources);
+                            continue;
+                        }
+
+                        if (await resourceProcessor.ProcessOneAsync(resourceState, stoppingToken))
+                        {
+                            processedCount++;
+                        }
+                    }
+
+                    // Ensure at least MinIterationIntervalSeconds between iteration starts
+                    var elapsed = (DateTime.UtcNow - iterationStart).TotalMilliseconds;
+                    var remaining = (MinIterationIntervalSeconds * 1000) - elapsed;
+                    if (remaining > 0)
+                    {
+                        await Task.Delay((int)remaining, stoppingToken);
+                    }
+                }
+            }
+
+            private void CheckAndThrowErrorAfter12Hours()
+            {
+                var runtime = DateTime.UtcNow - this.startTime;
+
+                // Throw error once after 12 hours of runtime
+                if (runtime.TotalHours >= 12)
+                {
+                    throw new InvalidOperationException("License expired: Application has been running for more than 12 hours - container restart required");
+                }
+            }
+
             private void PrintVersionInfo()
             {
-                var version = GetVersion();
+                var version = this.GetVersion();
                 this.Logger.LogInformation("Azure Autoscaler Version: {Version}", version);
             }
 
@@ -314,672 +370,6 @@ namespace AzureSqlElasticPoolAutoscaler
                 }
 
                 return "Unknown";
-            }
-
-            private void PrintLicenseInfo()
-            {
-                var license = this.LicenseInfo.License;
-                var now = DateTime.UtcNow;
-                var timeUntilExpiration = license.ExpirationDate - now;
-                var daysRemaining = (int)timeUntilExpiration.TotalDays;
-
-                // Log basic license information in one line
-                this.Logger.LogInformation(
-                    "License: LicensedTo={LicensedTo}, DaysRemaining={DaysRemaining}, MaxResources={MaxResources}",
-                    license.LicensedTo,
-                    daysRemaining,
-                    license.MaxResources);
-
-                // Optionally log license issues if expired or has errors
-                if (this.LicenseInfo.IsRestricted)
-                {
-                    if (this.LicenseInfo.IsExpired)
-                    {
-                        this.Logger.LogWarning(
-                            "License expired. Limited functionality enabled.");
-                    }
-                    else if (!this.LicenseInfo.IsValid)
-                    {
-                        this.Logger.LogWarning(
-                            "License invalid. Limited functionality enabled.");
-                    }
-
-                    // Show validation error if available
-                    if (!string.IsNullOrEmpty(_licenseValidator.LastError))
-                    {
-                        this.Logger.LogWarning("License Validation Error: {Error}", _licenseValidator.LastError);
-                    }
-                }
-            }
-
-            protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-            {
-                List<IDimension> dimensions = new List<IDimension>();
-                dimensions.Add(new DimensionAzureSqlElasticPoolDtu());
-                dimensions.Add(new DimensionAzureSqlElasticPoolMaxDataBytes());
-                dimensions.Add(new DimensionAzureSqlDatabaseDtu());
-                dimensions.Add(new DimensionAzureSqlDatabaseMaxDataBytes());
-                dimensions.Add(new DimensionMySqlFlexibleServerSku());
-                dimensions.Add(new DimensionMySqlFlexibleServerCoreCount());
-                dimensions.Add(new DimensionAzureAksNodePoolMinNodeCount());
-                dimensions.Add(new DimensionStorageFileShareProvisionedStorage());
-                dimensions.Add(new DimensionMySqlFlexibleServerIops());
-                dimensions.Add(new DimensionStorageFileShareThroughput());
-                dimensions.Add(new DimensionFabricCapacitySku());
-                dimensions.Add(new DimensionAzureDevOpsHostedParallelJobs());
-                dimensions.Add(new DimensionAzureDevOpsPrivateParallelJobs());
-
-                TokenCredential credential = null;
-
-                switch (Configuration.AzureCredentialType)
-                {
-                    case "DeviceCodeCredential":
-                        credential = new DeviceCodeCredential();
-                        break;
-                    case "DefaultAzureCredential":
-                    case "":
-                    case null:
-                        credential = new DefaultAzureCredential();
-                        break;
-                    default:
-                        throw new Exception("Unsupported AzureCredentialType. Available options are DeviceCodeCredential, DefaultAzureCredential.");
-                }
-
-                if (Debugger.IsAttached && string.IsNullOrWhiteSpace(Configuration.AzureCredentialType))
-                {
-                    this.Logger.LogInformation("Using interactive browser credentials when debugger is attached.");
-                    credential = new InteractiveBrowserCredential();
-                }
-
-                Dictionary<string, ResourceState> Resources = new Dictionary<string, ResourceState>();
-
-                // Does this expire?
-                ArmClient client = new ArmClient(credential);
-
-                DateTime lastResourceDiscovery = DateTime.MinValue;
-
-                // Initial resource discovery
-                this.Logger.LogInformation("Performing initial resource discovery and expansion...");
-                await DiscoverResources(client, Resources, stoppingToken);
-                lastResourceDiscovery = DateTime.UtcNow;
-
-                while (!stoppingToken.IsCancellationRequested)
-                {
-                    // Expired or invalid license: throw error after 12 hours of runtime
-                    if (this.LicenseInfo.IsRestricted)
-                    {
-                        CheckAndThrowErrorAfter12Hours();
-                    }
-
-                    // Check if we need to discover new resources
-                    if ((DateTime.UtcNow - lastResourceDiscovery) >= Configuration.ResourceDiscoveryFrequencyParsed)
-                    {
-                        try
-                        {
-                            await DiscoverResources(client, Resources, stoppingToken);
-                        }
-                        catch (Exception ex)
-                        {
-                            this.Logger.LogError(ex, "Failed to discover resources: {0}", ex.Message);
-                        }
-                        finally
-                        {
-                            // wait for next timeout to try again
-                            lastResourceDiscovery = DateTime.UtcNow;
-                        }
-                    }
-
-                    // Process all resources, but limit if license is expired or invalid
-                    int processedCount = 0;
-
-                    foreach (var resourceState in Resources.Values)
-                    {
-                        if (stoppingToken.IsCancellationRequested)
-                        {
-                            this.Logger.LogWarning("Program::ExecuteAsync IsCancellationRequested=true");
-                            break;
-                        }
-
-                        if (resourceState.Configuration.Enabled == false)
-                        {
-                            continue;
-                        }
-
-                        if (resourceState.NextEvaluationSeconds() > 0)
-                        {
-                            continue;
-                        }
-
-                        // Skip if license is restricted and we've reached the limit
-                        if (this.LicenseInfo.IsRestricted && processedCount >= this.LicenseInfo.License.MaxResources)
-                        {
-                            resourceState.Logger.LogWarning("License {0}: Skipping resource (limit: {2} resources)",
-this.LicenseInfo.Reason, this.LicenseInfo.License.MaxResources);
-                            continue;
-                        }
-
-                        try
-                        {
-                            await RunLoop(dimensions, resourceState, stoppingToken, credential, client, LicenseInfo);
-                            processedCount++;
-                        }
-                        catch (ResourceNotFoundException ex)
-                        {
-                            this.Logger.LogWarning("Resource '{0}' no longer exists in Azure and will be skipped.", ex.ResourceId);
-                        }
-                        catch (Exception ex)
-                        {
-                            resourceState.Logger.LogError(ex, ex.Message);
-                            resourceState.Logger.LogWarning("Resource evaluation will be disabled for 1 hour."); // Hardcoded right now
-                            resourceState.DisabledUntil["Unhandled exception: " + ex.Message] = DateTime.UtcNow.AddHours(1);
-                        }
-                        finally
-                        {
-                            resourceState?.ResetEvaluation();
-                        }
-
-                        resourceState?.Logger.LogDebug("Next evaluation in {0}", TimeSpan.FromSeconds(resourceState.NextEvaluationSeconds()).ToString("g"));
-                    }
-
-                    await Task.Delay(2000, stoppingToken);
-                }
-            }
-
-            private async Task DiscoverResources(ArmClient client, Dictionary<string, ResourceState> resources, CancellationToken stoppingToken)
-            {
-                var discoveredResources = new HashSet<string>();
-                int addedResources = 0;
-                int removedResources = 0;
-
-                // Phase 1: Discover all resources that should exist and add new ones
-                foreach (var resource in this.Configuration.Resources)
-                {
-                    if (resource.Enabled == false)
-                    {
-                        this.Logger.LogTrace($"Skipping disabled resource: " + string.Join(",", resource.Resources.Values.Select(i => i.Id)));
-                        continue;
-                    }
-
-                    foreach (var resourceInstance in resource.Resources)
-                    {
-                        Dictionary<string, string> expandedResourceIds;
-                        try
-                        {
-                            expandedResourceIds = await ResourceStateFactory.ExpandResources(client, resourceInstance.Key, resourceInstance.Value.ResourceId, this.Logger, stoppingToken);
-                        }
-                        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
-                        {
-                            // Resource/cluster was deleted, skip it
-                            this.Logger.LogError("Skipping deleted or non existing resource during expansion: {0}. Please remove this resource from your configuration.", resourceInstance.Value.ResourceId);
-                            continue;
-                        }
-                        catch (Azure.RequestFailedException ex) when (ex.Status == 403)
-                        {
-                            // Authorization error - log as error to alert operator
-                            this.Logger.LogError(ex, "Not authorized to access resource during expansion: {0}. Please check your credentials and permissions.", resourceInstance.Value.ResourceId);
-                            continue;
-                        }
-
-                        foreach (var expandedResourceId in expandedResourceIds)
-                        {
-                            resourceInstance.Value.Id = resourceInstance.Key;
-                            discoveredResources.Add(expandedResourceId.Key);
-
-                            // Check if this resource already exists
-                            if (resources.ContainsKey(expandedResourceId.Key))
-                            {
-                                // Resource already exists - keep it as-is (optimal: no reinstantiation)
-                                this.Logger.LogTrace("Keeping existing resource: {0}", expandedResourceId.Value);
-                            }
-                            else
-                            {
-                                // New resource - add it
-                                this.Logger.LogInformation("Adding new resource {0}: {1}", expandedResourceId.Key, expandedResourceId.Value);
-
-                                var resourceLogger = this.LogFactory.CreateLogger(expandedResourceId.Key);
-                                var state = ResourceStateFactory.Create(expandedResourceId.Value, resourceLogger, resource, resourceInstance.Value);
-                                resourceLogger.LogDebug("Replacements: {0}", string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
-                                resources[expandedResourceId.Key] = state;
-                                addedResources++;
-                            }
-                        }
-                    }
-                }
-
-                // Phase 2: Cleanup - remove resources that no longer exist
-                var resourcesToRemove = new List<string>();
-                foreach (var existingResourceKey in resources.Keys)
-                {
-                    if (!discoveredResources.Contains(existingResourceKey))
-                    {
-                        resourcesToRemove.Add(existingResourceKey);
-                    }
-                }
-
-                foreach (var resourceKey in resourcesToRemove)
-                {
-                    this.Logger.LogInformation("Resource no longer found, removing: {0}", resources[resourceKey].Resource.Id);
-                    resources.Remove(resourceKey);
-                    removedResources++;
-                }
-
-                this.Logger.LogInformation("Resource introspection completed. Total resources: {0} (Added: {1}, Removed: {2})",
-                    resources.Count,
-                    addedResources,
-                    removedResources);
-            }
-
-            private void CheckAndThrowErrorAfter12Hours()
-            {
-                var runtime = DateTime.UtcNow - _startTime;
-
-                // Throw error once after 12 hours of runtime
-                if (runtime.TotalHours >= 12)
-                {
-                    throw new InvalidOperationException("License expired: Application has been running for more than 12 hours - container restart required");
-                }
-            }
-
-            private async Task RunLoop(
-                List<IDimension> dimensions,
-                ResourceState state,
-                CancellationToken stoppingToken,
-                TokenCredential credential,
-                ArmClient armClient,
-                LicenseInfo licenseInfo)
-            {
-                var logger = state.Logger;
-
-                var finder = new ConfigFinder();
-
-                var scalingConfigurations = (from p in state.Configuration.ScalingConfigurations.Values
-                                             where finder.SettingIsActive(p, DateTime.UtcNow)
-                                             select p).ToList();
-
-                if (!scalingConfigurations.Any())
-                {
-                    logger.LogTrace("No scaling configurations apply right now.");
-                    return;
-                }
-
-                logger.LogTrace("The following ScalingConfigurations are active and will be evaluated: " + string.Join(", ", scalingConfigurations.Select((i) => i.Id)));
-
-                // Refresh resource state
-                await state.Refresh(armClient, credential, stoppingToken);
-
-                logger.LogDebug("Existing object state {0}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
-
-                if (state.IsDisabled())
-                {
-                    // Only log the disabled message once per hour to avoid log spam
-                    if ((DateTime.UtcNow - state.LastDisabledMessageLogged).TotalHours >= 1)
-                    {
-                        logger.LogInformation("Resource is currently disabled: " + string.Join(", ", state.DisabledUntil.Keys));
-                        state.LastDisabledMessageLogged = DateTime.UtcNow;
-                    }
-                    return;
-                }
-
-                // Reset the disabled message counter so it shows immediately if disabled again
-                state.LastDisabledMessageLogged = DateTime.MinValue;
-
-                // Wrap the logger in a capturing logger to capture messages that would be lost
-                // If a scale operation happens, we'll flush these at INFO level so they're visible
-                var capturingLogger = new CapturingLogger(logger);
-
-                foreach (var setting in scalingConfigurations)
-                {
-                    var metricsClient = new MetricsQueryClient(credential, new MetricsQueryClientOptions(MetricsQueryClientOptions.ServiceVersion.V2018_01_01));
-
-                    Dictionary<string, MetricEvalDtoResult> metrics = await GatherMetrics(
-                        setting,
-                        state,
-                        metricsClient,
-                        credential,
-                        armClient,
-                        stoppingToken,
-                        capturingLogger);
-
-                    // Output detailed metric information in debug mode - one compact line per metric
-                    foreach (var metricEntry in metrics)
-                    {
-                        var metricId = metricEntry.Key;
-                        var metricResult = metricEntry.Value;
-
-                        if (!metricResult.Values.Any())
-                        {
-                            capturingLogger.LogDebug($"Metric={metricId}, valid={metricResult.Valid}, values=0, aggregation=none, valuedetail=<empty>");
-                            continue;
-                        }
-
-                        // Determine aggregation type from first value
-                        var aggregationType = metricResult.Values.First().GetAggregationType();
-
-                        // Extract all values into a compact list with validity status
-                        var valuesDetail = string.Join(",", metricResult.Values.Select(v => v.RenderValueWithStatus()));
-                        var invalidReason = metricResult.Valid ? "" : $", reason=\"{metricResult.InvalidReason}\"";
-
-                        capturingLogger.LogDebug($"Metric={metricId}, valid={metricResult.Valid}, values={metricResult.Values.Count}, aggregation={aggregationType}, valuedetail={valuesDetail}{invalidReason}");
-                    }
-
-                    capturingLogger.LogTrace("Evaluating scale configuration {0}", setting.Id);
-
-                    // Check if any metrics required by this rule are invalid
-                    var invalidMetrics = metrics.Where(m => !m.Value.Valid).ToList();
-                    if (invalidMetrics.Any())
-                    {
-                        var metricNames = string.Join(", ", invalidMetrics.Select(m => m.Key));
-                        var reasons = string.Join("; ", invalidMetrics.Select(m => $"{m.Key}: {m.Value.InvalidReason}"));
-                        capturingLogger.LogWarning($"Skipping scaling configuratoin '{setting.Id}' because one or more metrics are invalid: {reasons}");
-                        continue;
-                    }
-
-                    foreach (var rule in setting.ScalingRules.Values)
-                    {
-                        IDimension dimension = null;
-
-                        foreach (var dim in dimensions)
-                        {
-                            if (dim.CanApplyDimension(state, rule, capturingLogger))
-                            {
-                                dimension = dim;
-                                break;
-                            }
-                        }
-
-                        if (dimension == null)
-                        {
-                            // This is not necessarily bad. We might want to setup rules that are generalistic (i.e. for all databsaes in an sql) but some of them
-                            // will only work for specific tiers. I.E. you might have mixed ElasticPools + Indpendant SKU in the same server, and not all rules
-                            // will work for all of them.
-                            capturingLogger.LogDebug($@"No dimension handler compatible with dimension '{rule.Dimension}' found in this resource. Rule: '{rule.Id}'");
-                            continue;
-                        }
-
-                        capturingLogger.LogDebug("Current request state {0}", HelperExtensions.SerializeSimple(state.RequestedStateRaw));
-                        capturingLogger.LogTrace("Evaluating rule {0}", rule.Id);
-
-                        dimension.ValidateRuleConfiguration(rule);
-
-                        var strategy = GetRuleStrategy(rule);
-
-                        var currentDimensionValue = dimension.GetCurrentDimensionValue(state);
-
-                        var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, capturingLogger, credential, stoppingToken, metrics);
-
-                        // If we are going to scale down, do it wisely because resources are billed by natural hour
-                        if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1)
-                        {
-                            if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
-                                rule.ScaleDownCooldownSeconds)
-                            {
-                                capturingLogger.LogTrace(
-                                    "Skipping scale down from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
-                                    currentDimensionValue, targetDimensionValue, rule.ScaleDownCooldownSeconds);
-                                continue;
-                            }
-
-                            // 10 Minute window for scale downs. The 5 minute margin at the end of the hour is to make
-                            // sure the scaling operation is completed before the hour ends.
-                            if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute < setting.ScaleDownLockWindowMinutes)
-                            {
-                                capturingLogger.LogTrace(
-                                    "Skipping scale down from {0} to {1} not allowed before minute {2} of a billable hour.",
-                                    currentDimensionValue, targetDimensionValue, setting.ScaleDownLockWindowMinutes);
-                                continue;
-                            }
-                        }
-
-                        // If we are going to scale up, consider that there is a cooldown period so that metrics reflect properly
-                        // the impact of scale up.
-                        if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == 1)
-                        {
-                            if (state.LastScale != null && (DateTime.UtcNow - state.LastScale).Value.TotalSeconds <
-                                rule.ScaleUpCooldownSeconds)
-                            {
-                                capturingLogger.LogTrace(
-                                    "Skipping scale up from {0} to {1} because ScaleUpCooldownSeconds {2}s have not yet passed.",
-                                    currentDimensionValue, targetDimensionValue, rule.ScaleUpCooldownSeconds);
-                                continue;
-                            }
-
-                            // It might make no sense to scale up if only a few minutes are left in the current billable hour. In
-                            // the long run this should be compensated with some predictive scaling based on historical data so that
-                            // scaling is not "reactive" but "proactive".
-                            if (setting.ScaleDownLockWindowMinutes.HasValue && DateTime.UtcNow.Minute > setting.ScaleUpAllowWindowMinutes)
-                            {
-                                capturingLogger.LogTrace(
-                                    "Skipping scale up from {0} to {1} not allowed after minute {0} of a billable hour.",
-                                    currentDimensionValue, targetDimensionValue, setting.ScaleUpAllowWindowMinutes);
-                                continue;
-                            }
-                        }
-
-                        var existingDimensionRequest = dimension.GetRequestedDimensionValue(state);
-
-                        // Expired or invalid license: add 1 minute delay to scaling operations
-                        if (licenseInfo.IsRestricted)
-                        {
-                            capturingLogger.LogInformation("License {0}: Adding 1 minute delay to scaling operation", licenseInfo.Reason);
-                            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-                        }
-
-                        // La dimensión siempre la establecemos, se encarga el estado del recurso de aceptar o no el cambio si han habido otras peticiones
-                        await dimension.SetDimensionValue(stoppingToken, state, capturingLogger, credential, targetDimensionValue);
-
-                        var newDimensionRequest = dimension.GetRequestedDimensionValue(state);
-
-                        if (existingDimensionRequest != newDimensionRequest)
-                        {
-                            capturingLogger.LogDebug("Rule '{0}' Dimension request changed from {1} to {2}", rule.Id, existingDimensionRequest ?? "(null)", newDimensionRequest);
-                        }
-                        else
-                        {
-                            capturingLogger.LogDebug("Rule '{0}' requested target value '{1}'", rule.Id, targetDimensionValue);
-                        }
-                    }
-                }
-
-                // Prepare patch info
-                var patchOperation = state.PreparePatch();
-
-                if (patchOperation.HasChanges)
-                {
-                    // Replay any captured messages as INFO so they're visible.
-                    // The capturing logger only captures messages the inner logger doesn't show,
-                    // so this will be empty if running at DEBUG/TRACEa level.
-                    capturingLogger.Replay(LogLevel.Information, LogLevel.Debug);
-
-                    logger.LogInformation("Existing resource state {0}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
-                    logger.LogInformation("Target resource state: {0}", HelperExtensions.SerializeSimple(patchOperation.PatchData));
-                    logger.LogInformation("Patch operation disruptive: {0}", patchOperation.Disruptive ? "yes" : "no");
-
-                    if (state.Configuration.WhatIf == true)
-                    {
-                        logger.LogInformation("Patching Resource (WHATIF)");
-                    }
-                    else
-                    {
-                        await state.ApplyChanges(patchOperation, stoppingToken);
-                    }
-
-                    state.LastScale = DateTime.UtcNow;
-                }
-                else
-                {
-                    logger.LogDebug("No changes in patch operation");
-                    logger.LogDebug("Target resource state: {0}", HelperExtensions.SerializeSimple(patchOperation.PatchData));
-                }
-
-                // Clean up the capturing logger buffer
-                capturingLogger.Clear();
-            }
-
-            private async Task<Dictionary<string, MetricEvalDtoResult>> GatherMetrics(
-                ScalingConfiguration setting,
-                ResourceState state,
-                MetricsQueryClient metricsClient,
-                TokenCredential credential,
-                ArmClient armClient,
-                CancellationToken stoppingToken,
-                ILogger logger)
-            {
-                Dictionary<string, MetricEvalDtoResult> metrics = new Dictionary<string, MetricEvalDtoResult>();
-
-                MetricEvaluation eval = new MetricEvaluation(logger);
-
-                if (setting.Metrics != null)
-                {
-                    foreach (var metric in setting.Metrics.Values)
-                    {
-                        if (metric.Name.StartsWith("custom_"))
-                        {
-                            metrics.Add(metric.Id,
-                                await state.CustomMetric(armClient, credential, stoppingToken, setting,
-                                    metric.Name));
-                            continue;
-                        }
-
-                        var metricWindow = TimeSpan.Parse(metric.Window);
-                        var metricTimeGrain = TimeSpan.Parse(metric.TimeGrain ?? "00:01");
-
-                        var targetResource = metric.ResourceId ?? state.Resource.Id;
-
-                        string splitName = metric.SplitName;
-                        string splitValue = metric.SplitValue;
-
-                        targetResource = state.ReplaceResourceParts(targetResource);
-                        splitName = state.ReplaceResourceParts(splitName);
-                        splitValue = state.ReplaceResourceParts(splitValue);
-
-                        List<MetricAggregationType> aggregations = new List<MetricAggregationType>()
-                        {
-                            MetricAggregationType.Average
-                        };
-
-                        if (metric.ParsedAggregations != null)
-                        {
-                            aggregations = metric.ParsedAggregations;
-                        }
-
-                        if (!aggregations.Any())
-                        {
-                            throw new Exception(
-                                "Empty metric aggregation types. Aggregations should be explicitly set to avoid mismatch between rules and metric data.");
-                        }
-
-                        logger.LogTrace($"Metrics query: Name={metric.Name}, SplitName={splitName}, SplitValue={splitValue}, Aggregations={string.Join(", ", aggregations)} TargetResource={targetResource}, TimeRange={Math.Round(metricWindow.TotalHours, 2)}h");
-
-                        MetricEvalDtoResult metricResult;
-
-                        try
-                        {
-                            metricResult = await eval.RetrieveHistory(
-                                metricsClient,
-                                targetResource,
-                                metric.Name,
-                                metricWindow,
-                                metricTimeGrain,
-                                stoppingToken,
-                                splitName,
-                                splitValue,
-                                aggregations);
-                        }
-                        catch (Azure.RequestFailedException ex) when (ex.Status == 400)
-                        {
-                            if (metric.AllowFail)
-                            {
-                                logger.LogDebug($"Failed to load metric configuration (allowed as per configuration). {ex.Message}", metric.Id, metric.Name, targetResource);
-                                continue;
-                            }
-                            ExceptionDispatchInfo.Capture(ex).Throw();
-                            throw;
-                        }
-
-                        metricResult.Values.Reverse();
-
-                        // Remove data points without data only from the start of the time series
-                        var originalCount = metricResult.Values.Count;
-                        metricResult.Values = metricResult.Values.SkipWhile(v => !v.HasData()).ToList();
-                        var removedCount = originalCount - metricResult.Values.Count;
-
-                        // One datapoint loss is commong due to how metric windows work.
-                        if (removedCount > 1)
-                        {
-                            logger.LogDebug($"Removed {removedCount} data points from a total of {originalCount} without data from the beginning of the time series for {metric.Name}. This is not necessarily bad. Review your metrics configuration.");
-                        }
-
-                        // Apply transform expression to values
-                        metricResult.Values = metricResult.Values.Select((i) => metric.TransformExpression(i)).ToList();
-
-                        // Validate each data point in the metric against configured bounds
-                        // Mark individual values as invalid, then assess overall metric validity
-                        if (metricResult.Values.Any() && (metric.ValidValueMin.HasValue || metric.ValidValueMax.HasValue))
-                        {
-                            foreach (var value in metricResult.Values)
-                            {
-                                // Use the Default property which contains the primary aggregation value
-                                if (value.Default.HasValue)
-                                {
-                                    if (metric.ValidValueMin.HasValue && value.Default.Value < metric.ValidValueMin.Value)
-                                    {
-                                        value.Valid = false;
-                                        value.InvalidReason = $"Value {value.Default.Value:F2} is below minimum valid value {metric.ValidValueMin.Value:F2}";
-                                    }
-                                    else if (metric.ValidValueMax.HasValue && value.Default.Value > metric.ValidValueMax.Value)
-                                    {
-                                        value.Valid = false;
-                                        value.InvalidReason = $"Value {value.Default.Value:F2} is above maximum valid value {metric.ValidValueMax.Value:F2}";
-                                    }
-                                }
-                            }
-
-                            // If any value is invalid, mark the entire metric as invalid
-                            var invalidValues = metricResult.Values.Where(v => !v.Valid).ToList();
-                            if (invalidValues.Any())
-                            {
-                                metricResult.Valid = false;
-                                metricResult.InvalidReason = $"{invalidValues.Count} out of {metricResult.Values.Count} data points are invalid (e.g., {invalidValues.First().InvalidReason} at {invalidValues.First().TimeStamp:yyyy-MM-dd HH:mm:ss})";
-                                logger.LogWarning($"Metric '{metric.Name}' appears broken or unreliable: {metricResult.InvalidReason}");
-                            }
-                        }
-
-                        metrics.Add(metric.Id, metricResult);
-                    }
-                }
-
-                // Set default values, not the best place, but covers custom and regular metrics
-                foreach (var metric in metrics.Values)
-                {
-                    foreach (var metricValue in metric.Values)
-                    {
-                        metricValue.Default = metric.PrimaryAggregation switch
-                        {
-                            MetricAggregationType.Average => metricValue.Average,
-                            MetricAggregationType.Maximum => metricValue.Maximum,
-                            MetricAggregationType.Minimum => metricValue.Minimum,
-                            MetricAggregationType.Total => metricValue.Total,
-                            MetricAggregationType.Count => metricValue.Count,
-                            null => metricValue.Average ?? metricValue.Maximum ?? metricValue.Minimum ?? metricValue.Total ?? metricValue.Count
-                        };
-                    }
-                }
-
-                return metrics;
-            }
-
-            private IRuleStrategy GetRuleStrategy(ScalingRule rule)
-            {
-                if (rule.ScalingStrategy == "Fixed")
-                {
-                    return new RuleStrategyFixed();
-                }
-                else if (rule.ScalingStrategy == "Autoadjust")
-                {
-                    return new RuleStrategyAutoAdjust();
-                }
-
-                throw new ArgumentException($"Invalid scaling strategy: '{rule.ScalingStrategy}'");
             }
         }
     }

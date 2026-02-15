@@ -1,15 +1,19 @@
-﻿using Azure.Core;
+using Azure.Core;
 using Microsoft.Extensions.Logging;
-using poolautoscaler.resources;
+using poolautoscaler.configuration;
+using poolautoscaler.dimensions;
+using poolautoscaler.metrics.Dto;
+using poolautoscaler.resourcemanagement;
+using poolautoscaler.strategies.Dto;
 
 namespace poolautoscaler.strategies
 {
-    /// <summary>
-    /// Adjust the dimension value based on the metric evaluation
-    /// </summary>
+    /// <summary>Adjusts the dimension value based on the metric evaluation.</summary>
     internal class RuleStrategyAutoAdjust : IRuleStrategy
     {
-        public async Task<string> EvaluateTargetDimensionValue(ScalingRule rule,
+        /// <inheritdoc/>
+        public async Task<string> EvaluateTargetDimensionValue(
+            ScalingRule rule,
             IDimension dimension,
             ResourceState resource,
             ILogger logger,
@@ -73,15 +77,18 @@ namespace poolautoscaler.strategies
                     {
                         logger.LogDebug(
                             "Cannot scale below minimum configured value. Current {0}. Target {1}. Min {2}. Adjusting to minimum.",
-
-                            currentDimensionValue, nextDimensionValue, rule.DimensionValueMin);
+                            currentDimensionValue,
+                            nextDimensionValue,
+                            rule.DimensionValueMin);
                         return rule.DimensionValueMin;
                     }
                     else if (aboveMaximum)
                     {
                         logger.LogDebug(
                             "Cannot scale above maximum configured value. Current {0}. Target {1}. Max {2}. Adjusting to maximum.",
-                            currentDimensionValue, nextDimensionValue, rule.DimensionValueMax);
+                            currentDimensionValue,
+                            nextDimensionValue,
+                            rule.DimensionValueMax);
 
                         return rule.DimensionValueMax;
                     }

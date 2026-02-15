@@ -1,34 +1,36 @@
-using Azure.Core;
 using Azure.ResourceManager.Fabric;
 using Microsoft.Extensions.Logging;
 using Moq;
+using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
-using poolautoscaler.resources;
+using poolautoscaler.resources.FabricCapacity;
+using poolautoscaler.resources.FabricCapacity.Dto;
+using poolautoscaler.resources.MssqlElasticPool;
 
 namespace poolautoscaler.tests
 {
     public class DimensionFabricCapacitySkuTests
     {
-        private readonly Mock<ILogger> _loggerMock;
-        private readonly DimensionFabricCapacitySku _dimension;
-        private readonly string _resourceId;
+        private readonly Mock<ILogger> loggerMock;
+        private readonly DimensionFabricCapacitySku dimension;
+        private readonly string resourceId;
 
         public DimensionFabricCapacitySkuTests()
         {
-            _loggerMock = new Mock<ILogger>();
-            _dimension = new DimensionFabricCapacitySku();
-            _resourceId = "/subscriptions/test/resourceGroups/test/providers/Microsoft.Fabric/capacities/test";
+            this.loggerMock = new Mock<ILogger>();
+            this.dimension = new DimensionFabricCapacitySku();
+            this.resourceId = "/subscriptions/test/resourceGroups/test/providers/Microsoft.Fabric/capacities/test";
         }
 
         [Fact]
         public void CanApplyDimension_WithFabricCapacityResourceAndSkuDimension_ShouldReturnTrue()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
             var rule = new ScalingRule { Dimension = "Sku" };
 
             // Act
-            var result = _dimension.CanApplyDimension(state, rule, _loggerMock.Object);
+            var result = this.dimension.CanApplyDimension(state, rule, this.loggerMock.Object);
 
             // Assert
             Assert.True(result);
@@ -38,11 +40,11 @@ namespace poolautoscaler.tests
         public void CanApplyDimension_WithFabricCapacityResourceAndWrongDimension_ShouldReturnFalse()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
             var rule = new ScalingRule { Dimension = "SomeOtherDimension" };
 
             // Act
-            var result = _dimension.CanApplyDimension(state, rule, _loggerMock.Object);
+            var result = this.dimension.CanApplyDimension(state, rule, this.loggerMock.Object);
 
             // Assert
             Assert.False(result);
@@ -54,12 +56,12 @@ namespace poolautoscaler.tests
             // Arrange
             var state = new MssqlElasticPoolResourceState(
                 "/subscriptions/test/resourceGroups/test/providers/Microsoft.Sql/servers/test/elasticPools/test",
-                _loggerMock.Object,
+                this.loggerMock.Object,
                 new Resource());
             var rule = new ScalingRule { Dimension = "Sku" };
 
             // Act
-            var result = _dimension.CanApplyDimension(state, rule, _loggerMock.Object);
+            var result = this.dimension.CanApplyDimension(state, rule, this.loggerMock.Object);
 
             // Assert
             Assert.False(result);
@@ -77,7 +79,7 @@ namespace poolautoscaler.tests
             };
 
             // Act & Assert
-            _dimension.ValidateRuleConfiguration(rule); // Should not throw
+            this.dimension.ValidateRuleConfiguration(rule); // Should not throw
         }
 
         [Fact]
@@ -91,8 +93,8 @@ namespace poolautoscaler.tests
             };
 
             // Act & Assert
-            var exception = Assert.Throws<ArgumentException>(() => 
-                _dimension.ValidateRuleConfiguration(rule));
+            var exception = Assert.Throws<ArgumentException>(() =>
+                this.dimension.ValidateRuleConfiguration(rule));
             Assert.Contains("Invalid DimensionValueMin", exception.Message);
         }
 
@@ -107,8 +109,8 @@ namespace poolautoscaler.tests
             };
 
             // Act & Assert
-            var exception = Assert.Throws<ArgumentException>(() => 
-                _dimension.ValidateRuleConfiguration(rule));
+            var exception = Assert.Throws<ArgumentException>(() =>
+                this.dimension.ValidateRuleConfiguration(rule));
             Assert.Contains("Invalid DimensionValueMax", exception.Message);
         }
 
@@ -119,9 +121,9 @@ namespace poolautoscaler.tests
             var mockResource = new Mock<FabricCapacityResource>();
 
             // Act & Assert
-            Assert.True(_dimension.Compare(mockResource.Object, "F2", "F4") < 0); // F2 < F4
-            Assert.True(_dimension.Compare(mockResource.Object, "F8", "F4") > 0); // F8 > F4
-            Assert.Equal(0, _dimension.Compare(mockResource.Object, "F4", "F4")); // F4 == F4
+            Assert.True(this.dimension.Compare(mockResource.Object, "F2", "F4") < 0); // F2 < F4
+            Assert.True(this.dimension.Compare(mockResource.Object, "F8", "F4") > 0); // F8 > F4
+            Assert.Equal(0, this.dimension.Compare(mockResource.Object, "F4", "F4")); // F4 == F4
         }
 
         [Fact]
@@ -131,8 +133,8 @@ namespace poolautoscaler.tests
             var mockResource = new Mock<FabricCapacityResource>();
 
             // Act & Assert
-            var exception = Assert.Throws<ArgumentException>(() => 
-                _dimension.Compare(mockResource.Object, "InvalidSku", "F4"));
+            var exception = Assert.Throws<ArgumentException>(() =>
+                this.dimension.Compare(mockResource.Object, "InvalidSku", "F4"));
             Assert.Contains("Invalid SKU values", exception.Message);
         }
 
@@ -140,14 +142,14 @@ namespace poolautoscaler.tests
         public void GetCurrentDimensionValue_ShouldReturnExistingSku()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
-            state.ExistingFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            var state = this.CreateFabricCapacityResourceState();
+            state.ExistingFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F4"
             };
 
             // Act
-            var result = _dimension.GetCurrentDimensionValue(state);
+            var result = this.dimension.GetCurrentDimensionValue(state);
 
             // Assert
             Assert.Equal("F4", result);
@@ -157,14 +159,14 @@ namespace poolautoscaler.tests
         public void GetCurrentDimensionValue_WhenSkuIsNull_ShouldReturnDefaultF2()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
-            state.ExistingFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            var state = this.CreateFabricCapacityResourceState();
+            state.ExistingFabricCapacityState = new FabricCapacityState
             {
                 Sku = null
             };
 
             // Act
-            var result = _dimension.GetCurrentDimensionValue(state);
+            var result = this.dimension.GetCurrentDimensionValue(state);
 
             // Assert
             Assert.Equal("F2", result);
@@ -174,10 +176,10 @@ namespace poolautoscaler.tests
         public void GetNextDimensionValue_ShouldReturnNextSku()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
 
             // Act
-            var result = _dimension.GetNextDimensionValue(state, "F4");
+            var result = this.dimension.GetNextDimensionValue(state, "F4");
 
             // Assert
             Assert.Equal("F8", result);
@@ -187,10 +189,10 @@ namespace poolautoscaler.tests
         public void GetNextDimensionValue_FromF2_ShouldReturnF4()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
 
             // Act
-            var result = _dimension.GetNextDimensionValue(state, "F2");
+            var result = this.dimension.GetNextDimensionValue(state, "F2");
 
             // Assert
             Assert.Equal("F4", result); // F2 -> F4
@@ -200,10 +202,10 @@ namespace poolautoscaler.tests
         public void GetNextDimensionValue_WhenAtMax_ShouldReturnMaxSku()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
 
             // Act
-            var result = _dimension.GetNextDimensionValue(state, "F2048");
+            var result = this.dimension.GetNextDimensionValue(state, "F2048");
 
             // Assert
             Assert.Equal("F2048", result); // Already at max
@@ -213,10 +215,10 @@ namespace poolautoscaler.tests
         public void GetPreviousDimensionValue_ShouldReturnPreviousSku()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
 
             // Act
-            var result = _dimension.GetPreviousDimensionValue(state, "F8");
+            var result = this.dimension.GetPreviousDimensionValue(state, "F8");
 
             // Assert
             Assert.Equal("F4", result);
@@ -226,10 +228,10 @@ namespace poolautoscaler.tests
         public void GetPreviousDimensionValue_FromF4_ShouldReturnF2()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
 
             // Act
-            var result = _dimension.GetPreviousDimensionValue(state, "F4");
+            var result = this.dimension.GetPreviousDimensionValue(state, "F4");
 
             // Assert
             Assert.Equal("F2", result); // F4 -> F2
@@ -239,10 +241,10 @@ namespace poolautoscaler.tests
         public void GetPreviousDimensionValue_WhenAtMin_ShouldReturnMinSku()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
 
             // Act
-            var result = _dimension.GetPreviousDimensionValue(state, "F2");
+            var result = this.dimension.GetPreviousDimensionValue(state, "F2");
 
             // Assert
             Assert.Equal("F2", result); // Already at min
@@ -252,14 +254,14 @@ namespace poolautoscaler.tests
         public void GetRequestedDimensionValue_ShouldReturnRequestedSku()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            var state = this.CreateFabricCapacityResourceState();
+            state.RequestedFabricCapacityState = new FabricCapacityState
             {
                 Sku = "F8"
             };
 
             // Act
-            var result = _dimension.GetRequestedDimensionValue(state);
+            var result = this.dimension.GetRequestedDimensionValue(state);
 
             // Assert
             Assert.Equal("F8", result);
@@ -269,14 +271,14 @@ namespace poolautoscaler.tests
         public void GetRequestedDimensionValue_WhenNoRequestedSku_ShouldReturnNull()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState
+            var state = this.CreateFabricCapacityResourceState();
+            state.RequestedFabricCapacityState = new FabricCapacityState
             {
                 Sku = null
             };
 
             // Act
-            var result = _dimension.GetRequestedDimensionValue(state);
+            var result = this.dimension.GetRequestedDimensionValue(state);
 
             // Assert
             Assert.Null(result);
@@ -286,13 +288,13 @@ namespace poolautoscaler.tests
         public async Task SetDimensionValue_WithValidSku_ShouldSetSku()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
-            state.RequestedFabricCapacityState = new FabricCapacityResourceState.FabricCapacityState();
+            var state = this.CreateFabricCapacityResourceState();
+            state.RequestedFabricCapacityState = new FabricCapacityState();
             var mockCredential = new Mock<Azure.Core.TokenCredential>();
             var cancellationToken = CancellationToken.None;
 
             // Act
-            await _dimension.SetDimensionValue(cancellationToken, state, _loggerMock.Object, mockCredential.Object, "F8");
+            await this.dimension.SetDimensionValue(cancellationToken, state, this.loggerMock.Object, mockCredential.Object, "F8");
 
             // Assert
             Assert.Equal("F8", state.RequestedFabricCapacityState.Sku);
@@ -302,19 +304,19 @@ namespace poolautoscaler.tests
         public async Task SetDimensionValue_WithInvalidSku_ShouldThrowArgumentException()
         {
             // Arrange
-            var state = CreateFabricCapacityResourceState();
+            var state = this.CreateFabricCapacityResourceState();
             var mockCredential = new Mock<Azure.Core.TokenCredential>();
             var cancellationToken = CancellationToken.None;
 
             // Act & Assert
-            var exception = await Assert.ThrowsAsync<ArgumentException>(async () => 
-                await _dimension.SetDimensionValue(cancellationToken, state, _loggerMock.Object, mockCredential.Object, "InvalidSku"));
+            var exception = await Assert.ThrowsAsync<ArgumentException>(async () =>
+                await this.dimension.SetDimensionValue(cancellationToken, state, this.loggerMock.Object, mockCredential.Object, "InvalidSku"));
             Assert.Contains("Invalid SKU value", exception.Message);
         }
 
         private FabricCapacityResourceState CreateFabricCapacityResourceState()
         {
-            return new FabricCapacityResourceState(_resourceId, _loggerMock.Object, new Resource());
+            return new FabricCapacityResourceState(this.resourceId, this.loggerMock.Object, new Resource());
         }
     }
 }
