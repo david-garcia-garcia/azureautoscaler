@@ -99,6 +99,48 @@ namespace poolautoscaler.resourcemanagement
             return ran;
         }
 
+        private static IRuleStrategy GetRuleStrategy(ScalingRule rule)
+        {
+            if (rule.ScalingStrategy == "Fixed")
+            {
+                return new RuleStrategyFixed();
+            }
+
+            if (rule.ScalingStrategy == "Autoadjust")
+            {
+                return new RuleStrategyAutoAdjust();
+            }
+
+            throw new ArgumentException($"Invalid scaling strategy: '{rule.ScalingStrategy}'");
+        }
+
+        /// <summary>Formats the configured DimensionValueMin/Max as a mathematical range suffix for logging, e.g. " (valid range: value ∈ [50, 200])".</summary>
+        private static string FormatDimensionRangeSuffix(ScalingRule rule)
+        {
+            var hasMin = !string.IsNullOrEmpty(rule.DimensionValueMin);
+            var hasMax = !string.IsNullOrEmpty(rule.DimensionValueMax);
+            if (!hasMin && !hasMax)
+            {
+                return string.Empty;
+            }
+
+            string interval;
+            if (hasMin && hasMax)
+            {
+                interval = $"[{rule.DimensionValueMin}, {rule.DimensionValueMax}]";
+            }
+            else if (hasMin)
+            {
+                interval = $"[{rule.DimensionValueMin}, ∞)";
+            }
+            else
+            {
+                interval = $"(-∞, {rule.DimensionValueMax}]";
+            }
+
+            return $" (valid range: value ∈ {interval})";
+        }
+
         private async Task RunLoop(ResourceState state, CancellationToken stoppingToken)
         {
             var logger = state.Logger;
@@ -267,13 +309,23 @@ namespace poolautoscaler.resourcemanagement
 
                     var newDimensionRequest = dimension.GetRequestedDimensionValue(state);
 
+                    var rangeSuffix = FormatDimensionRangeSuffix(rule);
                     if (existingDimensionRequest != newDimensionRequest)
                     {
-                        capturingLogger.LogDebug("Rule '{RuleId}' Dimension request changed from {From} to {To}", rule.Id, existingDimensionRequest ?? "(null)", newDimensionRequest);
+                        capturingLogger.LogDebug(
+                            "Rule '{RuleId}' Dimension request changed from {From} to {To}{Range}",
+                            rule.Id,
+                            existingDimensionRequest ?? "(null)",
+                            newDimensionRequest,
+                            rangeSuffix);
                     }
                     else
                     {
-                        capturingLogger.LogDebug("Rule '{RuleId}' requested target value '{Value}'", rule.Id, targetDimensionValue);
+                        capturingLogger.LogDebug(
+                            "Rule '{RuleId}' requested target value '{Value}'{Range}",
+                            rule.Id,
+                            targetDimensionValue,
+                            rangeSuffix);
                     }
                 }
             }
@@ -306,21 +358,6 @@ namespace poolautoscaler.resourcemanagement
             }
 
             capturingLogger.Clear();
-        }
-
-        private static IRuleStrategy GetRuleStrategy(ScalingRule rule)
-        {
-            if (rule.ScalingStrategy == "Fixed")
-            {
-                return new RuleStrategyFixed();
-            }
-
-            if (rule.ScalingStrategy == "Autoadjust")
-            {
-                return new RuleStrategyAutoAdjust();
-            }
-
-            throw new ArgumentException($"Invalid scaling strategy: '{rule.ScalingStrategy}'");
         }
     }
 }
