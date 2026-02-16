@@ -433,7 +433,13 @@ namespace poolautoscaler.resourcemanagement
                 return;
             }
 
-            var intervalStart = this.LastScale == null ? DateTime.UtcNow.AddHours(-72) : new DateTimeOffset(this.LastScale.Value, TimeSpan.Zero).AddMinutes(5);
+            var intervalStart = new DateTimeOffset(DateTime.UtcNow.AddHours(-72), TimeSpan.Zero);
+
+            if (this.LastScale != null && this.LastScale > DateTime.UtcNow.AddHours(-72))
+            {
+                intervalStart = new DateTimeOffset(this.LastScale.Value, TimeSpan.Zero).AddMinutes(5);
+            }
+
             var intervalEnd = DateTimeOffset.UtcNow;
 
             try

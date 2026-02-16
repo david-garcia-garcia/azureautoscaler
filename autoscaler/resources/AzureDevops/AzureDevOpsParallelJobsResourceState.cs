@@ -344,6 +344,12 @@ namespace poolautoscaler.resources.AzureDevops
         }
 
         /// <inheritdoc />
+        protected override string? GetResourceIdForChangeHistory()
+        {
+            return null;
+        }
+
+        /// <inheritdoc />
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Logger.LogDebug("Refreshing Azure DevOps parallel jobs state for organization {Organization}", this.Organization);
