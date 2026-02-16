@@ -4,6 +4,7 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.Storage;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.resources.StorageFileShare.Dto;
@@ -33,7 +34,15 @@ namespace poolautoscaler.resources.StorageFileShare
         /// <param name="id">The file share resource ID.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="resourceConfiguration">The resource configuration.</param>
-        public StorageFileShareResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
+        /// <param name="resourceLocationResolver">Optional resource location resolver.</param>
+        /// <param name="vmSizeResolver">Optional VM size resolver.</param>
+        public StorageFileShareResourceState(
+            string id,
+            ILogger logger,
+            Resource resourceConfiguration,
+            IResourceLocationResolver? resourceLocationResolver = null,
+            IVmSizeResolver? vmSizeResolver = null)
+            : base(id, logger, resourceConfiguration, resourceLocationResolver, vmSizeResolver)
         {
             if (!ResourceStateFactory.FileShare.IsMatch(id))
             {
@@ -133,12 +142,6 @@ namespace poolautoscaler.resources.StorageFileShare
                 this.Logger.LogInformation("Resource evaluation will be disabled for the next two hours.");
                 this.DisabledUntil["Storage quota downgrade not allowed at the time"] = DateTime.UtcNow.AddHours(2);
             }
-        }
-
-        /// <inheritdoc />
-        protected override string GetResourceIdForChangeHistory()
-        {
-            return null;
         }
 
         /// <inheritdoc />

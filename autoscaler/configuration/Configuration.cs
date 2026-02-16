@@ -30,6 +30,12 @@ namespace poolautoscaler.configuration
         /// <summary>List of resources to manage.</summary>
         public List<Resource> Resources { get; set; }
 
+        /// <summary>
+        /// Default namespace for custom metrics pushed to Azure Monitor (optional).
+        /// If not set, defaults to "Custom Autoscaler". Can be overridden per metric.
+        /// </summary>
+        public string? CustomMetricsNamespace { get; set; }
+
         /// <summary>Parses defaults and validates resources.</summary>
         /// <param name="logger">The logger.</param>
         public void PrepareAndValidate(ILogger logger)
@@ -59,6 +65,33 @@ namespace poolautoscaler.configuration
                 }
 
                 resource.FrequencyParsed = DurationParser.ParseDuration(resource.Frequency);
+
+                if (resource.CustomMetrics != null)
+                {
+                    foreach (var customMetric in resource.CustomMetrics)
+                    {
+                        if (string.IsNullOrWhiteSpace(customMetric.Name))
+                        {
+                            throw new Exception("Custom metric must have a Name.");
+                        }
+
+                        if (string.IsNullOrWhiteSpace(customMetric.DataExpression))
+                        {
+                            throw new Exception($"Custom metric '{customMetric.Name}' must have a DataExpression.");
+                        }
+
+                        customMetric.FrequencyParsed = DurationParser.ParseDuration(
+                            string.IsNullOrWhiteSpace(customMetric.Frequency) ? "5m" : customMetric.Frequency);
+
+                        customMetric.DataExpressionDelegate =
+                            (Func<CustomMetricDataContext, double>)ExpressionParserUtils.ParseExpression(
+                                customMetric.DataExpression,
+                                "data",
+                                typeof(CustomMetricDataContext),
+                                typeof(double),
+                                1);
+                    }
+                }
 
                 if (resource.ScalingConfigurations == null)
                 {

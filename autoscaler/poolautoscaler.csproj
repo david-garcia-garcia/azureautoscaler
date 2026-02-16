@@ -43,6 +43,7 @@
     <PackageReference Include="Azure.ResourceManager.KubernetesConfiguration" Version="1.2.0" />
     <PackageReference Include="Azure.ResourceManager.Monitor" Version="1.4.0-beta.3" />
     <PackageReference Include="Azure.ResourceManager.MySql" Version="1.1.2" />
+    <PackageReference Include="Azure.ResourceManager.PostgreSql" Version="1.3.1" />
     <PackageReference Include="Azure.ResourceManager.ResourceGraph" Version="1.1.0-beta.4" />
     <PackageReference Include="Azure.ResourceManager.Sql" Version="1.3.0" />
     <PackageReference Include="Azure.ResourceManager.Storage" Version="1.6.0" />

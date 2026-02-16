@@ -16,8 +16,10 @@ namespace poolautoscaler.tests
         private readonly ILogger logger;
         private readonly Mock<TokenCredential> credentialMock;
         private readonly Mock<ArmClient> armClientMock;
+        private readonly IArmClientWrapper armClientWrapper;
         private readonly LicenseInfo licenseInfo;
         private readonly IReadOnlyList<IDimension> dimensions;
+        private readonly IResourceLocationResolver resourceLocationResolver;
 
         public ResourceProcessorTests()
         {
@@ -26,14 +28,19 @@ namespace poolautoscaler.tests
             this.logFactoryMock.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(this.logger);
             this.credentialMock = new Mock<TokenCredential>();
             this.armClientMock = new Mock<ArmClient>();
+            this.armClientWrapper = new ArmClientWrapper(this.armClientMock.Object);
             this.licenseInfo = new LicenseInfo(new License { MaxResources = 10 }, isValid: true, isExpired: false);
             this.dimensions = Array.Empty<IDimension>();
+            var resolverMock = new Mock<IResourceLocationResolver>();
+            resolverMock.Setup(x => x.GetRegionAsync(It.IsAny<ArmClient>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync((string?)"westus2");
+            this.resourceLocationResolver = resolverMock.Object;
         }
 
         [Fact]
-        public async Task ProcessOneAsync_WhenTimeWindowExcludesCurrentTime_ExitsEarlyWithoutCallingRefresh()
+        public async Task ProcessOneAsync_WhenTimeWindowExcludesCurrentTime_StillRefreshesAndExitsBeforeScaling()
         {
-            // Arrange: TimeWindow 23:00-23:59 UTC (only last hour of day)
+            // Arrange: TimeWindow 23:00-23:59 UTC (only last hour of day). We always refresh and push metrics first, then exit before scaling.
             var scalingConfig = CreateScalingConfiguration(
                 id: "business-hours",
                 startTime: TimeSpan.FromHours(23),
@@ -46,15 +53,16 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => noonUtc);
 
             // Act
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
-            // Assert
-            Assert.False(state.RefreshWasCalled);
+            // Assert: state is refreshed (and metrics pushed if configured) before we skip scaling
+            Assert.True(state.RefreshWasCalled);
         }
 
         [Fact]
@@ -73,8 +81,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => noonUtc);
 
             // Act
@@ -85,7 +94,7 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
-        public async Task ProcessOneAsync_WhenTimeWindowUsesWeekdayAndTodayIsWeekend_ExitsEarlyWithoutRefresh()
+        public async Task ProcessOneAsync_WhenTimeWindowUsesWeekdayAndTodayIsWeekend_StillRefreshesAndExitsBeforeScaling()
         {
             // Arrange: Days = "Weekday" (Mon-Fri), use a Saturday
             var scalingConfig = CreateScalingConfiguration(
@@ -101,15 +110,16 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => saturdayNoon);
 
             // Act
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
-            // Assert
-            Assert.False(state.RefreshWasCalled);
+            // Assert: we still refresh (and push metrics if configured) before skipping scaling
+            Assert.True(state.RefreshWasCalled);
         }
 
         [Fact]
@@ -129,8 +139,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => mondayNoon);
 
             // Act
@@ -158,8 +169,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
 
             // Act
@@ -187,8 +199,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
 
             // Act
@@ -216,8 +229,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
 
             // Act
@@ -248,8 +262,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -280,8 +295,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -312,8 +328,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -344,8 +361,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -376,8 +394,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -408,8 +427,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -441,8 +461,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -473,8 +494,9 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => utcNow);
 
             // Act
@@ -485,9 +507,9 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
-        public async Task ProcessOneAsync_WhenNoScalingConfigurations_ExitsEarlyWithoutRefresh()
+        public async Task ProcessOneAsync_WhenNoScalingConfigurations_StillRefreshesAndExitsBeforeScaling()
         {
-            // Arrange: Empty ScalingConfigurations
+            // Arrange: Empty ScalingConfigurations. We always refresh and push metrics first, then exit before scaling.
             var config = CreateResourceConfiguration(Array.Empty<ScalingConfiguration>());
             var state = new TestResourceState("test://test", this.logger, config);
 
@@ -495,15 +517,16 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
+                this.resourceLocationResolver,
                 () => DateTime.UtcNow);
 
             // Act
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
-            // Assert
-            Assert.False(state.RefreshWasCalled);
+            // Assert: state is refreshed (and metrics pushed if configured) before we skip scaling
+            Assert.True(state.RefreshWasCalled);
         }
 
         private static ScalingConfiguration CreateScalingConfigurationWithMetricAndRule(

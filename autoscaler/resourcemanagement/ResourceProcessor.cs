@@ -1,5 +1,4 @@
 using Azure.Core;
-using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
@@ -20,10 +19,11 @@ namespace poolautoscaler.resourcemanagement
         private readonly ILogger logger;
         private readonly IReadOnlyList<IDimension> dimensions;
         private readonly TokenCredential credential;
-        private readonly ArmClient armClient;
+        private readonly IArmClientWrapper armClientWrapper;
         private readonly LicenseInfo licenseInfo;
         private readonly Func<DateTime> utcNowProvider;
         private readonly IMetricsGatherer metricsGatherer;
+        private readonly CustomMetricsPusher customMetricsPusher;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ResourceProcessor"/> class.
@@ -31,26 +31,31 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="logFactory">The logger factory.</param>
         /// <param name="dimensions">The list of dimension handlers.</param>
         /// <param name="credential">The token credential for Azure and metrics.</param>
-        /// <param name="armClient">The ARM client.</param>
+        /// <param name="armClientWrapper">The ARM client wrapper (provides client and cached tenant).</param>
         /// <param name="licenseInfo">The license information.</param>
+        /// <param name="resourceLocationResolver">Resolves resource IDs to region for custom metrics.</param>
         /// <param name="utcNowProvider">Optional. Provides current UTC time for TimeWindow evaluation. Defaults to <see cref="DateTime.UtcNow"/>.</param>
         /// <param name="metricsGatherer">Optional. Gathers metrics for evaluation. Defaults to <see cref="AzureMonitorMetricsGatherer"/>.</param>
+        /// <param name="defaultCustomMetricsNamespace">Optional global default namespace for custom metrics.</param>
         internal ResourceProcessor(
             ILoggerFactory logFactory,
             IReadOnlyList<IDimension> dimensions,
             TokenCredential credential,
-            ArmClient armClient,
+            IArmClientWrapper armClientWrapper,
             LicenseInfo licenseInfo,
+            IResourceLocationResolver resourceLocationResolver,
             Func<DateTime>? utcNowProvider = null,
-            IMetricsGatherer? metricsGatherer = null)
+            IMetricsGatherer? metricsGatherer = null,
+            string? defaultCustomMetricsNamespace = null)
         {
             this.logger = logFactory.CreateLogger("ResourceProcessor");
             this.dimensions = dimensions;
             this.credential = credential;
-            this.armClient = armClient;
+            this.armClientWrapper = armClientWrapper;
             this.licenseInfo = licenseInfo;
             this.utcNowProvider = utcNowProvider ?? (() => DateTime.UtcNow);
-            this.metricsGatherer = metricsGatherer ?? new AzureMonitorMetricsGatherer(armClient, credential);
+            this.metricsGatherer = metricsGatherer ?? new AzureMonitorMetricsGatherer(armClientWrapper.Client, credential);
+            this.customMetricsPusher = new CustomMetricsPusher(credential, armClientWrapper.Client, this.logger, resourceLocationResolver, defaultCustomMetricsNamespace);
         }
 
         /// <summary>
@@ -131,14 +136,14 @@ namespace poolautoscaler.resourcemanagement
             }
             else if (hasMin)
             {
-                interval = $"[{rule.DimensionValueMin}, ∞)";
+                interval = $"[{rule.DimensionValueMin}, NaN)";
             }
             else
             {
-                interval = $"(-∞, {rule.DimensionValueMax}]";
+                interval = $"(NaN, {rule.DimensionValueMax}]";
             }
 
-            return $" (valid range: value ∈ {interval})";
+            return $" (valid range: {interval})";
         }
 
         private async Task RunLoop(ResourceState state, CancellationToken stoppingToken)
@@ -151,6 +156,10 @@ namespace poolautoscaler.resourcemanagement
                                          where finder.SettingIsActive(p, utcNow)
                                          select p).ToList();
 
+            await state.Refresh(this.armClientWrapper, this.credential, stoppingToken);
+            logger.LogDebug("Existing object state {State}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
+            await this.customMetricsPusher.PushIfDueAsync(state, stoppingToken);
+
             if (!scalingConfigurations.Any())
             {
                 logger.LogTrace("No scaling configurations apply right now.");
@@ -158,10 +167,6 @@ namespace poolautoscaler.resourcemanagement
             }
 
             logger.LogTrace("The following ScalingConfigurations are active and will be evaluated: {Ids}", string.Join(", ", scalingConfigurations.Select((i) => i.Id)));
-
-            await state.Refresh(this.armClient, this.credential, stoppingToken);
-
-            logger.LogDebug("Existing object state {State}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
 
             if (state.IsDisabled())
             {

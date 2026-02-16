@@ -58,7 +58,7 @@ namespace poolautoscaler.tests
             return Task.FromResult(result);
         }
 
-        public override async Task Refresh(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
+        public override async Task Refresh(IArmClientWrapper clientWrapper, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.RefreshWasCalled = true;
             await Task.CompletedTask;
@@ -82,11 +82,6 @@ namespace poolautoscaler.tests
         protected override Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
-        }
-
-        protected override string GetResourceIdForChangeHistory()
-        {
-            return string.Empty;
         }
     }
 }

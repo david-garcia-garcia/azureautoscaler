@@ -61,6 +61,15 @@ namespace AzureSqlElasticPoolAutoscaler
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddLogging();
+                    services.AddMemoryCache();
+                    services.AddSingleton<poolautoscaler.resourcemanagement.IResourceLocationResolver>(sp =>
+                        new poolautoscaler.resourcemanagement.ResourceLocationResolver(
+                            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
+                            sp.GetRequiredService<ILoggerFactory>().CreateLogger("ResourceLocationResolver")));
+                    services.AddSingleton<poolautoscaler.metrics.IVmSizeResolver>(sp =>
+                        new poolautoscaler.metrics.VmSizeResolver(
+                            sp.GetRequiredService<ILoggerFactory>().CreateLogger("VmSizeResolver")));
+                    services.AddSingleton<poolautoscaler.resourcemanagement.IResourceStateFactory, poolautoscaler.resourcemanagement.ResourceStateFactory>();
                     services.AddSingleton<LicenseService>();
                     services.AddSingleton<ResourceManager>();
                     services.AddHostedService<AutoscalerService>();
@@ -194,13 +203,15 @@ namespace AzureSqlElasticPoolAutoscaler
             private readonly DateTime startTime;
             private readonly LicenseService licenseService;
             private readonly ResourceManager resourceManager;
+            private readonly poolautoscaler.resourcemanagement.IResourceLocationResolver resourceLocationResolver;
 
             /// <summary>Initializes a new instance of the <see cref="AutoscalerService"/> class.</summary>
             /// <param name="configuration">Application configuration.</param>
             /// <param name="factory">Logger factory.</param>
             /// <param name="licenseService">License service.</param>
             /// <param name="resourceManager">Resource manager.</param>
-            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService, ResourceManager resourceManager)
+            /// <param name="resourceLocationResolver">Resolves resource IDs to region for custom metrics.</param>
+            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService, ResourceManager resourceManager, poolautoscaler.resourcemanagement.IResourceLocationResolver resourceLocationResolver)
             {
                 this.RawConfiguration = configuration;
                 this.Configuration = configuration.Get<Configuration>();
@@ -208,6 +219,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 this.Logger = factory.CreateLogger("autoscaler");
                 this.licenseService = licenseService;
                 this.resourceManager = resourceManager;
+                this.resourceLocationResolver = resourceLocationResolver;
 
                 this.LicenseInfo = this.licenseService.GetLicenseInfo();
 
@@ -240,9 +252,12 @@ namespace AzureSqlElasticPoolAutoscaler
                 dimensions.Add(new DimensionAzureSqlDatabaseMaxDataBytes());
                 dimensions.Add(new DimensionMySqlFlexibleServerSku());
                 dimensions.Add(new DimensionMySqlFlexibleServerCoreCount());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerSku());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerCoreCount());
                 dimensions.Add(new DimensionAzureAksNodePoolMinNodeCount());
                 dimensions.Add(new DimensionStorageFileShareProvisionedStorage());
                 dimensions.Add(new DimensionMySqlFlexibleServerIops());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerIops());
                 dimensions.Add(new DimensionStorageFileShareThroughput());
                 dimensions.Add(new DimensionFabricCapacitySku());
                 dimensions.Add(new DimensionAzureDevOpsHostedParallelJobs());
@@ -277,8 +292,16 @@ namespace AzureSqlElasticPoolAutoscaler
                 }
 
                 ArmClient client = new ArmClient(credential);
+                var armClientWrapper = new ArmClientWrapper(client);
 
-                var resourceProcessor = new ResourceProcessor(this.LogFactory, dimensions, credential, client, this.LicenseInfo);
+                var resourceProcessor = new ResourceProcessor(
+                    this.LogFactory,
+                    dimensions,
+                    credential,
+                    armClientWrapper,
+                    this.LicenseInfo,
+                    this.resourceLocationResolver,
+                    defaultCustomMetricsNamespace: this.Configuration.CustomMetricsNamespace);
 
                 const int MinIterationIntervalSeconds = 2;
 

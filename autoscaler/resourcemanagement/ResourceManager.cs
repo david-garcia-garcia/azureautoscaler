@@ -13,16 +13,19 @@ namespace poolautoscaler.resourcemanagement
         private readonly Dictionary<string, ResourceState> resources = new Dictionary<string, ResourceState>();
         private readonly ILogger logger;
         private readonly ILoggerFactory logFactory;
+        private readonly IResourceStateFactory resourceStateFactory;
         private DateTime lastDiscovery = DateTime.MinValue;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ResourceManager"/> class.
         /// </summary>
         /// <param name="logFactory">The logger factory for creating resource loggers.</param>
-        public ResourceManager(ILoggerFactory logFactory)
+        /// <param name="resourceStateFactory">Factory for creating resource states (states resolve their own services from the container).</param>
+        public ResourceManager(ILoggerFactory logFactory, IResourceStateFactory resourceStateFactory)
         {
             this.logFactory = logFactory;
             this.logger = logFactory.CreateLogger("ResourceManager");
+            this.resourceStateFactory = resourceStateFactory;
         }
 
         /// <summary>
@@ -105,7 +108,7 @@ namespace poolautoscaler.resourcemanagement
                     Dictionary<string, string> expandedResourceIds;
                     try
                     {
-                        expandedResourceIds = await ResourceStateFactory.ExpandResources(
+                        expandedResourceIds = await this.resourceStateFactory.ExpandResourcesAsync(
                             client,
                             resourceInstance.Key,
                             resourceInstance.Value.ResourceId,
@@ -142,11 +145,12 @@ namespace poolautoscaler.resourcemanagement
                             this.logger.LogInformation("Adding new resource {Key}: {Id}", expandedResourceId.Key, expandedResourceId.Value);
 
                             var resourceLogger = this.logFactory.CreateLogger(expandedResourceId.Key);
-                            var state = ResourceStateFactory.Create(
+                            var state = this.resourceStateFactory.Create(
                                 expandedResourceId.Value,
                                 resourceLogger,
                                 resource,
                                 resourceInstance.Value);
+
                             resourceLogger.LogDebug(
                                 "Replacements: {Replacements}",
                                 string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));

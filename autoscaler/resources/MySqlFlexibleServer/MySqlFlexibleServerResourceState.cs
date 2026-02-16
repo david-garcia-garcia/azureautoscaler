@@ -4,10 +4,10 @@ using Azure.ResourceManager.MySql.FlexibleServers;
 using Azure.ResourceManager.MySql.FlexibleServers.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
-using poolautoscaler.resources.MySqlFlexibleServer.Dto;
 using poolautoscaler.utils;
 
 namespace poolautoscaler.resources.MySqlFlexibleServer
@@ -35,7 +35,15 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
         /// <param name="id">The MySQL flexible server resource ID.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="resourceConfiguration">The resource configuration.</param>
-        public MySqlFlexibleServerResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
+        /// <param name="resourceLocationResolver">Optional resource location resolver.</param>
+        /// <param name="vmSizeResolver">Optional VM size resolver.</param>
+        public MySqlFlexibleServerResourceState(
+            string id,
+            ILogger logger,
+            Resource resourceConfiguration,
+            IResourceLocationResolver? resourceLocationResolver = null,
+            IVmSizeResolver? vmSizeResolver = null)
+            : base(id, logger, resourceConfiguration, resourceLocationResolver, vmSizeResolver)
         {
             if (!ResourceStateFactory.MySqlFlexibleServer.IsMatch(id))
             {
@@ -206,18 +214,6 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
         {
             switch (name)
             {
-                case "custom_sku_corecount_forecast":
-                    await this.EnsureCustomCoreCountForecast(client, credential, cancellationToken, setting);
-                    return new MetricEvalDtoResult()
-                    {
-                        Values = new List<MetricEvalDtoResultValue>()
-                        {
-                            new MetricEvalDtoResultValue()
-                            {
-                                CustomString = this.Forecasts[setting.Id].ForecastString[DateTime.UtcNow.DayOfWeek]
-                            }
-                        }
-                    };
                 default:
                     throw new NotImplementedException("Custom metric not implemented: " + name);
             }
@@ -228,6 +224,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
         {
             this.Resource = await client.GetMySqlFlexibleServerResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);
             this.PopulateResourceTags(this.ResourceCasted.Data.Tags);
+            this.Location = this.ResourceCasted.Data.Location;
             this.ExistingMySqlFlexibleServerState = new Dto.MySqlFlexibleServerState()
             {
                 Sku = this.ResourceCasted.Data.Sku,
@@ -237,31 +234,6 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
             this.RequestedMySqlFlexibleServerState = new Dto.MySqlFlexibleServerState();
         }
 
-        private async Task EnsureCustomCoreCountForecast(
-            ArmClient client,
-            TokenCredential credential,
-            CancellationToken cancellationToken,
-            ScalingConfiguration setting)
-        {
-            if (this.Forecasts.ContainsKey(setting.Id))
-            {
-                if (this.Forecasts[setting.Id].ExpiresAt < DateTime.UtcNow)
-                {
-                    this.Forecasts.Remove(setting.Id);
-                }
-                else
-                {
-                    return;
-                }
-            }
-
-            var forecaster = new MySqlFlexibleServerCoreCountForecast(this.ResourceId, this.Logger, this);
-            var f = await forecaster.CustomCoreCountForecast(client, credential, cancellationToken, setting);
-            this.Forecasts.Add(setting.Id, f);
-        }
-
         private MySqlFlexibleServerResource? ResourceCasted { get => this.Resource as MySqlFlexibleServerResource; }
-
-        private Dictionary<string, CapacityForecast> Forecasts = new Dictionary<string, CapacityForecast>();
     }
 }

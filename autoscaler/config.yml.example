@@ -182,6 +182,14 @@ Resources:
         ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-dev-mysql/providers/Microsoft.DBforMySQL/flexibleServers/mysqlexample-dev"
     Frequency: 5m
     WhatIf: false
+    # Push custom metrics for MySQL server (requires Monitoring Metrics Publisher on the server)
+    CustomMetrics:
+      - Name: total_core_count
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToCores(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+      - Name: total_memory_gb
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToMemoryGb(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
     ScalingConfigurations:
       Baseline:
         ScaleDownLockWindowMinutes: 50
@@ -208,21 +216,6 @@ Resources:
             ScaleDownCoolDownSeconds: 3600
             DimensionValueMax: "Standard_B4ms"
             DimensionValueMin: "Standard_B1ms"
-      ForecastDaily:
-        Metrics:
-          custom_sku_corecount_forecast:
-            Name: custom_sku_corecount_forecast
-        TimeWindow:
-          Days: All
-          Months: All
-          StartTime: "00:00"
-          EndTime: "23:59"
-          TimeZone: "Romance Standard Time"
-        ScalingRules:
-          fixed:
-            ScalingStrategy: Fixed
-            Dimension: Sku
-            ScaleTarget: "(data) => (np(data.Metrics[\"custom_sku_corecount_forecast\"].Values.FirstOrDefault()).CustomString).ToString()"
   ###################################
   # Azure MySQL Flexible Server PROD
   ###################################
@@ -231,6 +224,14 @@ Resources:
         ResourceId: "/subscriptions/11111111-1111-1111-1111-111111111111/resourceGroups/rg-example-prod-mysql/providers/Microsoft.DBforMySQL/flexibleServers/mysqlexample-prod"
     Frequency: 10m
     WhatIf: false
+    # Push custom metrics for MySQL server (requires Monitoring Metrics Publisher on the server)
+    CustomMetrics:
+      - Name: total_core_count
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToCores(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 10m
+      - Name: total_memory_gb
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToMemoryGb(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 10m
     ScalingConfigurations:
       Baseline:
         ScaleDownLockWindowMinutes: 50
@@ -257,61 +258,6 @@ Resources:
             ScaleDownCoolDownSeconds: 3600
             DimensionValueMax: "Standard_B4ms"
             DimensionValueMin: "Standard_B1ms"
-      ForecastDaily:
-        Metrics:
-          custom_sku_corecount_forecast:
-            Name: custom_sku_corecount_forecast
-        TimeWindow:
-          Days: All
-          Months: All
-          StartTime: "00:00"
-          EndTime: "23:59"
-          TimeZone: "Romance Standard Time"
-        ScalingRules:
-          fixed:
-            ScalingStrategy: Fixed
-            Dimension: Sku
-            ScaleTarget: "(data) => (data.Metrics[\"custom_sku_corecount_forecast\"].Values.FirstOrDefault().CustomString).ToString()"
-      MinSku:
-        TimeWindow:
-          Days: All
-          Months: All
-          StartTime: "00:00"
-          EndTime: "23:59"
-          TimeZone: "Romance Standard Time"
-        ScalingRules:
-          fixed:
-            ScalingStrategy: Fixed
-            Dimension: Sku
-            ScaleTarget: "(data) => (\"Standard_B1ms\")"
-      Iops:
-        Metrics:
-          storage_io_count:
-            Name: storage_io_count
-            Window: "00:05"
-            Granularity: "00:01"
-            Aggregations: ["Total"]
-          io_consumption_percent:
-            Name: io_consumption_percent
-            Window: 00:10
-        TimeWindow:
-          Days: All
-          Months: All
-          StartTime: "00:00"
-          EndTime: "23:59"
-          TimeZone: "Romance Standard Time"
-        ScalingRules:
-          autoadjust:
-            ScalingStrategy: Autoadjust
-            Dimension: Iops
-            ScaleUpCondition: "(data) => data.Metrics[\"io_consumption_percent\"].Values.Select(i => i.Average).Take(5).Average() > 85"
-            ScaleDownCondition: "(data) => data.Metrics[\"io_consumption_percent\"].Values.Select(i => i.Average).Take(5).Average() < 80"
-            ScaleUpTarget: "(data) => ((data.Metrics[\"storage_io_count\"].Values.Select(i => i.Total).Take(5).Average() / 60.1) * 1.2).ToString()"
-            ScaleDownTarget: "(data) => ((data.Metrics[\"storage_io_count\"].Values.Select(i => i.Total).Take(5).Average() / 60.1) * 0.8).ToString()"
-            ScaleUpCooldownSeconds: 180
-            ScaleDownCoolDownSeconds: 3600
-            DimensionValueMax: "1500"
-            DimensionValueMin: "400"
   ###################################
   # DEV file storage
   ###################################
