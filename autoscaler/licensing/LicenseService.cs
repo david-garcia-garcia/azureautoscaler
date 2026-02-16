@@ -76,6 +76,13 @@ namespace poolautoscaler.licensing
                 daysRemaining,
                 license.MaxResources);
 
+            if (license.AllowedSubscriptionIds is { Count: > 0 })
+            {
+                logger.LogInformation(
+                    "License: AllowedSubscriptionIds={AllowedSubscriptionIds}",
+                    string.Join(", ", license.AllowedSubscriptionIds));
+            }
+
             if (info.IsRestricted)
             {
                 if (info.IsExpired)
@@ -104,12 +111,14 @@ namespace poolautoscaler.licensing
         /// <param name="licensedTo">Licensee identifier.</param>
         /// <param name="expirationDateStr">Expiration date string (ISO 8601).</param>
         /// <param name="maxResourcesStr">Maximum resources string.</param>
+        /// <param name="allowedSubscriptionIds">Optional list of Azure subscription IDs allowed. When null or empty, all subscriptions are allowed.</param>
         /// <returns>Result with JWT or error message.</returns>
         public LicenseGenerationResult Generate(
             string privateKeyPath,
             string licensedTo,
             string expirationDateStr,
-            string maxResourcesStr)
+            string maxResourcesStr,
+            IReadOnlyList<string>? allowedSubscriptionIds = null)
         {
             if (!File.Exists(privateKeyPath))
             {
@@ -141,7 +150,7 @@ namespace poolautoscaler.licensing
             try
             {
                 var privateKeyPem = File.ReadAllText(privateKeyPath);
-                var jwt = GenerateJwt(licensedTo, expirationDateOffset, maxResources, privateKeyPem);
+                var jwt = GenerateJwt(licensedTo, expirationDateOffset, maxResources, privateKeyPem, allowedSubscriptionIds);
 
                 return new LicenseGenerationResult
                 {
@@ -257,6 +266,7 @@ namespace poolautoscaler.licensing
                 var licensedTo = jwtToken.Claims.FirstOrDefault(c => c.Type == "licensedTo")?.Value ?? "Unknown";
                 var expirationDateStr = jwtToken.Claims.FirstOrDefault(c => c.Type == "exp")?.Value;
                 var maxResourcesStr = jwtToken.Claims.FirstOrDefault(c => c.Type == "maxResources")?.Value;
+                var allowedSubscriptionIdsStr = jwtToken.Claims.FirstOrDefault(c => c.Type == "allowedSubscriptionIds")?.Value;
 
                 if (string.IsNullOrEmpty(expirationDateStr) || string.IsNullOrEmpty(maxResourcesStr))
                 {
@@ -268,12 +278,25 @@ namespace poolautoscaler.licensing
 
                 var expirationDate = DateTimeOffset.FromUnixTimeSeconds(long.Parse(expirationDateStr)).UtcDateTime;
                 var maxResources = int.Parse(maxResourcesStr);
+                List<string>? allowedSubscriptionIds = null;
+                if (!string.IsNullOrEmpty(allowedSubscriptionIdsStr))
+                {
+                    try
+                    {
+                        allowedSubscriptionIds = System.Text.Json.JsonSerializer.Deserialize<List<string>>(allowedSubscriptionIdsStr);
+                    }
+                    catch
+                    {
+                        allowedSubscriptionIds = null;
+                    }
+                }
 
                 var license = new License
                 {
                     LicensedTo = licensedTo,
                     ExpirationDate = expirationDate,
-                    MaxResources = maxResources
+                    MaxResources = maxResources,
+                    AllowedSubscriptionIds = allowedSubscriptionIds
                 };
 
                 this.cachedLicense = license;
@@ -343,17 +366,24 @@ namespace poolautoscaler.licensing
             string licensedTo,
             DateTimeOffset expirationDate,
             int maxResources,
-            string privateKeyPem)
+            string privateKeyPem,
+            IReadOnlyList<string>? allowedSubscriptionIds = null)
         {
             using var rsa = RSA.Create();
             rsa.ImportFromPem(privateKeyPem);
             var signingKey = new RsaSecurityKey(rsa);
 
-            var claims = new[]
+            var claims = new List<Claim>
             {
                 new Claim("licensedTo", licensedTo),
                 new Claim("maxResources", maxResources.ToString())
             };
+
+            if (allowedSubscriptionIds != null && allowedSubscriptionIds.Count > 0)
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(allowedSubscriptionIds);
+                claims.Add(new Claim("allowedSubscriptionIds", json));
+            }
 
             var tokenHandler = new JwtSecurityTokenHandler();
             var tokenDescriptor = new SecurityTokenDescriptor

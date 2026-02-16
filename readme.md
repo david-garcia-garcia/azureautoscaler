@@ -40,7 +40,7 @@ Azure Autoscaler fills these gaps by providing intelligent, metric-based autosca
 
 ## Licensing
 
-Azure Autoscaler is **open source software** released under the MIT License. The source code is freely available and you are welcome to build, modify, and distribute it according to the terms of the MIT License.
+Azure Autoscaler is released under the Business Source License (BSL) 1.1. The source code is available for viewing, modification, and non-production use. For production use, please see the licensing terms below or contact the licensor for commercial licensing options.
 
 ### Prebuilt Docker Images
 
@@ -56,11 +56,11 @@ When using a prebuilt image without a valid license key, the following limitatio
 
 ### Building Your Own Images
 
-You can always build your own Docker images from the source code without any license restrictions. This gives you full functionality without requiring a license key. See the [Installation](#installation) section for build instructions.
+You can build your own Docker images from the source code. However, Azure Autoscaler uses the **Business Source License (BSL) 1.1**, so usage is limited to what the license specifies. The BSL permits copying, modification, derivative works, redistribution, and **non-production use**. For production use, you must comply with the license terms—either through the Additional Use Grant (if any) or by purchasing a commercial license. See the [LICENSE](LICENSE) file for the full terms. The [Installation](#installation) section has build instructions.
 
 ### Why Licensing?
 
-The licensing model for prebuilt images helps support the ongoing development and maintenance of Azure Autoscaler. By purchasing a license, you're directly contributing to:
+The licensing model helps support the ongoing development and maintenance of Azure Autoscaler. By purchasing a license, you're directly contributing to:
 - Continued feature development
 - Bug fixes and security updates
 - Documentation improvements

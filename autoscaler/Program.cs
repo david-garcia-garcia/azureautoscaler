@@ -153,22 +153,34 @@ namespace AzureSqlElasticPoolAutoscaler
         {
             if (args.Length < 4)
             {
-                Console.WriteLine("Usage: poolautoscaler generate-license <private_key.pem> <licensedTo> <expirationDate> <maxResources>");
+                Console.WriteLine("Usage: poolautoscaler generate-license <private_key.pem> <licensedTo> <expirationDate> <maxResources> [allowedSubscriptionIds]");
                 Console.WriteLine();
                 Console.WriteLine("Example:");
                 Console.WriteLine("  poolautoscaler generate-license private_key.pem \"Acme Corp\" \"2025-12-31T23:59:59Z\" 10");
+                Console.WriteLine("  poolautoscaler generate-license private_key.pem \"Acme Corp\" \"2025-12-31T23:59:59Z\" 10 \"sub-id-1,sub-id-2\"");
                 Console.WriteLine();
                 Console.WriteLine("Arguments:");
-                Console.WriteLine("  private_key.pem  - Path to RSA private key file");
-                Console.WriteLine("  licensedTo       - Name of the licensee");
-                Console.WriteLine("  expirationDate   - Expiration date in ISO 8601 format (e.g., 2025-12-31T23:59:59Z)");
-                Console.WriteLine("  maxResources     - Maximum number of Azure resources allowed");
+                Console.WriteLine("  private_key.pem       - Path to RSA private key file");
+                Console.WriteLine("  licensedTo            - Name of the licensee");
+                Console.WriteLine("  expirationDate        - Expiration date in ISO 8601 format (e.g., 2025-12-31T23:59:59Z)");
+                Console.WriteLine("  maxResources          - Maximum number of Azure resources allowed");
+                Console.WriteLine("  allowedSubscriptionIds - Optional. Comma-separated Azure subscription IDs. When omitted or empty, all subscriptions are allowed.");
                 Environment.Exit(1);
                 return;
             }
 
+            IReadOnlyList<string>? allowedSubscriptionIds = null;
+            if (args.Length >= 5 && !string.IsNullOrWhiteSpace(args[4]))
+            {
+                allowedSubscriptionIds = args[4]
+                    .Split(',')
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .ToList();
+            }
+
             var service = new poolautoscaler.licensing.LicenseService();
-            var result = service.Generate(args[0], args[1], args[2], args[3]);
+            var result = service.Generate(args[0], args[1], args[2], args[3], allowedSubscriptionIds);
 
             if (!result.Success)
             {
@@ -334,6 +346,15 @@ namespace AzureSqlElasticPoolAutoscaler
                                 "License {0}: Skipping resource (limit: {1} resources)",
                                 this.LicenseInfo.Reason,
                                 this.LicenseInfo.License.MaxResources);
+                            continue;
+                        }
+
+                        var subscriptionId = resourceState.ResourceParts.GetValueOrDefault("subscriptionId");
+                        if (!this.LicenseInfo.License.IsSubscriptionAllowed(subscriptionId))
+                        {
+                            resourceState.Logger.LogWarning(
+                                "License: Skipping resource - subscription {SubscriptionId} is not in the license allowed list.",
+                                subscriptionId ?? "(none - non-ARM resource)");
                             continue;
                         }
 
