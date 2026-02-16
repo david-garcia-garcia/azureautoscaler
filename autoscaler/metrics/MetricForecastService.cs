@@ -3,6 +3,7 @@ using Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.metrics.Dto;
+using poolautoscaler.metrics.ForecastModes;
 using poolautoscaler.resourcemanagement;
 
 namespace poolautoscaler.metrics
@@ -15,15 +16,26 @@ namespace poolautoscaler.metrics
     {
         private const double CapThreshold = 0.95; // Consider capped when value >= 95% of max at that time
         private const double MarginMinutes = 15; // Match points within 15 minutes when aligning series
+        private const int MinSlotMinutes = 15;
+        private const int MaxSlotMinutes = 60;
+        private const int MaxColumnsPerTable = 20;
 
-        /// <summary>Logger for trace and debug.</summary>
         private readonly ILogger logger;
+        private readonly IReadOnlyList<IForecastModeStrategy> forecastModeStrategies;
 
         /// <summary>Initializes a new instance of the <see cref="MetricForecastService"/> class.</summary>
         /// <param name="logger">The logger instance.</param>
-        public MetricForecastService(ILogger logger)
+        /// <param name="forecastModeStrategies">Optional forecast mode strategies (Anchors, AnchorWindow, Snap, Raw). If null, defaults to built-in strategies.</param>
+        public MetricForecastService(ILogger logger, IReadOnlyList<IForecastModeStrategy>? forecastModeStrategies = null)
         {
             this.logger = logger;
+            this.forecastModeStrategies = forecastModeStrategies ?? new IForecastModeStrategy[]
+            {
+                new ForecastModeAnchor(),
+                new ForecastModeAnchorWindow(),
+                new ForecastModeSnap(),
+                new ForecastModeRaw()
+            };
         }
 
         /// <summary>
@@ -42,7 +54,7 @@ namespace poolautoscaler.metrics
             MetricsQueryClient client,
             CancellationToken cancellationToken)
         {
-            if (!metric.ForecastEnable || !metric.ForecastTimeRangeParsed.HasValue || !metric.ForecastGranularityParsed.HasValue)
+            if (!metric.ForecastEnable || !metric.ForecastTimeRangeParsed.HasValue)
             {
                 return null;
             }
@@ -54,7 +66,9 @@ namespace poolautoscaler.metrics
             }
 
             var timeRange = metric.ForecastTimeRangeParsed.Value;
-            var granularity = metric.ForecastGranularityParsed.Value;
+            var slotMinutes = ResolveSlotMinutes(metric.ForecastSlotMinutes);
+            var granularityMinutes = Math.Min(metric.ForecastMetricsGranularityMinutes ?? 60, slotMinutes);
+            var granularity = TimeSpan.FromMinutes(granularityMinutes);
             var resourceId = state.ReplaceResourceParts(metric.ResourceId ?? state.Resource.Id);
             var splitName = state.ReplaceResourceParts(metric.SplitName);
             var splitValue = state.ReplaceResourceParts(metric.SplitValue);
@@ -128,7 +142,7 @@ namespace poolautoscaler.metrics
             var sameDay = metric.ForecastAffinitySameDayFactor ?? 1.0;
             var weekday = metric.ForecastAffinityWeekdayFactor ?? 0.3;
             var weekend = metric.ForecastAffinityWeekendFactor ?? 0.3;
-            return this.ComputeFullForecastFromHistory(
+            var fullForecast = this.ComputeFullForecastFromHistory(
                 mainResult.Values,
                 maxSeries,
                 startDate,
@@ -137,7 +151,18 @@ namespace poolautoscaler.metrics
                 metric.Id,
                 sameDay,
                 weekday,
-                weekend);
+                weekend,
+                slotMinutes);
+            if (fullForecast != null)
+            {
+                this.ApplySnap(fullForecast, metric);
+                if (fullForecast.SnappedValueByDayAndHour != null)
+                {
+                    this.LogSnappedForecastTable(fullForecast);
+                }
+            }
+
+            return fullForecast;
         }
 
         /// <summary>
@@ -156,7 +181,7 @@ namespace poolautoscaler.metrics
             MetricsQueryClient client,
             CancellationToken cancellationToken)
         {
-            if (!metric.ForecastEnable || !metric.ForecastTimeRangeParsed.HasValue || !metric.ForecastGranularityParsed.HasValue)
+            if (!metric.ForecastEnable || !metric.ForecastTimeRangeParsed.HasValue)
             {
                 return null;
             }
@@ -174,7 +199,9 @@ namespace poolautoscaler.metrics
             }
 
             var timeRange = metric.ForecastTimeRangeParsed.Value;
-            var granularity = metric.ForecastGranularityParsed.Value;
+            var slotMinutes = ResolveSlotMinutes(metric.ForecastSlotMinutes);
+            var granularityMinutes = Math.Min(metric.ForecastMetricsGranularityMinutes ?? 60, slotMinutes);
+            var granularity = TimeSpan.FromMinutes(granularityMinutes);
             var resourceId = state.ReplaceResourceParts(metric.ResourceId ?? state.Resource.Id);
             var splitName = state.ReplaceResourceParts(metric.SplitName);
             var splitValue = state.ReplaceResourceParts(metric.SplitValue);
@@ -284,12 +311,14 @@ namespace poolautoscaler.metrics
                 metric.Id,
                 sameDay,
                 weekday,
-                weekend);
+                weekend,
+                slotMinutes);
             if (fullForecast == null)
             {
                 return null;
             }
 
+            this.ApplySnap(fullForecast, metric);
             return this.GetCurrentForecastValue(fullForecast, now);
         }
 
@@ -302,8 +331,25 @@ namespace poolautoscaler.metrics
         internal MetricEvalDtoResult GetCurrentForecastValue(MetricForecastResult fullForecast, DateTimeOffset referenceTimeUtc)
         {
             var dayOfWeek = referenceTimeUtc.DayOfWeek;
-            var hour = referenceTimeUtc.UtcDateTime.Hour;
-            if (!fullForecast.ValueByDayAndHour.TryGetValue(dayOfWeek, out var byHour) || !byHour.Any())
+            var slotMinutes = fullForecast.SlotMinutes;
+            var dayStart = new DateTimeOffset(referenceTimeUtc.UtcDateTime.Date, TimeSpan.Zero);
+            var minutesFromMidnight = (referenceTimeUtc - dayStart).TotalMinutes;
+            var slotsPerDay = (24 * 60) / slotMinutes;
+            var slotIndex = (int)(minutesFromMidnight / slotMinutes);
+            if (slotIndex < 0)
+            {
+                slotIndex = 0;
+            }
+            else if (slotIndex >= slotsPerDay)
+            {
+                slotIndex = slotsPerDay - 1;
+            }
+
+            var sourceBySlot = fullForecast.SnappedValueByDayAndHour != null && fullForecast.SnappedValueByDayAndHour.TryGetValue(dayOfWeek, out var snapped) && snapped.Any()
+                ? snapped
+                : fullForecast.ValueByDayAndHour.TryGetValue(dayOfWeek, out var baseline) ? baseline : null;
+
+            if (sourceBySlot == null || !sourceBySlot.Any())
             {
                 this.logger.LogDebug("No forecast for day of week {DayOfWeek} for metric {MetricId}.", dayOfWeek, fullForecast.MetricId);
                 return new MetricEvalDtoResult
@@ -315,12 +361,12 @@ namespace poolautoscaler.metrics
                 };
             }
 
-            // Use value for (day, hour) if present; otherwise fall back to max over that day
-            var value = byHour.TryGetValue(hour, out var atHour) ? atHour : byHour.Values.Max();
-            var anyCapped = fullForecast.CappedByDayAndHour.TryGetValue(dayOfWeek, out var cappedByHour) && cappedByHour.TryGetValue(hour, out var capped) && capped;
+            // Use value for (day, slot) if present; otherwise fall back to max over that day
+            var value = sourceBySlot.TryGetValue(slotIndex, out var atSlot) ? atSlot : sourceBySlot.Values.Max();
+            var anyCapped = fullForecast.CappedByDayAndHour.TryGetValue(dayOfWeek, out var cappedBySlot) && cappedBySlot.TryGetValue(slotIndex, out var capped) && capped;
             if (!anyCapped && fullForecast.CappedByDayAndHour.TryGetValue(dayOfWeek, out var dayCapped) && dayCapped.Values.Any(c => c))
             {
-                anyCapped = true; // fallback to day max: still mark capped if any hour that day was capped
+                anyCapped = true; // fallback to day max: still mark capped if any slot that day was capped
             }
 
             return new MetricEvalDtoResult
@@ -359,6 +405,7 @@ namespace poolautoscaler.metrics
         /// <param name="sameDayFactor">Affinity weight for same day of week. Default 1.0.</param>
         /// <param name="weekdayFactor">Affinity weight for weekday-to-weekday. Default 0.3.</param>
         /// <param name="weekendFactor">Affinity weight for weekend-to-weekend. Default 0.3.</param>
+        /// <param name="slotMinutes">Slot interval in minutes (15, 30, or 60). Default 60.</param>
         /// <returns>Cacheable full forecast, or null if no daily windows.</returns>
         internal MetricForecastResult? ComputeFullForecastFromHistory(
             List<MetricEvalDtoResultValue> mainValues,
@@ -369,9 +416,12 @@ namespace poolautoscaler.metrics
             string metricId,
             double sameDayFactor = 1.0,
             double weekdayFactor = 0.3,
-            double weekendFactor = 0.3)
+            double weekendFactor = 0.3,
+            int slotMinutes = 60)
         {
-            var dailyWindows = this.BuildDailyWindows(mainValues, maxSeries, startDate, endDate);
+            slotMinutes = ResolveSlotMinutes(slotMinutes);
+            var slotsPerDay = (24 * 60) / slotMinutes;
+            var dailyWindows = this.BuildDailyWindows(mainValues, maxSeries, startDate, endDate, slotMinutes);
             if (!dailyWindows.Any())
             {
                 this.logger.LogDebug("No daily windows with data for metric {MetricId}; cannot produce forecast.", metricId);
@@ -385,34 +435,35 @@ namespace poolautoscaler.metrics
                 var compatible = dailyWindows.Where(w => CalculateAffinity(dayOfWeek, w.DayOfWeek, sameDayFactor, weekdayFactor, weekendFactor) > 0.5).ToList();
                 if (compatible.Any())
                 {
-                    var byHour = new Dictionary<int, double>();
-                    var cappedByHour = new Dictionary<int, bool>();
-                    for (int h = 0; h < 24; h++)
+                    var bySlot = new Dictionary<int, double>();
+                    var cappedBySlot = new Dictionary<int, bool>();
+                    for (int s = 0; s < slotsPerDay; s++)
                     {
-                        var valuesAtHour = compatible
-                            .Where(w => w.ValueByHour != null && w.ValueByHour.ContainsKey(h))
-                            .Select(w => w.ValueByHour[h])
+                        var valuesAtSlot = compatible
+                            .Where(w => w.ValueByHour != null && w.ValueByHour.ContainsKey(s))
+                            .Select(w => w.ValueByHour[s])
                             .ToList();
-                        if (valuesAtHour.Any())
+                        if (valuesAtSlot.Any())
                         {
-                            byHour[h] = valuesAtHour.Max();
-                            var anyCappedAtHour = compatible
-                                .Where(w => w.CappedByHour != null && w.CappedByHour.ContainsKey(h) && w.CappedByHour[h])
+                            bySlot[s] = valuesAtSlot.Max();
+                            var anyCappedAtSlot = compatible
+                                .Where(w => w.CappedByHour != null && w.CappedByHour.ContainsKey(s) && w.CappedByHour[s])
                                 .Any();
-                            cappedByHour[h] = anyCappedAtHour;
+                            cappedBySlot[s] = anyCappedAtSlot;
                         }
                     }
 
-                    if (byHour.Any())
+                    if (bySlot.Any())
                     {
-                        valueByDayAndHour[dayOfWeek] = byHour;
-                        cappedByDayAndHour[dayOfWeek] = cappedByHour;
+                        valueByDayAndHour[dayOfWeek] = bySlot;
+                        cappedByDayAndHour[dayOfWeek] = cappedBySlot;
                     }
                 }
             }
 
             var fullForecast = new MetricForecastResult
             {
+                SlotMinutes = slotMinutes,
                 ValueByDayAndHour = valueByDayAndHour,
                 CappedByDayAndHour = cappedByDayAndHour,
                 ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
@@ -470,7 +521,7 @@ namespace poolautoscaler.metrics
             return this.GetCurrentForecastValue(fullForecast, referenceTimeUtc);
         }
 
-        /// <summary>Logs the full weekly forecast (every day of week, every hour) at Debug level, plus reliability summary.</summary>
+        /// <summary>Logs the full weekly forecast (every day of week, every slot) at Debug level, plus reliability summary. Tables are split into at most <see cref="MaxColumnsPerTable"/> columns each.</summary>
         private void LogFullWeeklyForecast(MetricForecastResult forecast, ForecastBuildInfo? buildInfo = null)
         {
             if (!this.LogFullWeeklyForecastEnabled())
@@ -478,10 +529,15 @@ namespace poolautoscaler.metrics
                 return;
             }
 
-            const int DayColumnWidth = 10;
-            const int HourColumnWidth = 5;
+            const int DayColumnWidth = 4;
+            const int CellWidth = 7;
             var days = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday };
-            this.logger.LogDebug("---------- Full weekly forecast (projected value per day and hour UTC): {MetricId} ----------", forecast.MetricId);
+            var slotMinutes = forecast.SlotMinutes;
+            var slotsPerDay = (24 * 60) / slotMinutes;
+            this.logger.LogDebug(
+                "---------- Full weekly forecast (projected value per day and slot UTC, {SlotMin}min slots): {MetricId} ----------",
+                slotMinutes,
+                forecast.MetricId);
 
             if (buildInfo != null)
             {
@@ -494,33 +550,160 @@ namespace poolautoscaler.metrics
                     buildInfo.DaysWithDataCount);
                 var samplesByDay = string.Join(", ", days.Select(d => buildInfo.SamplesPerDayOfWeek.TryGetValue(d, out var n) ? $"{d}: {n}" : $"{d}: 0"));
                 this.logger.LogDebug("Samples per day of week: {SamplesByDay}.", samplesByDay);
-                var hoursWithData = forecast.ValueByDayAndHour.Values.Select(d => d.Count).ToList();
-                if (hoursWithData.Any())
+                var slotsWithData = forecast.ValueByDayAndHour.Values.Select(d => d.Count).ToList();
+                if (slotsWithData.Any())
                 {
                     this.logger.LogDebug(
-                        "Forecast coverage: each day has between {MinHours} and {MaxHours} hours with data (of 24).",
-                        hoursWithData.Min(),
-                        hoursWithData.Max());
+                        "Forecast coverage: each day has between {MinSlots} and {MaxSlots} slots with data (of {SlotsPerDay}).",
+                        slotsWithData.Min(),
+                        slotsWithData.Max(),
+                        slotsPerDay);
                 }
             }
 
-            // Header: day column + hour 00..23, fixed width for alignment
-            var header = "Day".PadRight(DayColumnWidth) + string.Join(string.Empty, Enumerable.Range(0, 24).Select(h => h.ToString("D2").PadLeft(HourColumnWidth)));
-            this.logger.LogDebug(header);
-            foreach (var day in days)
+            for (var colStart = 0; colStart < slotsPerDay; colStart += MaxColumnsPerTable)
             {
-                var byHour = forecast.ValueByDayAndHour.TryGetValue(day, out var d) ? d : null;
-                var row = day.ToString().PadRight(DayColumnWidth);
-                for (int h = 0; h < 24; h++)
+                var colCount = Math.Min(MaxColumnsPerTable, slotsPerDay - colStart);
+                var header = "Day".PadRight(DayColumnWidth) + string.Join(
+                    string.Empty,
+                    Enumerable.Range(0, colCount).Select(i => FormatSlotLabel(colStart + i, slotMinutes).PadLeft(CellWidth)));
+                this.logger.LogDebug(header);
+                foreach (var day in days)
                 {
-                    var val = (byHour != null && byHour.TryGetValue(h, out var v)) ? v.ToString("F0") : "-";
-                    row += val.PadLeft(HourColumnWidth);
+                    var bySlot = forecast.ValueByDayAndHour.TryGetValue(day, out var d) ? d : null;
+                    var row = FormatDayOfWeekShort(day).PadRight(DayColumnWidth);
+                    for (var i = 0; i < colCount; i++)
+                    {
+                        var slot = colStart + i;
+                        var val = (bySlot != null && bySlot.TryGetValue(slot, out var v)) ? v.ToString("F0") : "-";
+                        row += val.PadLeft(CellWidth);
+                    }
+
+                    this.logger.LogDebug(row);
                 }
 
-                this.logger.LogDebug(row);
+                if (colStart + colCount < slotsPerDay)
+                {
+                    this.logger.LogDebug(string.Empty);
+                }
             }
 
             this.logger.LogDebug("---------- End full weekly forecast ----------");
+        }
+
+        /// <summary>Logs the snapped forecast table (same format as baseline) right after the regular forecast. Only called when SnappedValueByDayAndHour is set.</summary>
+        private void LogSnappedForecastTable(MetricForecastResult forecast)
+        {
+            if (forecast.SnappedValueByDayAndHour == null || !this.LogFullWeeklyForecastEnabled())
+            {
+                return;
+            }
+
+            const int DayColumnWidth = 4;
+            const int CellWidth = 7;
+            var days = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday };
+            var slotMinutes = forecast.SlotMinutes;
+            var slotsPerDay = (24 * 60) / slotMinutes;
+            var modeName = string.IsNullOrEmpty(forecast.SnappedModeName) ? "Forecast" : forecast.SnappedModeName;
+            var percentileStr = forecast.SnappedPercentile.HasValue ? $"percentile {forecast.SnappedPercentile.Value}" : null;
+            var paramsStr = string.IsNullOrEmpty(forecast.SnappedParameterSummary) ? null : forecast.SnappedParameterSummary;
+            var details = new List<string> { modeName };
+            if (!string.IsNullOrEmpty(percentileStr))
+            {
+                details.Add(percentileStr);
+            }
+
+            if (!string.IsNullOrEmpty(paramsStr))
+            {
+                details.Add(paramsStr);
+            }
+
+            details.Add($"{slotMinutes}min slots");
+            var detailsLine = string.Join(", ", details);
+            this.logger.LogDebug(
+                "---------- Snapped forecast ({Details}): {MetricId} ----------",
+                detailsLine,
+                forecast.MetricId);
+
+            for (var colStart = 0; colStart < slotsPerDay; colStart += MaxColumnsPerTable)
+            {
+                var colCount = Math.Min(MaxColumnsPerTable, slotsPerDay - colStart);
+                var header = "Day".PadRight(DayColumnWidth) + string.Join(
+                    string.Empty,
+                    Enumerable.Range(0, colCount).Select(i => FormatSlotLabel(colStart + i, slotMinutes).PadLeft(CellWidth)));
+                this.logger.LogDebug(header);
+                foreach (var day in days)
+                {
+                    var bySlot = forecast.SnappedValueByDayAndHour.TryGetValue(day, out var d) ? d : null;
+                    var row = FormatDayOfWeekShort(day).PadRight(DayColumnWidth);
+                    for (var i = 0; i < colCount; i++)
+                    {
+                        var slot = colStart + i;
+                        var val = (bySlot != null && bySlot.TryGetValue(slot, out var v)) ? v.ToString("F0") : "-";
+                        row += val.PadLeft(CellWidth);
+                    }
+
+                    this.logger.LogDebug(row);
+                }
+
+                if (colStart + colCount < slotsPerDay)
+                {
+                    this.logger.LogDebug(string.Empty);
+                }
+            }
+
+            this.logger.LogDebug("---------- End snapped forecast ----------");
+        }
+
+        /// <summary>Fills SnappedValueByDayAndHour from baseline (ValueByDayAndHour) using metric's snap config. Does not modify baseline.</summary>
+        private void ApplySnap(MetricForecastResult result, Metric metric)
+        {
+            var mode = (metric.ForecastMode ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(mode) || string.Equals(mode, "Raw", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var baseline = result.ValueByDayAndHour;
+            if (baseline == null || !baseline.Any())
+            {
+                return;
+            }
+
+            var strategy = this.forecastModeStrategies.FirstOrDefault(s => string.Equals(s.ModeName, mode, StringComparison.OrdinalIgnoreCase));
+            if (strategy == null)
+            {
+                this.logger.LogDebug("ForecastMode={Mode} not recognized; use Raw, Anchors, AnchorWindow, or Snap.", mode);
+                return;
+            }
+
+            if (!strategy.TryApply(result, metric))
+            {
+                this.logger.LogDebug("ForecastMode={Mode} but config invalid or missing; skipping snap.", mode);
+            }
+        }
+
+        private static string FormatDayOfWeekShort(DayOfWeek day)
+        {
+            return day switch
+            {
+                DayOfWeek.Monday => "Mon",
+                DayOfWeek.Tuesday => "Tue",
+                DayOfWeek.Wednesday => "Wed",
+                DayOfWeek.Thursday => "Thu",
+                DayOfWeek.Friday => "Fri",
+                DayOfWeek.Saturday => "Sat",
+                DayOfWeek.Sunday => "Sun",
+                _ => day.ToString()[..3]
+            };
+        }
+
+        private static string FormatSlotLabel(int slotIndex, int slotMinutes)
+        {
+            var totalMinutes = slotIndex * slotMinutes;
+            var h = totalMinutes / 60;
+            var m = totalMinutes % 60;
+            return slotMinutes < 60 ? $"{h:D2}:{m:D2}" : h.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         /// <summary>Override in tests to enable full weekly forecast debug logging. Production uses LogDebug so it depends on log level.</summary>
@@ -529,13 +712,15 @@ namespace poolautoscaler.metrics
             return true;
         }
 
-        /// <summary>Builds daily windows: for each day in range, uses all points in that calendar day (full 24h) and computes per-window max and capped flag.</summary>
+        /// <summary>Builds daily windows: for each day in range, uses all points in that calendar day (full 24h) and computes per-slot max and capped flag.</summary>
         private List<DailyWindowResult> BuildDailyWindows(
             List<MetricEvalDtoResultValue> mainValues,
             List<MetricEvalDtoResultValue> maxSeries,
             DateTimeOffset startDate,
-            DateTimeOffset endDate)
+            DateTimeOffset endDate,
+            int slotMinutes)
         {
+            var slotsPerDay = (24 * 60) / slotMinutes;
             var results = new List<DailyWindowResult>();
             for (var date = new DateTimeOffset(startDate.Date, TimeSpan.Zero); date <= endDate; date = date.AddDays(1))
             {
@@ -552,8 +737,8 @@ namespace poolautoscaler.metrics
 
                 double? windowMax = null;
                 var windowCapped = false;
-                var valueByHour = new Dictionary<int, double>();
-                var cappedByHour = new Dictionary<int, bool>();
+                var valueBySlot = new Dictionary<int, double>();
+                var cappedBySlot = new Dictionary<int, bool>();
                 foreach (var v in pointsInWindow)
                 {
                     var primary = v.Default ?? v.Average ?? v.Maximum;
@@ -580,15 +765,25 @@ namespace poolautoscaler.metrics
                         windowMax = primary.Value;
                     }
 
-                    var hour = v.TimeStamp.UtcDateTime.Hour;
-                    if (!valueByHour.TryGetValue(hour, out var existing) || primary.Value > existing)
+                    var minutesFromMidnight = (v.TimeStamp - date).TotalMinutes;
+                    var slotIndex = (int)(minutesFromMidnight / slotMinutes);
+                    if (slotIndex < 0)
                     {
-                        valueByHour[hour] = primary.Value;
+                        slotIndex = 0;
+                    }
+                    else if (slotIndex >= slotsPerDay)
+                    {
+                        slotIndex = slotsPerDay - 1;
+                    }
+
+                    if (!valueBySlot.TryGetValue(slotIndex, out var existing) || primary.Value > existing)
+                    {
+                        valueBySlot[slotIndex] = primary.Value;
                     }
 
                     if (pointCapped)
                     {
-                        cappedByHour[hour] = true;
+                        cappedBySlot[slotIndex] = true;
                     }
                 }
 
@@ -599,8 +794,8 @@ namespace poolautoscaler.metrics
                         DayOfWeek = date.DayOfWeek,
                         WindowMax = windowMax.Value,
                         AnyCapped = windowCapped,
-                        ValueByHour = valueByHour,
-                        CappedByHour = cappedByHour
+                        ValueByHour = valueBySlot,
+                        CappedByHour = cappedBySlot
                     });
                 }
             }
@@ -631,6 +826,17 @@ namespace poolautoscaler.metrics
         private static bool IsWeekday(DayOfWeek day)
         {
             return day >= DayOfWeek.Monday && day <= DayOfWeek.Friday;
+        }
+
+        private static int ResolveSlotMinutes(int? value)
+        {
+            var minutes = value ?? MaxSlotMinutes;
+            return Math.Clamp(minutes, MinSlotMinutes, MaxSlotMinutes);
+        }
+
+        private static int ResolveSlotMinutes(int value)
+        {
+            return Math.Clamp(value, MinSlotMinutes, MaxSlotMinutes);
         }
 
         private static string ResolveMaxMetricName(Metric metric, ScalingConfiguration setting)

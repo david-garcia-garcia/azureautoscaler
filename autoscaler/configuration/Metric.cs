@@ -73,9 +73,9 @@ namespace poolautoscaler.configuration
         public string ForecastTimeRange { get; set; } = "15d";
 
         /// <summary>
-        /// Granularity of forecast analysis windows (e.g. "60m"). Defaults to "60m".
+        /// Time grain in minutes when fetching metric history for forecast (e.g. 60). Must be &lt;= ForecastSlotMinutes. Defaults to 60.
         /// </summary>
-        public string ForecastGranularity { get; set; } = "60m";
+        public int? ForecastMetricsGranularityMinutes { get; set; }
 
         /// <summary>
         /// Required when ForecastEnable is true. Metric id or Azure metric name that represents the maximum available value (ceiling).
@@ -84,11 +84,14 @@ namespace poolautoscaler.configuration
         /// </summary>
         public string ForecastMetricMax { get; set; } = "max_available_metric";
 
+        /// <summary>
+        /// Forecast slot interval in minutes (15, 30, or 60). Each day is split into slots of this duration; forecast value is per (day, slot). Defaults to 60.
+        /// Minimum 15, maximum 60.
+        /// </summary>
+        public int? ForecastSlotMinutes { get; set; }
+
         /// <summary>Parsed forecast time range.</summary>
         public TimeSpan? ForecastTimeRangeParsed { get; set; }
-
-        /// <summary>Parsed forecast granularity.</summary>
-        public TimeSpan? ForecastGranularityParsed { get; set; }
 
         /// <summary>
         /// Affinity weight when target day and sample day are the same (used when aggregating history by day of week). Defaults to 1.0.
@@ -104,5 +107,24 @@ namespace poolautoscaler.configuration
         /// Affinity weight when both target and sample are weekend days but different days. Defaults to 0.3.
         /// </summary>
         public double? ForecastAffinityWeekendFactor { get; set; }
+
+        // -------------------------------------------------------------------------
+        // Forecast snap (optional): transform baseline forecast for scaling decisions.
+        // -------------------------------------------------------------------------
+
+        /// <summary>Forecast mode: "Raw" (baseline only), "Anchors" (fixed intervals by hour), "AnchorWindow" (windows with optimal change moment), or "Snap" (rolling window). Default/unset = Raw.</summary>
+        public string ForecastMode { get; set; }
+
+        /// <summary>Anchor mode: hours that define interval boundaries (e.g. "05:00", "20:00"). Scaling permitted within intervals; value per interval is percentile of baseline in that interval.</summary>
+        public List<string> ForecastSnapAnchorHours { get; set; }
+
+        /// <summary>AnchorWindow mode: time windows (e.g. "20:00-23:00", "03:00-07:00"). For each window, the system chooses when to switch to the percentile value so as to minimize total resource usage while complying with the minimum percentile.</summary>
+        public List<string> ForecastAnchorWindows { get; set; }
+
+        /// <summary>Percentile (0-100) used by both snap modes. E.g. 95 = use 95th percentile of values in the window.</summary>
+        public int? ForecastSnapPercentile { get; set; }
+
+        /// <summary>StepSnap mode: number of consecutive slots (current + future) to consider. E.g. 3 = current slot plus next 2.</summary>
+        public int? ForecastSnapStepWindows { get; set; }
     }
 }

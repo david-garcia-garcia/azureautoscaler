@@ -118,11 +118,6 @@ namespace poolautoscaler.configuration
                             {
                                 metric.ForecastTimeRangeParsed = DurationParser.ParseDuration(metric.ForecastTimeRange);
                             }
-
-                            if (metric.ForecastEnable && !string.IsNullOrEmpty(metric.ForecastGranularity))
-                            {
-                                metric.ForecastGranularityParsed = DurationParser.ParseDuration(metric.ForecastGranularity);
-                            }
                         }
                     }
 
