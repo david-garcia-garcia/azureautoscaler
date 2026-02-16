@@ -8,7 +8,6 @@ using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
-using poolautoscaler.resources.MySqlFlexibleServer.Dto;
 using poolautoscaler.utils;
 
 namespace poolautoscaler.resources.MySqlFlexibleServer

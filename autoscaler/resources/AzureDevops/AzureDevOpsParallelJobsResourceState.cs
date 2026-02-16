@@ -2,6 +2,7 @@ using Azure.Core;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
@@ -54,8 +55,16 @@ namespace poolautoscaler.resources.AzureDevops
         /// <param name="logger">The logger.</param>
         /// <param name="resourceConfiguration">The resource configuration.</param>
         /// <param name="resourceInstance">Optional resource instance (must contain Pat in Settings).</param>
-        public AzureDevOpsParallelJobsResourceState(string resourceId, ILogger logger, Resource resourceConfiguration, ResourceInstance? resourceInstance = null)
-            : base(resourceId, logger, resourceConfiguration)
+        /// <param name="resourceLocationResolver">Resource location resolver (not used for Azure DevOps but kept for consistency).</param>
+        /// <param name="vmSizeResolver">VM size resolver (not used for Azure DevOps but injected for consistency across resource states).</param>
+        public AzureDevOpsParallelJobsResourceState(
+            string resourceId,
+            ILogger logger,
+            Resource resourceConfiguration,
+            IResourceLocationResolver resourceLocationResolver,
+            IVmSizeResolver vmSizeResolver,
+            ResourceInstance? resourceInstance = null)
+            : base(resourceId, logger, resourceConfiguration, resourceLocationResolver, vmSizeResolver)
         {
             // Resource ID format: azuredevops://{organization}
             if (!ResourceStateFactory.AzureDevOpsParallelJobs.IsMatch(resourceId))

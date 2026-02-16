@@ -1,11 +1,7 @@
 using System.Runtime.ExceptionServices;
-using System.Text.Json;
 using Azure.Core;
 using Azure.ResourceManager;
-using Azure.ResourceManager.ResourceGraph;
-using Azure.ResourceManager.ResourceGraph.Models;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.metrics;
@@ -122,9 +118,21 @@ namespace poolautoscaler.resourcemanagement
 
         /// <summary>
         /// Gets the VM size resolver, used when building custom metric context for VmSizeToMemory/VmSizeToCores.
-        /// May be null when not configured.
+        /// Injected into all resource states created by <see cref="ResourceStateFactory"/>.
         /// </summary>
         public IVmSizeResolver? VmSizeResolver { get; }
+
+        /// <summary>
+        /// Gets the subscription ID for this resource (when backed by an ARM resource).
+        /// Populated during <see cref="Refresh(ArmClient, TokenCredential, CancellationToken)"/>.
+        /// </summary>
+        public string? SubscriptionId { get; protected set; }
+
+        /// <summary>
+        /// Gets the Azure location for this resource (when backed by an ARM resource).
+        /// Populated during <see cref="Refresh(ArmClient, TokenCredential, CancellationToken)"/>.
+        /// </summary>
+        public AzureLocation? Location { get; protected set; }
 
         /// <summary>
         /// Gets or sets the memory cache for this resource state.
@@ -157,7 +165,7 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="logger">Logger.</param>
         /// <param name="configuration">Resource configuration.</param>
         /// <param name="resourceLocationResolver">Optional resource location resolver.</param>
-        /// <param name="vmSizeResolver">Optional VM size resolver.</param>
+        /// <param name="vmSizeResolver">VM size resolver.</param>
         protected ResourceState(
             string id,
             ILogger logger,
@@ -224,6 +232,23 @@ namespace poolautoscaler.resourcemanagement
                 this.DisabledUntil.TryRemove(AutoscalerDisabledTag);
             }
 
+            // Populate common ARM properties from the resource as a default.
+            // Individual resource states can override SubscriptionId/Location in their InternalRefreshAsync.
+            if (this.Resource is ArmResource armResource)
+            {
+                var id = armResource.Id;
+
+                if (string.IsNullOrEmpty(this.SubscriptionId) && !string.IsNullOrEmpty(id.SubscriptionId))
+                {
+                    this.SubscriptionId = id.SubscriptionId;
+                }
+
+                if (this.Location == null && id.Location.HasValue)
+                {
+                    this.Location = id.Location.Value;
+                }
+            }
+
             // This gives visiblity - without flooding the logs - that the resource was disabled externally
             if (isCurrentlyDisabled != this.DisabledUntil.ContainsKey(AutoscalerDisabledTag))
             {
@@ -275,14 +300,12 @@ namespace poolautoscaler.resourcemanagement
                 return null;
             }
 
-            var location = this.Resource?.Id?.Location;
-            CustomMetricHelpers helpers = new CustomMetricHelpers();
-            if (this.VmSizeResolver != null &&
-                this.ResourceParts.TryGetValue("subscriptionId", out var subscriptionId) &&
-                location.HasValue)
+            if (string.IsNullOrEmpty(this.SubscriptionId) || this.Location == null)
             {
-                helpers = new CustomMetricHelpers(subscriptionId, location.Value, this.VmSizeResolver, client, cancellationToken);
+                throw new InvalidOperationException("Custom metrics that use VM size helpers require SubscriptionId and Location on the resource state.");
             }
+
+            CustomMetricHelpers helpers = new CustomMetricHelpers(this.SubscriptionId, this.Location.Value, this.VmSizeResolver!, client, cancellationToken);
 
             var context = new CustomMetricDataContext
             {

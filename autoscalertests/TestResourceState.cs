@@ -83,10 +83,5 @@ namespace poolautoscaler.tests
         {
             return Task.CompletedTask;
         }
-
-        protected override string GetResourceIdForChangeHistory()
-        {
-            return string.Empty;
-        }
     }
 }

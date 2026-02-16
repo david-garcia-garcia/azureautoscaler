@@ -19,17 +19,17 @@ namespace poolautoscaler.resourcemanagement
     /// </summary>
     public sealed class ResourceStateFactory : IResourceStateFactory
     {
-        private readonly IResourceLocationResolver? resourceLocationResolver;
-        private readonly IVmSizeResolver? vmSizeResolver;
+        private readonly IResourceLocationResolver resourceLocationResolver;
+        private readonly IVmSizeResolver vmSizeResolver;
 
         /// <summary>Initializes a new instance of the <see cref="ResourceStateFactory"/> class.</summary>
         /// <param name="serviceProvider">The service provider (reserved for future use).</param>
-        /// <param name="resourceLocationResolver">Optional resource location resolver to inject into created states.</param>
-        /// <param name="vmSizeResolver">Optional VM size resolver to inject into created states.</param>
+        /// <param name="resourceLocationResolver">Resource location resolver to inject into created states.</param>
+        /// <param name="vmSizeResolver">VM size resolver to inject into created states.</param>
         public ResourceStateFactory(
             IServiceProvider serviceProvider,
-            IResourceLocationResolver? resourceLocationResolver = null,
-            IVmSizeResolver? vmSizeResolver = null)
+            IResourceLocationResolver resourceLocationResolver,
+            IVmSizeResolver vmSizeResolver)
         {
             this.resourceLocationResolver = resourceLocationResolver;
             this.vmSizeResolver = vmSizeResolver;
@@ -168,7 +168,7 @@ namespace poolautoscaler.resourcemanagement
             }
             else if ((match = AzureDevOpsParallelJobs.Match(resourceId)).Success)
             {
-                state = new AzureDevOpsParallelJobsResourceState(resourceId, logger, resourceConfiguration, resourceInstance);
+                state = new AzureDevOpsParallelJobsResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver, resourceInstance);
                 PopulateResourceParts(state, match);
                 return state;
             }

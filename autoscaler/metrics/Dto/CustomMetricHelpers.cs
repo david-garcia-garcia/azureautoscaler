@@ -7,9 +7,9 @@ namespace poolautoscaler.metrics.Dto
     public class CustomMetricHelpers
     {
         private readonly string subscriptionId;
-        private readonly AzureLocation? location;
-        private readonly IVmSizeResolver? vmSizeResolver;
-        private readonly ArmClient? armClient;
+        private readonly AzureLocation location;
+        private readonly IVmSizeResolver vmSizeResolver;
+        private readonly ArmClient armClient;
         private readonly CancellationToken cancellationToken;
 
         /// <summary>Initializes a new instance of the <see cref="CustomMetricHelpers"/> class with VM size resolver (lazy-loads from Azure when used).</summary>
@@ -27,27 +27,12 @@ namespace poolautoscaler.metrics.Dto
             this.cancellationToken = cancellationToken;
         }
 
-        /// <summary>Initializes a new instance of the <see cref="CustomMetricHelpers"/> class without resolver (uses regex fallback for cores, returns 0 for memory).</summary>
-        public CustomMetricHelpers()
-        {
-            this.subscriptionId = string.Empty;
-            this.location = null;
-            this.vmSizeResolver = null;
-            this.armClient = null;
-            this.cancellationToken = default;
-        }
-
         /// <summary>Gets memory in bytes for a VM size (e.g. Standard_D4s_v3).</summary>
         /// <param name="vmSize">The VM SKU name.</param>
-        /// <returns>Memory in bytes, or 0 if unknown.</returns>
+        /// <returns>Memory in bytes.</returns>
         public long VmSizeToMemory(string vmSize)
         {
-            if (this.vmSizeResolver != null && this.location.HasValue)
-            {
-                return this.vmSizeResolver.GetMemoryBytes(this.subscriptionId, this.location.Value, vmSize, this.armClient, this.cancellationToken);
-            }
-
-            return VmSizeInfo.GetMemoryBytes(vmSize);
+            return this.vmSizeResolver.GetMemoryBytes(this.subscriptionId, this.location, vmSize, this.armClient, this.cancellationToken);
         }
 
         /// <summary>Gets memory in GiB for a VM size (bytes converted to GiB, e.g. Standard_D4s_v3).</summary>
@@ -61,15 +46,10 @@ namespace poolautoscaler.metrics.Dto
 
         /// <summary>Gets core count for a VM size (e.g. Standard_D4s_v3 -> 4).</summary>
         /// <param name="vmSize">The VM SKU name.</param>
-        /// <returns>Core count, or 0 if unknown.</returns>
+        /// <returns>Core count.</returns>
         public int VmSizeToCores(string vmSize)
         {
-            if (this.vmSizeResolver != null && this.location.HasValue)
-            {
-                return this.vmSizeResolver.GetCoreCount(this.subscriptionId, this.location.Value, vmSize, this.armClient, this.cancellationToken);
-            }
-
-            return VmSizeInfo.GetCoreCount(vmSize);
+            return this.vmSizeResolver.GetCoreCount(this.subscriptionId, this.location, vmSize, this.armClient, this.cancellationToken);
         }
     }
 }

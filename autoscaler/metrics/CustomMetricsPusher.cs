@@ -122,13 +122,13 @@ namespace poolautoscaler.metrics
 
                     await this.PushMetricAsync(resourceId, metric.Name, metricNamespace, numericValue, region, cancellationToken);
                     this.lastPushTimes[key] = DateTime.UtcNow;
-                    state.Logger.LogDebug("Pushed custom metric {Name}={Value} in namespace {metricNamespace} to {ResourceId}", metric.Name, numericValue, resourceId);
+                    state.Logger.LogDebug("Pushed custom metric {Name}={Value} in namespace {metricNamespace} to {ResourceId}", metric.Name, numericValue, metricNamespace, resourceId);
                 }
                 catch (Exception ex)
                 {
                     state.Logger.LogError(ex, "Failed to push custom metric {Name}: {Message}", metric.Name, ex.Message);
                 }
-            }
+            }/**/
         }
 
         private static object EvaluateExpression(CustomMetricConfig metric, CustomMetricDataContext context)

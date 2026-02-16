@@ -19,7 +19,7 @@ namespace poolautoscaler.metrics.Dto
         public Dictionary<string, string> ResourceParts { get; set; } = new Dictionary<string, string>();
 
         /// <summary>Helper functions (e.g. VmSizeToMemory, VmSizeToCores).</summary>
-        public CustomMetricHelpers Helpers { get; set; } = new CustomMetricHelpers();
+        public CustomMetricHelpers Helpers { get; set; }
 
         /// <summary>
         /// Extra, resource-type-specific data. For AKS node pool: key "Vmss" gives a <see cref="VmssMetricView"/> (Sku.Capacity, Sku.Name).
