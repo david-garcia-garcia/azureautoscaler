@@ -58,7 +58,7 @@ namespace poolautoscaler.tests
             return Task.FromResult(result);
         }
 
-        public override async Task Refresh(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
+        public override async Task Refresh(IArmClientWrapper clientWrapper, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.RefreshWasCalled = true;
             await Task.CompletedTask;

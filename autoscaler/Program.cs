@@ -292,12 +292,13 @@ namespace AzureSqlElasticPoolAutoscaler
                 }
 
                 ArmClient client = new ArmClient(credential);
+                var armClientWrapper = new ArmClientWrapper(client);
 
                 var resourceProcessor = new ResourceProcessor(
                     this.LogFactory,
                     dimensions,
                     credential,
-                    client,
+                    armClientWrapper,
                     this.LicenseInfo,
                     this.resourceLocationResolver,
                     defaultCustomMetricsNamespace: this.Configuration.CustomMetricsNamespace);

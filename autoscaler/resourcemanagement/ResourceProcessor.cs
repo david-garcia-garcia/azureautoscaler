@@ -1,5 +1,4 @@
 using Azure.Core;
-using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.dimensions;
@@ -20,7 +19,7 @@ namespace poolautoscaler.resourcemanagement
         private readonly ILogger logger;
         private readonly IReadOnlyList<IDimension> dimensions;
         private readonly TokenCredential credential;
-        private readonly ArmClient armClient;
+        private readonly IArmClientWrapper armClientWrapper;
         private readonly LicenseInfo licenseInfo;
         private readonly Func<DateTime> utcNowProvider;
         private readonly IMetricsGatherer metricsGatherer;
@@ -32,7 +31,7 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="logFactory">The logger factory.</param>
         /// <param name="dimensions">The list of dimension handlers.</param>
         /// <param name="credential">The token credential for Azure and metrics.</param>
-        /// <param name="armClient">The ARM client.</param>
+        /// <param name="armClientWrapper">The ARM client wrapper (provides client and cached tenant).</param>
         /// <param name="licenseInfo">The license information.</param>
         /// <param name="resourceLocationResolver">Resolves resource IDs to region for custom metrics.</param>
         /// <param name="utcNowProvider">Optional. Provides current UTC time for TimeWindow evaluation. Defaults to <see cref="DateTime.UtcNow"/>.</param>
@@ -42,7 +41,7 @@ namespace poolautoscaler.resourcemanagement
             ILoggerFactory logFactory,
             IReadOnlyList<IDimension> dimensions,
             TokenCredential credential,
-            ArmClient armClient,
+            IArmClientWrapper armClientWrapper,
             LicenseInfo licenseInfo,
             IResourceLocationResolver resourceLocationResolver,
             Func<DateTime>? utcNowProvider = null,
@@ -52,11 +51,11 @@ namespace poolautoscaler.resourcemanagement
             this.logger = logFactory.CreateLogger("ResourceProcessor");
             this.dimensions = dimensions;
             this.credential = credential;
-            this.armClient = armClient;
+            this.armClientWrapper = armClientWrapper;
             this.licenseInfo = licenseInfo;
             this.utcNowProvider = utcNowProvider ?? (() => DateTime.UtcNow);
-            this.metricsGatherer = metricsGatherer ?? new AzureMonitorMetricsGatherer(armClient, credential);
-            this.customMetricsPusher = new CustomMetricsPusher(credential, armClient, this.logger, resourceLocationResolver, defaultCustomMetricsNamespace);
+            this.metricsGatherer = metricsGatherer ?? new AzureMonitorMetricsGatherer(armClientWrapper.Client, credential);
+            this.customMetricsPusher = new CustomMetricsPusher(credential, armClientWrapper.Client, this.logger, resourceLocationResolver, defaultCustomMetricsNamespace);
         }
 
         /// <summary>
@@ -157,7 +156,7 @@ namespace poolautoscaler.resourcemanagement
                                          where finder.SettingIsActive(p, utcNow)
                                          select p).ToList();
 
-            await state.Refresh(this.armClient, this.credential, stoppingToken);
+            await state.Refresh(this.armClientWrapper, this.credential, stoppingToken);
             logger.LogDebug("Existing object state {State}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
             await this.customMetricsPusher.PushIfDueAsync(state, stoppingToken);
 

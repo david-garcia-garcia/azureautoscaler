@@ -1,6 +1,9 @@
 using System.Runtime.ExceptionServices;
+using System.Text.Json;
 using Azure.Core;
 using Azure.ResourceManager;
+using Azure.ResourceManager.ResourceGraph;
+using Azure.ResourceManager.ResourceGraph.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
@@ -124,13 +127,13 @@ namespace poolautoscaler.resourcemanagement
 
         /// <summary>
         /// Gets the subscription ID for this resource (when backed by an ARM resource).
-        /// Populated during <see cref="Refresh(ArmClient, TokenCredential, CancellationToken)"/>.
+        /// Populated during <see cref="Refresh(IArmClientWrapper, TokenCredential, CancellationToken)"/>.
         /// </summary>
         public string? SubscriptionId { get; protected set; }
 
         /// <summary>
         /// Gets the Azure location for this resource (when backed by an ARM resource).
-        /// Populated during <see cref="Refresh(ArmClient, TokenCredential, CancellationToken)"/>.
+        /// Populated during <see cref="Refresh(IArmClientWrapper, TokenCredential, CancellationToken)"/>.
         /// </summary>
         public AzureLocation? Location { get; protected set; }
 
@@ -189,6 +192,16 @@ namespace poolautoscaler.resourcemanagement
         /// </summary>
         public DateTime? LastScale { get; set; }
 
+        /// <summary>
+        /// Gets the resource ID used for change history queries.
+        /// Override in derived classes when the history should be read from a related resource.
+        /// </summary>
+        /// <returns>The resource ID, or null to disable change history.</returns>
+        protected virtual string? GetResourceIdForChangeHistory()
+        {
+            return this.ResourceId;
+        }
+
         private const string AutoscalerDisabledTag = "autoscaler.disabled";
 
         private DateTime? LastEvaluation;
@@ -196,11 +209,11 @@ namespace poolautoscaler.resourcemanagement
         /// <summary>
         /// Refreshes the resource state from Azure.
         /// </summary>
-        /// <param name="client">The ARM client.</param>
+        /// <param name="clientWrapper">The ARM client wrapper (provides client and cached tenant).</param>
         /// <param name="credential">The token credential.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task that completes when refresh is done.</returns>
-        public virtual async Task Refresh(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
+        public virtual async Task Refresh(IArmClientWrapper clientWrapper, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Logger.LogTrace("Starting resource refresh");
 
@@ -208,7 +221,7 @@ namespace poolautoscaler.resourcemanagement
 
             try
             {
-                await this.InternalRefreshAsync(client, credential, cancellationToken);
+                await this.InternalRefreshAsync(clientWrapper.Client, credential, cancellationToken);
             }
             catch (Azure.RequestFailedException ex)
             {
@@ -261,6 +274,11 @@ namespace poolautoscaler.resourcemanagement
                     this.Logger.LogInformation($"Tag '{AutoscalerDisabledTag}' was externally added to resource.");
                 }
             }
+
+            // Populate LastScale from ARM change history on first refresh.
+            // This is helpful to detect if resources were scaled manually outside the tool (or in previous runs)
+            // so that cooldown windows still apply after restarts.
+            await this.TryPopulateLastScaleFromChangeHistoryAsync(clientWrapper, cancellationToken);
 
             if (this.IsDisabled())
             {
@@ -389,6 +407,81 @@ namespace poolautoscaler.resourcemanagement
             if (operation.HasCompleted == false)
             {
                 throw new Exception("Scaling operation did not complete successfully.");
+            }
+        }
+
+        /// <summary>
+        /// Attempts to populate <see cref="LastScale"/> from ARM resource change history.
+        /// Uses the wrapper's cached tenant resource to avoid repeated GetTenants calls.
+        /// </summary>
+        /// <param name="clientWrapper">The ARM client wrapper with cached tenant.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        private async Task TryPopulateLastScaleFromChangeHistoryAsync(
+            IArmClientWrapper clientWrapper,
+            CancellationToken cancellationToken)
+        {
+            // Allow resource types to opt out or redirect history queries.
+            var resourceIdFilter = this.GetResourceIdForChangeHistory();
+            if (string.IsNullOrWhiteSpace(resourceIdFilter))
+            {
+                return;
+            }
+
+            var tenantResource = clientWrapper.GetTenantResource();
+            if (tenantResource == null)
+            {
+                return;
+            }
+
+            var intervalStart = this.LastScale == null ? DateTime.UtcNow.AddHours(-72) : new DateTimeOffset(this.LastScale.Value, TimeSpan.Zero).AddMinutes(5);
+            var intervalEnd = DateTimeOffset.UtcNow;
+
+            try
+            {
+                var history = await tenantResource.GetResourceHistoryAsync(
+                    new ResourcesHistoryContent()
+                    {
+                        Query = $"where id =~ '{resourceIdFilter}' | order by timestamp desc",
+                        Options = new ResourcesHistoryRequestOptions()
+                        {
+                            Interval = new DateTimeInterval(intervalStart, intervalEnd),
+                            Skip = 0,
+                            Top = 1, // Only need the most recent snapshot
+                        },
+                    },
+                    cancellationToken).ConfigureAwait(false);
+
+                var response = JsonSerializer.Deserialize<ResourceHistoryResponse>(history.Value);
+                if (response == null || response.Count == 0 || response.Snapshots == null || response.Snapshots.Count == 0)
+                {
+                    // Use min value
+                    this.LastScale = DateTime.MinValue;
+                    return;
+                }
+
+                var lastChange = response.Snapshots[0].Timestamp;
+                var lastChangeLocal = lastChange.DateTime;
+                var timeAgo = DateTime.UtcNow - lastChangeLocal;
+
+                if (this.LastScale == null)
+                {
+                    this.Logger.LogInformation(
+                        "Initialized last change for resource from change history at {0} ({1} ago)",
+                        lastChangeLocal,
+                        timeAgo.ToString(@"hh\:mm\:ss\.f"));
+
+                    this.LastScale = lastChangeLocal;
+                }
+                else if (lastChangeLocal > this.LastScale)
+                {
+                    this.Logger.LogInformation("Resource as externally manipulated. Last scale updated.");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Change history is best-effort only; failures shouldn't break refresh.
+                this.Logger.LogWarning(ex, "Failed to read resource change history for {ResourceId}", resourceIdFilter);
+                this.LastScale = DateTime.MinValue;
             }
         }
 

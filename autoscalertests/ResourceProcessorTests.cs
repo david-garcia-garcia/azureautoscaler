@@ -16,6 +16,7 @@ namespace poolautoscaler.tests
         private readonly ILogger logger;
         private readonly Mock<TokenCredential> credentialMock;
         private readonly Mock<ArmClient> armClientMock;
+        private readonly IArmClientWrapper armClientWrapper;
         private readonly LicenseInfo licenseInfo;
         private readonly IReadOnlyList<IDimension> dimensions;
         private readonly IResourceLocationResolver resourceLocationResolver;
@@ -27,6 +28,7 @@ namespace poolautoscaler.tests
             this.logFactoryMock.Setup(x => x.CreateLogger(It.IsAny<string>())).Returns(this.logger);
             this.credentialMock = new Mock<TokenCredential>();
             this.armClientMock = new Mock<ArmClient>();
+            this.armClientWrapper = new ArmClientWrapper(this.armClientMock.Object);
             this.licenseInfo = new LicenseInfo(new License { MaxResources = 10 }, isValid: true, isExpired: false);
             this.dimensions = Array.Empty<IDimension>();
             var resolverMock = new Mock<IResourceLocationResolver>();
@@ -51,7 +53,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => noonUtc);
@@ -79,7 +81,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => noonUtc);
@@ -108,7 +110,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => saturdayNoon);
@@ -137,7 +139,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => mondayNoon);
@@ -167,7 +169,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
@@ -197,7 +199,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
@@ -227,7 +229,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
@@ -260,7 +262,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -293,7 +295,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -326,7 +328,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -359,7 +361,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -392,7 +394,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -425,7 +427,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -459,7 +461,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -492,7 +494,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
@@ -515,7 +517,7 @@ namespace poolautoscaler.tests
                 this.logFactoryMock.Object,
                 this.dimensions,
                 this.credentialMock.Object,
-                this.armClientMock.Object,
+                this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => DateTime.UtcNow);
