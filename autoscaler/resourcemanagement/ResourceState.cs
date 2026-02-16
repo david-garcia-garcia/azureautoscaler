@@ -460,8 +460,11 @@ namespace poolautoscaler.resourcemanagement
                 var response = JsonSerializer.Deserialize<ResourceHistoryResponse>(history.Value);
                 if (response == null || response.Count == 0 || response.Snapshots == null || response.Snapshots.Count == 0)
                 {
-                    // Use min value
-                    this.LastScale = DateTime.MinValue;
+                    if (this.LastScale == null)
+                    {
+                        this.LastScale = DateTime.MinValue;
+                    }
+
                     return;
                 }
 
@@ -481,6 +484,7 @@ namespace poolautoscaler.resourcemanagement
                 else if (lastChangeLocal > this.LastScale)
                 {
                     this.Logger.LogInformation("Resource as externally manipulated. Last scale updated.");
+                    this.LastScale = lastChangeLocal;
                 }
             }
             catch (Exception ex)
