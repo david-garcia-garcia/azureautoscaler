@@ -56,12 +56,12 @@ namespace poolautoscaler.dimensions
         /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
-            if (!(resource.Resource is MySqlFlexibleServerResource sqlDatabase))
+            if (!(resource.Resource is MySqlFlexibleServerResource mySqlFlexibleServerResource))
             {
                 throw new ArgumentException("Resource is not a MySqlFlexibleServerResource.");
             }
 
-            return MySqlFlexibleServerResourceStateHelper.GetCoreCountFromSkuName(sqlDatabase.Data.Sku.Name).ToString();
+            return MySqlFlexibleServerResourceStateHelper.GetCoreCountFromSkuName(mySqlFlexibleServerResource.Data.Sku.Name).ToString();
         }
 
         /// <inheritdoc/>

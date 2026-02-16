@@ -356,12 +356,6 @@ namespace poolautoscaler.resources.AzureDevops
             this.ResourceTags["organizationId"] = this.organizationId!;
         }
 
-        /// <inheritdoc />
-        protected override string GetResourceIdForChangeHistory()
-        {
-            return null;
-        }
-
         private async Task EnsureOrganizationIdAsync(CancellationToken cancellationToken)
         {
             if (this.organizationId == null)

@@ -45,7 +45,15 @@ namespace poolautoscaler.resources.MssqlElasticPool
         /// <param name="id">The elastic pool resource ID.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="resourceConfiguration">The resource configuration.</param>
-        public MssqlElasticPoolResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
+        /// <param name="resourceLocationResolver">Optional resource location resolver.</param>
+        /// <param name="vmSizeResolver">Optional VM size resolver.</param>
+        public MssqlElasticPoolResourceState(
+            string id,
+            ILogger logger,
+            Resource resourceConfiguration,
+            IResourceLocationResolver? resourceLocationResolver = null,
+            IVmSizeResolver? vmSizeResolver = null)
+            : base(id, logger, resourceConfiguration, resourceLocationResolver, vmSizeResolver)
         {
             if (!ResourceStateFactory.ElasticPools.IsMatch(id))
             {

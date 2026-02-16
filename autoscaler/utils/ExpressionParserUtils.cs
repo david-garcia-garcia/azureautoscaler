@@ -37,6 +37,7 @@ namespace poolautoscaler.utils
             try
             {
                 parsedExpression = DynamicExpressionParser.ParseLambda(
+
                     parsingConfig,
                     new ParameterExpression[] { p0 },
                     returnType,
@@ -52,9 +53,9 @@ namespace poolautoscaler.utils
                 throw new Exception("Expression must have one and only one parameter.");
             }
 
-            if (parsedExpression.ReturnType != returnType)
+            if (parsedExpression.ReturnType != returnType && !returnType.IsAssignableFrom(parsedExpression.ReturnType))
             {
-                throw new Exception("Return type must be of type boolean");
+                throw new Exception($"Return type must be compatible with {returnType.Name}");
             }
 
             return parsedExpression.Compile();

@@ -8,6 +8,8 @@ using Azure.ResourceManager.Resources;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics;
+using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.resources.AksNodePool.Dto;
@@ -42,7 +44,15 @@ namespace poolautoscaler.resources.AksNodePool
         /// <param name="id">The AKS node pool resource ID.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="resourceConfiguration">The resource configuration.</param>
-        public AksNodePoolResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
+        /// <param name="resourceLocationResolver">Optional resource location resolver.</param>
+        /// <param name="vmSizeResolver">Optional VM size resolver.</param>
+        public AksNodePoolResourceState(
+            string id,
+            ILogger logger,
+            Resource resourceConfiguration,
+            IResourceLocationResolver? resourceLocationResolver = null,
+            IVmSizeResolver? vmSizeResolver = null)
+            : base(id, logger, resourceConfiguration, resourceLocationResolver, vmSizeResolver)
         {
             if (!ResourceStateFactory.AksNodePool.IsMatch(id))
             {
@@ -113,6 +123,24 @@ namespace poolautoscaler.resources.AksNodePool
 
             var result = await nodePool.UpdateAsync(Azure.WaitUntil.Completed, patch, cancellationToken);
             this.ValidateArmResult(result);
+        }
+
+        /// <inheritdoc />
+        protected override async Task<IReadOnlyDictionary<string, object>?> GetCustomMetricExtraAsync(
+            ArmClient client,
+            TokenCredential credential,
+            CancellationToken cancellationToken)
+        {
+            if (!this.ResourceParts.TryGetValue("virtualMachineScaleSetId", out var vmssId))
+            {
+                this.Logger.LogWarning("Cannot build custom metric context: virtualMachineScaleSetId not resolved yet.");
+                return null;
+            }
+
+            var vmssResource = await client.GetVirtualMachineScaleSetResource(new ResourceIdentifier(vmssId)).GetAsync(expand: null, cancellationToken: cancellationToken);
+            var vmssData = vmssResource.Value.Data;
+            var extra = new Dictionary<string, object> { { "Vmss", vmssData } };
+            return (IReadOnlyDictionary<string, object>)extra;
         }
 
         /// <summary>
@@ -212,15 +240,5 @@ namespace poolautoscaler.resources.AksNodePool
             };
         }
 
-        /// <inheritdoc />
-        protected override string GetResourceIdForChangeHistory()
-        {
-            if (this.IsDisabled())
-            {
-                return null;
-            }
-
-            return this.ResourceParts["virtualMachineScaleSetId"];
-        }
     }
 }

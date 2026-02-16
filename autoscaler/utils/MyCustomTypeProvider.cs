@@ -10,6 +10,14 @@ namespace poolautoscaler.utils
         /// <summary>Returns types allowed in expressions.</summary>
         /// <returns>Set of types allowed in Dynamic LINQ expressions.</returns>
         public override HashSet<Type> GetCustomTypes() =>
-            new[] { typeof(MetricEvalDto), typeof(MetricEvalDtoResultValue) }.ToHashSet();
+            new[]
+            {
+                typeof(MetricEvalDto),
+                typeof(MetricEvalDtoResultValue),
+                typeof(CustomMetricDataContext),
+                typeof(CustomMetricHelpers),
+                typeof(VmssMetricView),
+                typeof(VmssSkuView),
+            }.ToHashSet();
     }
 }

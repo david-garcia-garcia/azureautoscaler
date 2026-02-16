@@ -4,6 +4,7 @@ using Azure.ResourceManager.Fabric;
 using Azure.ResourceManager.Fabric.Models;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.resources.FabricCapacity.Dto;
@@ -39,7 +40,15 @@ namespace poolautoscaler.resources.FabricCapacity
         /// <param name="id">The Fabric capacity resource ID.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="resourceConfiguration">The resource configuration.</param>
-        public FabricCapacityResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
+        /// <param name="resourceLocationResolver">Optional resource location resolver.</param>
+        /// <param name="vmSizeResolver">Optional VM size resolver (not used for Fabric, but kept for consistency).</param>
+        public FabricCapacityResourceState(
+            string id,
+            ILogger logger,
+            Resource resourceConfiguration,
+            IResourceLocationResolver? resourceLocationResolver = null,
+            IVmSizeResolver? vmSizeResolver = null)
+            : base(id, logger, resourceConfiguration, resourceLocationResolver, vmSizeResolver)
         {
             if (!ResourceStateFactory.FabricCapacity.IsMatch(id))
             {
