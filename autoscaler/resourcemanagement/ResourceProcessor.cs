@@ -137,14 +137,14 @@ namespace poolautoscaler.resourcemanagement
             }
             else if (hasMin)
             {
-                interval = $"[{rule.DimensionValueMin}, ∞)";
+                interval = $"[{rule.DimensionValueMin}, NaN)";
             }
             else
             {
-                interval = $"(-∞, {rule.DimensionValueMax}]";
+                interval = $"(NaN, {rule.DimensionValueMax}]";
             }
 
-            return $" (valid range: value ∈ {interval})";
+            return $" (valid range: {interval})";
         }
 
         private async Task RunLoop(ResourceState state, CancellationToken stoppingToken)

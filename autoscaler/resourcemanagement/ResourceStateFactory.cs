@@ -9,6 +9,7 @@ using poolautoscaler.resources.FabricCapacity;
 using poolautoscaler.resources.MsSqlDatabase;
 using poolautoscaler.resources.MssqlElasticPool;
 using poolautoscaler.resources.MySqlFlexibleServer;
+using poolautoscaler.resources.PostgreSqlFlexibleServer;
 using poolautoscaler.resources.StorageFileShare;
 
 namespace poolautoscaler.resourcemanagement
@@ -49,6 +50,11 @@ namespace poolautoscaler.resourcemanagement
         /// Regex matching MySQL flexible server resource IDs.
         /// </summary>
         public static readonly Regex MySqlFlexibleServer = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.DBforMySQL/flexibleServers/(?<serverName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Regex matching PostgreSQL flexible server resource IDs.
+        /// </summary>
+        public static readonly Regex PostgreSqlFlexibleServer = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.DBforPostgreSQL/flexibleServers/(?<serverName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
         /// Regex matching AKS node pool resource IDs.
@@ -145,6 +151,12 @@ namespace poolautoscaler.resourcemanagement
             else if ((match = MySqlFlexibleServer.Match(resourceId)).Success)
             {
                 state = new MySqlFlexibleServerResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
+                PopulateResourceParts(state, match);
+                return state;
+            }
+            else if ((match = PostgreSqlFlexibleServer.Match(resourceId)).Success)
+            {
+                state = new PostgreSqlFlexibleServerResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
                 PopulateResourceParts(state, match);
                 return state;
             }

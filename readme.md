@@ -34,6 +34,7 @@ Azure Autoscaler fills these gaps by providing intelligent, metric-based autosca
 | Azure SQL Elastic Pools | Dtu, MaxDataBytes | |  |
 | Azure SQL Databases | Dtu, MaxDataBytes | | MaxDataBytes supports DTU and VCore models (see notes below) |
 | Azure MySQL Flexible Server | Sku, Iops, CoreCount | Custom metrics via `CustomMetrics` |  |
+| Azure PostgreSQL Flexible Server | Sku, Iops, CoreCount | Custom metrics via `CustomMetrics` |  |
 | Azure Files | ProvisionedStorage, Throughput |  | Although Throughput is not a real dimension in Azure for a file share, it is exposed as an actionable dimension and the file share provisioned storage is scaled to meet the desired throughput targets |
 | Azure DevOps Parallel Jobs | HostedParallelJobs, PrivateParallelJobs | custom_azdo_queued_hosted, custom_azdo_queued_self_hosted, custom_azdo_running_hosted, custom_azdo_running_self_hosted, custom_azdo_available_hosted, custom_azdo_available_self_hosted | Uses undocumented Commerce API. Requires PAT with billing permissions. |
 
@@ -533,7 +534,7 @@ Resource expansion works for:
 
 Azure Autoscaler reads tags from resources and makes them available in the `ResourceTags` dictionary for each resource. Tags can be used to control resource behavior.
 
-For most Azure resources (SQL Databases, SQL Elastic Pools, MySQL Flexible Servers), tags are read directly from the resource.
+For most Azure resources (SQL Databases, SQL Elastic Pools, MySQL Flexible Servers, PostgreSQL Flexible Servers), tags are read directly from the resource.
 
 **Edge Cases:**
 
@@ -1017,6 +1018,50 @@ The `DataExpression` is executed against a strongly-typed context referred to as
   - `VmSizeToMemoryGb(string vmSize)`: Returns a `double` with memory in **GiB** for a VM SKU.
 
 Depending on the resource type, the context may also populate `data.Extra` with additional helper objects. For example, in AKS node pool custom metrics, `data.Extra["Vmss"]` contains the underlying VMSS ARM resource.
+
+## PostgreSQL Flexible Server
+
+```yaml
+  - Resources:
+      postgresql-dev-db0:
+        ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-dev-postgresql/providers/Microsoft.DBforPostgreSQL/flexibleServers/postgresql-dev-db0"
+    Frequency: 5m
+    WhatIf: true
+    Enabled: true
+    CustomMetrics:
+      - Name: total_core_count
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToCores(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+      - Name: total_memory_gb
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToMemoryGb(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+    ScalingConfigurations:
+      Baseline:
+        ScaleDownLockWindowMinutes: 50
+        ScaleUpAllowWindowMinutes: 50
+        Metrics:
+          cpu_percent:
+            Name: cpu_percent
+            Window: 00:10
+        TimeWindow:
+          Days: All
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          autoadjust:
+            ScalingStrategy: Autoadjust
+            Dimension: Sku
+            ScaleUpCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Default).Take(3).Average() > 85"
+            ScaleDownCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Default).Take(5).Average() < 60"
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
+            ScaleUpCooldownSeconds: 180
+            ScaleDownCoolDownSeconds: 3600
+            DimensionValueMax: "Standard_B4ms"
+            DimensionValueMin: "Standard_B1ms"
+```
 
 ## MySQL Flexible Server
 

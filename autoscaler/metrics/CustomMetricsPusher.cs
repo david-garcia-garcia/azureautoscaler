@@ -128,7 +128,7 @@ namespace poolautoscaler.metrics
                 {
                     state.Logger.LogError(ex, "Failed to push custom metric {Name}: {Message}", metric.Name, ex.Message);
                 }
-            }/**/
+            }
         }
 
         private static object EvaluateExpression(CustomMetricConfig metric, CustomMetricDataContext context)

@@ -252,9 +252,12 @@ namespace AzureSqlElasticPoolAutoscaler
                 dimensions.Add(new DimensionAzureSqlDatabaseMaxDataBytes());
                 dimensions.Add(new DimensionMySqlFlexibleServerSku());
                 dimensions.Add(new DimensionMySqlFlexibleServerCoreCount());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerSku());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerCoreCount());
                 dimensions.Add(new DimensionAzureAksNodePoolMinNodeCount());
                 dimensions.Add(new DimensionStorageFileShareProvisionedStorage());
                 dimensions.Add(new DimensionMySqlFlexibleServerIops());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerIops());
                 dimensions.Add(new DimensionStorageFileShareThroughput());
                 dimensions.Add(new DimensionFabricCapacitySku());
                 dimensions.Add(new DimensionAzureDevOpsHostedParallelJobs());

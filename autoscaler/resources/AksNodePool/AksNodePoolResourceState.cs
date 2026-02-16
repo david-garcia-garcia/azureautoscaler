@@ -21,6 +21,8 @@ namespace poolautoscaler.resources.AksNodePool
     /// </summary>
     public class AksNodePoolResourceState : ResourceState
     {
+        private VirtualMachineScaleSetData Vmss;
+
         /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingAksNodePoolState;
 
@@ -136,9 +138,7 @@ namespace poolautoscaler.resources.AksNodePool
                 return null;
             }
 
-            var vmssResource = await client.GetVirtualMachineScaleSetResource(new ResourceIdentifier(vmssId)).GetAsync(expand: null, cancellationToken: cancellationToken);
-            var vmssData = vmssResource.Value.Data;
-            var extra = new Dictionary<string, object> { { "Vmss", vmssData } };
+            var extra = new Dictionary<string, object> { { "Vmss", this.Vmss } };
             return (IReadOnlyDictionary<string, object>)extra;
         }
 
@@ -150,7 +150,7 @@ namespace poolautoscaler.resources.AksNodePool
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <param name="nodePool">The agent pool resource.</param>
         /// <returns>The VMSS resource ID.</returns>
-        protected async Task<string> GetVmssIdForNodePool(
+        protected async Task<VirtualMachineScaleSetResource> GetVmssForNodePool(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken,
@@ -165,7 +165,7 @@ namespace poolautoscaler.resources.AksNodePool
                 try
                 {
                     var scaleSet = await client.GetVirtualMachineScaleSetResource(new ResourceIdentifier(vmssId)).GetAsync(cancellationToken: cancellationToken);
-                    return (string)cacheItem;
+                    return scaleSet;
                 }
                 catch (RequestFailedException requestFailedException) when (requestFailedException.Status == 404)
                 {
@@ -195,7 +195,7 @@ namespace poolautoscaler.resources.AksNodePool
                     && Regex.IsMatch(scaleSet.Data.Name, $"^aks-{nodePool.Data.Name}-|^aks{nodePool.Data.Name}$"))
                 {
                     this.Cache.Set(cacheKey, scaleSet.Id.ToString(), DateTimeOffset.UtcNow.AddHours(48));
-                    return scaleSet.Id.ToString();
+                    return scaleSet;
                 }
             }
 
@@ -217,8 +217,12 @@ namespace poolautoscaler.resources.AksNodePool
             }
 
             this.DisabledUntil.TryRemove("ProvisioningState");
+            var vmssResult = await this.GetVmssForNodePool(client, credential, cancellationToken, nodePool);
 
-            this.ResourceParts["virtualMachineScaleSetId"] = await this.GetVmssIdForNodePool(client, credential, cancellationToken, nodePool);
+            this.Vmss = vmssResult.Data;
+            this.Location = this.Vmss.Location;
+
+            this.ResourceParts["virtualMachineScaleSetId"] = this.Vmss.Id.ToString();
 
             this.PopulateResourceTags(nodePool.Data.Tags);
 

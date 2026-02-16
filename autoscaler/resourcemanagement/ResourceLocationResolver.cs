@@ -1,14 +1,12 @@
-#pragma warning disable IDE0005
 using System.Runtime.ExceptionServices;
 using Azure.ResourceManager.Compute;
-using Azure.ResourceManager.ContainerService;
 using Azure.ResourceManager.Fabric;
 using Azure.ResourceManager.MySql.FlexibleServers;
+using Azure.ResourceManager.PostgreSql.FlexibleServers;
 using Azure.ResourceManager.Sql;
 using Azure.ResourceManager.Storage;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-#pragma warning restore IDE0005
 
 namespace poolautoscaler.resourcemanagement
 {
@@ -78,6 +76,12 @@ namespace poolautoscaler.resourcemanagement
             if (resourceType.Equals("Microsoft.DBforMySQL/flexibleServers", StringComparison.OrdinalIgnoreCase))
             {
                 var server = await client.GetMySqlFlexibleServerResource(id).GetAsync(cancellationToken: cancellationToken);
+                return server.Value.Data.Location.Name;
+            }
+
+            if (resourceType.Equals("Microsoft.DBforPostgreSQL/flexibleServers", StringComparison.OrdinalIgnoreCase))
+            {
+                var server = await client.GetPostgreSqlFlexibleServerResource(id).GetAsync(cancellationToken: cancellationToken);
                 return server.Value.Data.Location.Name;
             }
 
