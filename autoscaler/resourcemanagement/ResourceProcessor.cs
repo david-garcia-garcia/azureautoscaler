@@ -256,12 +256,15 @@ namespace poolautoscaler.resourcemanagement
                     var currentDimensionValue = dimension.GetCurrentDimensionValue(state);
                     var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, capturingLogger, this.credential, stoppingToken, metrics);
 
+                    var lapsedSinceLastScaleOperation = utcNow - state.LastScale.Value;
+
                     if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1)
                     {
-                        if (state.LastScale != null && (utcNow - state.LastScale.Value).TotalSeconds < rule.ScaleDownCooldownSeconds)
+                        if (lapsedSinceLastScaleOperation.TotalSeconds < rule.ScaleDownCooldownSeconds)
                         {
                             capturingLogger.LogTrace(
-                                "Skipping scale down from {Current} to {Target} because ScaleDownCooldownSeconds {Seconds}s have not yet passed.",
+                                "{ruleId} Skipping scale down from {Current} to {Target} because ScaleDownCooldownSeconds {Seconds}s have not yet passed.",
+                                rule.Id,
                                 currentDimensionValue,
                                 targetDimensionValue,
                                 rule.ScaleDownCooldownSeconds);
@@ -271,7 +274,8 @@ namespace poolautoscaler.resourcemanagement
                         if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute >= setting.ScaleDownLockWindowMinutes)
                         {
                             capturingLogger.LogTrace(
-                                "Skipping scale down from {Current} to {Target} not allowed from minute {Minute} onward (lock window) of a billable hour.",
+                                "{ruleId} Skipping scale down from {Current} to {Target} not allowed from minute {Minute} onward (lock window) of a billable hour.",
+                                rule.Id,
                                 currentDimensionValue,
                                 targetDimensionValue,
                                 setting.ScaleDownLockWindowMinutes);
@@ -281,10 +285,11 @@ namespace poolautoscaler.resourcemanagement
 
                     if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == 1)
                     {
-                        if (state.LastScale != null && (utcNow - state.LastScale.Value).TotalSeconds < rule.ScaleUpCooldownSeconds)
+                        if (lapsedSinceLastScaleOperation.TotalSeconds < rule.ScaleUpCooldownSeconds)
                         {
                             capturingLogger.LogTrace(
-                                "Skipping scale up from {Current} to {Target} because ScaleUpCooldownSeconds {Seconds}s have not yet passed.",
+                                "{ruleId} Skipping scale up from {Current} to {Target} because ScaleUpCooldownSeconds {Seconds}s have not yet passed.",
+                                rule.Id,
                                 currentDimensionValue,
                                 targetDimensionValue,
                                 rule.ScaleUpCooldownSeconds);
@@ -294,7 +299,8 @@ namespace poolautoscaler.resourcemanagement
                         if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute > setting.ScaleUpAllowWindowMinutes)
                         {
                             capturingLogger.LogTrace(
-                                "Skipping scale up from {Current} to {Target} not allowed after minute {Minute} of a billable hour.",
+                                "{ruleId} Skipping scale up from {Current} to {Target} not allowed after minute {Minute} of a billable hour.",
+                                rule.Id,
                                 currentDimensionValue,
                                 targetDimensionValue,
                                 setting.ScaleUpAllowWindowMinutes);
@@ -315,23 +321,13 @@ namespace poolautoscaler.resourcemanagement
                     var newDimensionRequest = dimension.GetRequestedDimensionValue(state);
 
                     var rangeSuffix = FormatDimensionRangeSuffix(rule);
-                    if (existingDimensionRequest != newDimensionRequest)
-                    {
-                        capturingLogger.LogDebug(
-                            "Rule '{RuleId}' Dimension request changed from {From} to {To}{Range}",
-                            rule.Id,
-                            existingDimensionRequest ?? "(null)",
-                            newDimensionRequest,
-                            rangeSuffix);
-                    }
-                    else
-                    {
-                        capturingLogger.LogDebug(
-                            "Rule '{RuleId}' requested target value '{Value}'{Range}",
-                            rule.Id,
-                            targetDimensionValue,
-                            rangeSuffix);
-                    }
+
+                    capturingLogger.LogDebug(
+                        "Rule '{RuleId}' request changed from {From} to {To}{Range}",
+                        rule.Id,
+                        existingDimensionRequest ?? "(null)",
+                        newDimensionRequest,
+                        rangeSuffix);
                 }
             }
 

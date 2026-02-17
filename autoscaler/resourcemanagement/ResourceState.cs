@@ -437,10 +437,16 @@ namespace poolautoscaler.resourcemanagement
 
             if (this.LastScale != null && this.LastScale > DateTime.UtcNow.AddHours(-72))
             {
-                intervalStart = new DateTimeOffset(this.LastScale.Value, TimeSpan.Zero).AddMinutes(5);
+                intervalStart = new DateTimeOffset(this.LastScale.Value, TimeSpan.Zero);
             }
 
             var intervalEnd = DateTimeOffset.UtcNow;
+
+            // We recently scaled internally, do not update.
+            if ((intervalEnd - intervalStart).TotalSeconds < 60)
+            {
+                return;
+            }
 
             try
             {
@@ -490,8 +496,8 @@ namespace poolautoscaler.resourcemanagement
             catch (Exception ex)
             {
                 // Change history is best-effort only; failures shouldn't break refresh.
-                this.Logger.LogWarning(ex, "Failed to read resource change history for {ResourceId}", resourceIdFilter);
-                this.LastScale = DateTime.MinValue;
+                this.Logger.LogError(ex, "Failed to read resource change history for {ResourceId}", resourceIdFilter);
+                this.LastScale = this.LastScale ?? DateTime.MinValue;
             }
         }
 
