@@ -420,16 +420,17 @@ namespace poolautoscaler.resourcemanagement
             IArmClientWrapper clientWrapper,
             CancellationToken cancellationToken)
         {
-            // Allow resource types to opt out or redirect history queries.
             var resourceIdFilter = this.GetResourceIdForChangeHistory();
             if (string.IsNullOrWhiteSpace(resourceIdFilter))
             {
+                this.LastScale = this.LastScale ?? DateTime.MinValue;
                 return;
             }
 
             var tenantResource = clientWrapper.GetTenantResource();
             if (tenantResource == null)
             {
+                this.LastScale = this.LastScale ?? DateTime.UtcNow;
                 return;
             }
 
@@ -437,10 +438,16 @@ namespace poolautoscaler.resourcemanagement
 
             if (this.LastScale != null && this.LastScale > DateTime.UtcNow.AddHours(-72))
             {
-                intervalStart = new DateTimeOffset(this.LastScale.Value, TimeSpan.Zero).AddMinutes(5);
+                intervalStart = new DateTimeOffset(this.LastScale.Value, TimeSpan.Zero);
             }
 
             var intervalEnd = DateTimeOffset.UtcNow;
+
+            // We recently scaled internally, do not update.
+            if ((intervalEnd - intervalStart).TotalSeconds < 60)
+            {
+                return;
+            }
 
             try
             {
@@ -477,21 +484,21 @@ namespace poolautoscaler.resourcemanagement
                     this.Logger.LogInformation(
                         "Initialized last change for resource from change history at {0} ({1} ago)",
                         lastChangeLocal,
-                        timeAgo.ToString(@"hh\:mm\:ss\.f"));
+                        timeAgo.ToString(@"hh\:mm\:ss"));
 
                     this.LastScale = lastChangeLocal;
                 }
                 else if (lastChangeLocal > this.LastScale)
                 {
-                    this.Logger.LogInformation("Resource as externally manipulated. Last scale updated.");
+                    this.Logger.LogInformation("Resource was externally manipulated. Last scale updated to {0} ({1} ago)", lastChangeLocal, timeAgo.ToString(@"hh\:mm\:ss"));
                     this.LastScale = lastChangeLocal;
                 }
             }
             catch (Exception ex)
             {
                 // Change history is best-effort only; failures shouldn't break refresh.
-                this.Logger.LogWarning(ex, "Failed to read resource change history for {ResourceId}", resourceIdFilter);
-                this.LastScale = DateTime.MinValue;
+                this.Logger.LogError(ex, "Failed to read resource change history for {ResourceId}", resourceIdFilter);
+                this.LastScale = this.LastScale ?? DateTime.MinValue;
             }
         }
 
