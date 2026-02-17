@@ -214,11 +214,17 @@ namespace poolautoscaler.resourcemanagement
                         invalidReason);
                 }
 
+                // This is a very sloppy and unreliable metric, but helps. It captures changes
+                // made to the resource either internally our externally. Of course a change does not mean
+                // that an actual scale operation happened.... but on most operational scenarios it works.
+                var lapsedSinceLastScaleOperation = utcNow - state.LastScale.Value;
+
                 capturingLogger.LogDebug(
-                    "Evaluating scale configuration {Id}: ScaleDownLockWindowMinutes={ScaleDownLockWindowMinutes}, ScaleUpAllowWindowMinutes={ScaleUpAllowWindowMinutes}",
+                    "Evaluating scale configuration {Id}: ScaleDownLockWindowMinutes={ScaleDownLockWindowMinutes}, ScaleUpAllowWindowMinutes={ScaleUpAllowWindowMinutes}, lapsedSinceLastScaleOperation={lapsedSinceLastScaleOperation}",
                     setting.Id,
                     setting.ScaleDownLockWindowMinutes,
-                    setting.ScaleUpAllowWindowMinutes);
+                    setting.ScaleUpAllowWindowMinutes,
+                    lapsedSinceLastScaleOperation.ToString(@"hh\:mm\:ss"));
 
                 var invalidMetrics = metrics.Where(m => !m.Value.Valid).ToList();
                 if (invalidMetrics.Any())
@@ -255,8 +261,6 @@ namespace poolautoscaler.resourcemanagement
                     var strategy = GetRuleStrategy(rule);
                     var currentDimensionValue = dimension.GetCurrentDimensionValue(state);
                     var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, capturingLogger, this.credential, stoppingToken, metrics);
-
-                    var lapsedSinceLastScaleOperation = utcNow - state.LastScale.Value;
 
                     if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1)
                     {
