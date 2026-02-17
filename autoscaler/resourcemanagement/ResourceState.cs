@@ -420,16 +420,17 @@ namespace poolautoscaler.resourcemanagement
             IArmClientWrapper clientWrapper,
             CancellationToken cancellationToken)
         {
-            // Allow resource types to opt out or redirect history queries.
             var resourceIdFilter = this.GetResourceIdForChangeHistory();
             if (string.IsNullOrWhiteSpace(resourceIdFilter))
             {
+                this.LastScale = this.LastScale ?? DateTime.MinValue;
                 return;
             }
 
             var tenantResource = clientWrapper.GetTenantResource();
             if (tenantResource == null)
             {
+                this.LastScale = this.LastScale ?? DateTime.UtcNow;
                 return;
             }
 

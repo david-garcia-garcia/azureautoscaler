@@ -179,6 +179,16 @@ namespace poolautoscaler.resourcemanagement
                 return;
             }
 
+            if (state.LastScale == null)
+            {
+                throw new Exception("Last scale time is not set for resource. Resource has not been initialized.");
+            }
+
+            // This is a very sloppy and unreliable metric, but helps. It captures changes
+            // made to the resource either internally our externally. Of course a change does not mean
+            // that an actual scale operation happened.... but on most operational scenarios it works.
+            var lapsedSinceLastScaleOperation = utcNow - state.LastScale.Value;
+
             state.LastDisabledMessageLogged = DateTime.MinValue;
             var capturingLogger = new CapturingLogger(logger);
 
@@ -213,11 +223,6 @@ namespace poolautoscaler.resourcemanagement
                         valuesDetail,
                         invalidReason);
                 }
-
-                // This is a very sloppy and unreliable metric, but helps. It captures changes
-                // made to the resource either internally our externally. Of course a change does not mean
-                // that an actual scale operation happened.... but on most operational scenarios it works.
-                var lapsedSinceLastScaleOperation = utcNow - state.LastScale.Value;
 
                 capturingLogger.LogDebug(
                     "Evaluating scale configuration {Id}: ScaleDownLockWindowMinutes={ScaleDownLockWindowMinutes}, ScaleUpAllowWindowMinutes={ScaleUpAllowWindowMinutes}, lapsedSinceLastScaleOperation={lapsedSinceLastScaleOperation}",

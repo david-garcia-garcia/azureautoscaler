@@ -61,6 +61,9 @@ namespace poolautoscaler.tests
         public override async Task Refresh(IArmClientWrapper clientWrapper, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.RefreshWasCalled = true;
+
+            // Contract: Refresh always sets LastScale so RunLoop can use it. Base uses change history; test double uses MinValue when unset.
+            this.LastScale = this.LastScale ?? DateTime.MinValue;
             await Task.CompletedTask;
         }
 
