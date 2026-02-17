@@ -483,13 +483,13 @@ namespace poolautoscaler.resourcemanagement
                     this.Logger.LogInformation(
                         "Initialized last change for resource from change history at {0} ({1} ago)",
                         lastChangeLocal,
-                        timeAgo.ToString(@"hh\:mm\:ss\.f"));
+                        timeAgo.ToString(@"hh\:mm\:ss"));
 
                     this.LastScale = lastChangeLocal;
                 }
                 else if (lastChangeLocal > this.LastScale)
                 {
-                    this.Logger.LogInformation("Resource as externally manipulated. Last scale updated.");
+                    this.Logger.LogInformation("Resource was externally manipulated. Last scale updated to {0} ({1} ago)", lastChangeLocal, timeAgo.ToString(@"hh\:mm\:ss"));
                     this.LastScale = lastChangeLocal;
                 }
             }
