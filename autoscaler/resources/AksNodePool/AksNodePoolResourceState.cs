@@ -224,7 +224,8 @@ namespace poolautoscaler.resources.AksNodePool
 
             this.ResourceParts["virtualMachineScaleSetId"] = this.Vmss.Id.ToString();
 
-            this.PopulateResourceTags(nodePool.Data.Tags);
+            this.ResourceTagsPopulate(nodePool.Data?.Tags);
+            this.ResourceTagsMerge(this.Vmss?.Tags, $"VMSS '{this.Vmss.Name}'");
 
             if (nodePool.Data.NodeLabels != null)
             {

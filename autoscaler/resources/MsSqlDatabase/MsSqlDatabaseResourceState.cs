@@ -165,7 +165,7 @@ namespace poolautoscaler.resources.MsSqlDatabase
 
             var storage_used = values.Take(1)?.Select((i) => i.Average).Average();
 
-            this.PopulateResourceTags(database.Data.Tags);
+            this.ResourceTagsPopulate(database.Data.Tags);
 
             this.RequestedMsSqlDatabaseState = new MsSqlDatabaseState();
 

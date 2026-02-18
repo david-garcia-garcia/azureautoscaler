@@ -224,7 +224,7 @@ namespace poolautoscaler.resources.PostgreSqlFlexibleServer
         {
             this.Resource = await client.GetPostgreSqlFlexibleServerResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);
             this.Location = this.ResourceCasted.Data.Location;
-            this.PopulateResourceTags(this.ResourceCasted.Data.Tags);
+            this.ResourceTagsPopulate(this.ResourceCasted.Data.Tags);
             this.ExistingPostgreSqlFlexibleServerState = new Dto.PostgreSqlFlexibleServerState()
             {
                 Sku = this.ResourceCasted.Data.Sku,
