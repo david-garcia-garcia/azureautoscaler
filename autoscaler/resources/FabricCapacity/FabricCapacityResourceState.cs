@@ -130,7 +130,7 @@ namespace poolautoscaler.resources.FabricCapacity
                 throw new Exception("Failed to get Fabric Capacity resource.");
             }
 
-            this.PopulateResourceTags(capacityResource.Data.Tags);
+            this.ResourceTagsPopulate(capacityResource.Data.Tags);
 
             string? currentSku = capacityResource.Data.Sku?.Name;
 

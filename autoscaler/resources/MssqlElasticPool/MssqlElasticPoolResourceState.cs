@@ -169,7 +169,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
 
             var storage_used = values.Take(1)?.Select((i) => i.Average).Average();
 
-            this.PopulateResourceTags(this.Resource.Data.Tags);
+            this.ResourceTagsPopulate(this.Resource.Data.Tags);
 
             this.ExistingMssqlElasticPoolState = new MssqlElasticPoolState()
             {

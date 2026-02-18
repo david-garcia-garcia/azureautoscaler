@@ -148,15 +148,52 @@ namespace poolautoscaler.resourcemanagement
         protected readonly string ResourceId;
 
         /// <summary>
-        /// Populates ResourceTags from the provided tags dictionary.
+        /// Populates <see cref="ResourceTags"/> from the provided tags dictionary (clears existing tags first).
         /// </summary>
         /// <param name="tags">Dictionary of tags to populate from.</param>
-        protected void PopulateResourceTags(IDictionary<string, string> tags)
+        protected void ResourceTagsPopulate(IDictionary<string, string>? tags)
         {
             this.ResourceTags.Clear();
 
+            if (tags == null)
+            {
+                return;
+            }
+
             foreach (var tag in tags)
             {
+                this.ResourceTags[tag.Key] = tag.Value;
+            }
+        }
+
+        /// <summary>
+        /// Merges tags into <see cref="ResourceTags"/> without overriding existing keys.
+        /// Logs a warning if a key already exists and the incoming value would be ignored.
+        /// </summary>
+        /// <param name="tags">Dictionary of tags to merge from.</param>
+        /// <param name="mergeSourceName">Human-friendly name of the resource/source being merged.</param>
+        protected void ResourceTagsMerge(IDictionary<string, string>? tags, string? mergeSourceName)
+        {
+            if (tags == null)
+            {
+                return;
+            }
+
+            var safeMergeSourceName = string.IsNullOrWhiteSpace(mergeSourceName) ? "<unknown>" : mergeSourceName;
+
+            foreach (var tag in tags)
+            {
+                if (this.ResourceTags.TryGetValue(tag.Key, out var existingValue))
+                {
+                    this.Logger.LogWarning(
+                        "Resource tag '{TagKey}' already exists; tags from {MergeSourceName} will be ignored for this key. Existing='{ExistingValue}', Incoming='{IncomingValue}'",
+                        tag.Key,
+                        safeMergeSourceName,
+                        existingValue,
+                        tag.Value);
+                    continue;
+                }
+
                 this.ResourceTags[tag.Key] = tag.Value;
             }
         }

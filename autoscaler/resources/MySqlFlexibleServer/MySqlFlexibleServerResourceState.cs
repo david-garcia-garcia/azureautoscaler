@@ -223,7 +223,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
         protected override async Task InternalRefreshAsync(ArmClient client, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.Resource = await client.GetMySqlFlexibleServerResource(new ResourceIdentifier(this.ResourceId)).GetAsync(cancellationToken);
-            this.PopulateResourceTags(this.ResourceCasted.Data.Tags);
+            this.ResourceTagsPopulate(this.ResourceCasted.Data.Tags);
             this.Location = this.ResourceCasted.Data.Location;
             this.ExistingMySqlFlexibleServerState = new Dto.MySqlFlexibleServerState()
             {
