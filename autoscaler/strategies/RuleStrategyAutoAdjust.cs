@@ -36,33 +36,48 @@ namespace poolautoscaler.strategies
                 logger.LogWarning("Both scale up and scale down conditions were met. Scale up takes precedence.");
             }
 
-            string nextDimensionValue = null;
+            string targetDimensionValue;
 
             evaluationMetrics._NextDimensionValue = (long step) => dimension.GetNextDimensionValue(resource, currentDimensionValue);
             evaluationMetrics._PreviousDimensionValue = (long step) => dimension.GetPreviousDimensionValue(resource, currentDimensionValue);
 
             if (scaleUp)
             {
-                nextDimensionValue = rule.ScaleUpTargetMethod(evaluationMetrics, logger);
+                targetDimensionValue = rule.ScaleUpTargetMethod(evaluationMetrics, logger);
             }
             else if (scaleDown)
             {
-                nextDimensionValue = rule.ScaleDownTargetMethod(evaluationMetrics, logger);
+                targetDimensionValue = rule.ScaleDownTargetMethod(evaluationMetrics, logger);
             }
             else
             {
-                return currentDimensionValue;
+                targetDimensionValue = currentDimensionValue;
             }
 
-            bool belowMinimum = dimension.SmallerThan(nextDimensionValue, rule.DimensionValueMin, armResource);
-            bool aboveMaximum = dimension.GreaterThan(nextDimensionValue, rule.DimensionValueMax, armResource);
+            logger.LogDebug(
+                "Rule '{0}' evaluated: ScaleUp='{1}', ScaleDown='{2}', TargetDimensionValue='{3}', CurrentDimensionValue='{4}', NextDimensionValueStep1='{5}', PreviousDimensionValueStep1='{6}'",
+                rule.Id,
+                scaleUp ? "true" : "false",
+                scaleDown ? "true" : "false",
+                targetDimensionValue,
+                currentDimensionValue,
+                evaluationMetrics._NextDimensionValue(1),
+                evaluationMetrics._PreviousDimensionValue(1));
+
+            if ((!scaleDown) && (!scaleUp))
+            {
+                return targetDimensionValue;
+            }
+
+            bool belowMinimum = dimension.SmallerThan(targetDimensionValue, rule.DimensionValueMin, armResource);
+            bool aboveMaximum = dimension.GreaterThan(targetDimensionValue, rule.DimensionValueMax, armResource);
 
             bool outOfRange = belowMinimum || aboveMaximum;
 
             // Caso límite donde se ha actuado sobre el recurso desde fuera del autoescaler, y a pesar de ser un scale down,
             // seguimos por encima del máximo
-            bool isScaleDownButGreaterThanMax = dimension.SmallerThan(nextDimensionValue, currentDimensionValue, armResource)
-                && dimension.GreaterThan(nextDimensionValue, rule.DimensionValueMax, armResource);
+            bool isScaleDownButGreaterThanMax = dimension.SmallerThan(targetDimensionValue, currentDimensionValue, armResource)
+                && dimension.GreaterThan(targetDimensionValue, rule.DimensionValueMax, armResource);
 
             if (isScaleDownButGreaterThanMax)
             {
@@ -71,14 +86,14 @@ namespace poolautoscaler.strategies
 
             if (outOfRange && !isScaleDownButGreaterThanMax)
             {
-                if (currentDimensionValue != nextDimensionValue)
+                if (currentDimensionValue != targetDimensionValue)
                 {
                     if (belowMinimum)
                     {
                         logger.LogDebug(
                             "Cannot scale below minimum configured value. Current {0}. Target {1}. Min {2}. Adjusting to minimum.",
                             currentDimensionValue,
-                            nextDimensionValue,
+                            targetDimensionValue,
                             rule.DimensionValueMin);
                         return rule.DimensionValueMin;
                     }
@@ -87,7 +102,7 @@ namespace poolautoscaler.strategies
                         logger.LogDebug(
                             "Cannot scale above maximum configured value. Current {0}. Target {1}. Max {2}. Adjusting to maximum.",
                             currentDimensionValue,
-                            nextDimensionValue,
+                            targetDimensionValue,
                             rule.DimensionValueMax);
 
                         return rule.DimensionValueMax;
@@ -97,7 +112,7 @@ namespace poolautoscaler.strategies
                 return currentDimensionValue;
             }
 
-            return nextDimensionValue;
+            return targetDimensionValue;
         }
 
     }

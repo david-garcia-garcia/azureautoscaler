@@ -27,6 +27,7 @@ namespace poolautoscaler.metrics
         /// <param name="splitName">Optional dimension name to filter by.</param>
         /// <param name="splitValue">Optional dimension value to filter by.</param>
         /// <param name="aggregations">Optional aggregation types.</param>
+        /// <param name="metricNamespace">Optional Azure Monitor metric namespace.</param>
         /// <returns>The evaluation result containing metric data.</returns>
         /// <exception cref="ArgumentException">Thrown when arguments are invalid.</exception>
         public async Task<MetricEvalDtoResult> RetrieveHistory(
@@ -38,9 +39,21 @@ namespace poolautoscaler.metrics
             CancellationToken cancellationToken,
             string splitName,
             string splitValue,
-            IList<MetricAggregationType> aggregations = null)
+            IList<MetricAggregationType> aggregations = null,
+            string? metricNamespace = null)
         {
-            var result = await this.RetrieveHistoryRaw(client, resourceId, metricName, timeRange, granularity, cancellationToken, splitName, splitValue, aggregations);
+            var result = await this.RetrieveHistoryRaw(
+                client,
+                resourceId,
+                metricName,
+                timeRange,
+                granularity,
+                cancellationToken,
+                splitName,
+                splitValue,
+                aggregations,
+                now: null,
+                metricNamespace: metricNamespace);
             return result;
         }
 
@@ -55,6 +68,7 @@ namespace poolautoscaler.metrics
         /// <param name="splitValue">Optional dimension value to filter by.</param>
         /// <param name="aggregations">Optional aggregation types.</param>
         /// <param name="now">Optional reference time (for testing).</param>
+        /// <param name="metricNamespace">Optional Azure Monitor metric namespace.</param>
         /// <returns>Metric result with time series data.</returns>
         public async Task<MetricEvalDtoResult> RetrieveHistoryRaw(
             MetricsQueryClient client,
@@ -66,7 +80,8 @@ namespace poolautoscaler.metrics
             string splitName,
             string splitValue,
             IList<MetricAggregationType> aggregations = null,
-            DateTime? now = null)
+            DateTime? now = null,
+            string? metricNamespace = null)
         {
             aggregations = aggregations ?? new List<MetricAggregationType>() { MetricAggregationType.Average };
 
@@ -96,6 +111,11 @@ namespace poolautoscaler.metrics
                 Granularity = granularity,
                 Aggregations = { }
             };
+
+            if (!string.IsNullOrWhiteSpace(metricNamespace))
+            {
+                queryOptions.MetricNamespace = metricNamespace;
+            }
 
             foreach (var metricAggregationType in aggregations)
             {
