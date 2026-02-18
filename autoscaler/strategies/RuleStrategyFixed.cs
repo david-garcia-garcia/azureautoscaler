@@ -23,7 +23,9 @@ namespace poolautoscaler.strategies
         {
             var evaluationMetrics = new MetricEvalDto();
             evaluationMetrics.Metrics = metrics;
-            var result = rule.ScaleTargetMethod(evaluationMetrics, logger);
+            var rawResult = rule.ScaleTargetMethod(evaluationMetrics, logger);
+
+            var result = rawResult;
 
             // Apply ceiling rounding if DimensionValueCeilingStep is specified
             if (!string.IsNullOrEmpty(rule.DimensionValueCeilingStep))
@@ -43,7 +45,7 @@ namespace poolautoscaler.strategies
             {
                 if (dimension.Compare(resource.Resource, result, rule.DimensionValueMax) > 0)
                 {
-                    return rule.DimensionValueMax;
+                    result = rule.DimensionValueMax;
                 }
             }
 
@@ -51,9 +53,11 @@ namespace poolautoscaler.strategies
             {
                 if (dimension.Compare(resource.Resource, result, rule.DimensionValueMin) < 0)
                 {
-                    return rule.DimensionValueMin;
+                    result = rule.DimensionValueMin;
                 }
             }
+
+            logger.LogDebug("Rule '{ruleId}' evaluated with: rawResult='{rawResult}', result='{result}'", rule.Id, rawResult, result);
 
             return result;
         }

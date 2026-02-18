@@ -40,7 +40,15 @@ namespace poolautoscaler.resources.MsSqlDatabase
         /// <param name="id">The SQL database resource ID.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="resourceConfiguration">The resource configuration.</param>
-        public MsSqlDatabaseResourceState(string id, ILogger logger, Resource resourceConfiguration) : base(id, logger, resourceConfiguration)
+        /// <param name="resourceLocationResolver">Optional resource location resolver.</param>
+        /// <param name="vmSizeResolver">Optional VM size resolver.</param>
+        public MsSqlDatabaseResourceState(
+            string id,
+            ILogger logger,
+            Resource resourceConfiguration,
+            IResourceLocationResolver? resourceLocationResolver = null,
+            IVmSizeResolver? vmSizeResolver = null)
+            : base(id, logger, resourceConfiguration, resourceLocationResolver, vmSizeResolver)
         {
             if (!ResourceStateFactory.SqlDatabase.IsMatch(id))
             {
@@ -157,7 +165,7 @@ namespace poolautoscaler.resources.MsSqlDatabase
 
             var storage_used = values.Take(1)?.Select((i) => i.Average).Average();
 
-            this.PopulateResourceTags(database.Data.Tags);
+            this.ResourceTagsPopulate(database.Data.Tags);
 
             this.RequestedMsSqlDatabaseState = new MsSqlDatabaseState();
 

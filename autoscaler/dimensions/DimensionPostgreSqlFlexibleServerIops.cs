@@ -1,18 +1,18 @@
 using Azure.Core;
 using Azure.ResourceManager;
-using Azure.ResourceManager.MySql.FlexibleServers;
+using Azure.ResourceManager.PostgreSql.FlexibleServers;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.resourcemanagement;
-using poolautoscaler.resources.MySqlFlexibleServer;
+using poolautoscaler.resources.PostgreSqlFlexibleServer;
 
 namespace poolautoscaler.dimensions
 {
-    /// <summary>MySQL Flexible Server vCore count dimension.</summary>
-    internal class DimensionMySqlFlexibleServerCoreCount : IDimension
+    /// <summary>PostgreSQL Flexible Server IOPS dimension.</summary>
+    internal class DimensionPostgreSqlFlexibleServerIops : IDimension
     {
-        /// <summary>Initializes a new instance of the <see cref="DimensionMySqlFlexibleServerCoreCount"/> class.</summary>
-        public DimensionMySqlFlexibleServerCoreCount()
+        /// <summary>Initializes a new instance of the <see cref="DimensionPostgreSqlFlexibleServerIops"/> class.</summary>
+        public DimensionPostgreSqlFlexibleServerIops()
         {
         }
 
@@ -21,10 +21,11 @@ namespace poolautoscaler.dimensions
         /// <param name="rule">The scaling rule.</param>
         /// <param name="logger">The logger.</param>
         /// <returns>True if the dimension can be applied.</returns>
+        /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
-            if (resource.Resource is MySqlFlexibleServerResource
-                && rule.Dimension == "CoreCount")
+            if (resource.Resource is PostgreSqlFlexibleServerResource
+                && rule.Dimension == "Iops")
             {
                 return true;
             }
@@ -35,9 +36,6 @@ namespace poolautoscaler.dimensions
         /// <inheritdoc/>
         public void ValidateRuleConfiguration(ScalingRule rule)
         {
-            // this.ValidateDimensionValue(rule.DimensionValueMin);
-            // this.ValidateDimensionValue(rule.DimensionValueMax);
-            // this.ValidateDimensionValue(rule.DimensionValue);
         }
 
         /// <summary>Compare two dimension values.</summary>
@@ -46,6 +44,7 @@ namespace poolautoscaler.dimensions
         /// <param name="dimensionValue2">Second dimension value.</param>
         /// <returns>Comparison result.</returns>
         /// <exception cref="ArgumentException">Thrown when values are invalid.</exception>
+        /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
             var value1 = float.Parse(dimensionValue1);
@@ -56,12 +55,12 @@ namespace poolautoscaler.dimensions
         /// <inheritdoc/>
         public string GetCurrentDimensionValue(ResourceState resource)
         {
-            if (!(resource.Resource is MySqlFlexibleServerResource mySqlFlexibleServerResource))
+            if (!(resource.Resource is PostgreSqlFlexibleServerResource sqlDatabase))
             {
-                throw new ArgumentException("Resource is not a MySqlFlexibleServerResource.");
+                throw new ArgumentException("Resource is not a PostgreSqlFlexibleServerResource.");
             }
 
-            return MySqlFlexibleServerResourceStateHelper.GetCoreCountFromSkuName(mySqlFlexibleServerResource.Data.Sku.Name).ToString();
+            return (sqlDatabase.Data.Storage?.Iops ?? 0).ToString();
         }
 
         /// <inheritdoc/>
@@ -75,7 +74,7 @@ namespace poolautoscaler.dimensions
         public string GetPreviousDimensionValue(ResourceState resource, string value)
         {
             var current = int.Parse(value);
-            var result = current + 1;
+            var result = current - 1;
 
             if (result < 1)
             {
@@ -88,12 +87,12 @@ namespace poolautoscaler.dimensions
         /// <inheritdoc/>
         public string? GetRequestedDimensionValue(ResourceState resource)
         {
-            if (!(resource is MySqlFlexibleServerResourceState mysqlState))
+            if (!(resource is PostgreSqlFlexibleServerResourceState postgresState))
             {
-                throw new ArgumentException($"Resource is not {nameof(MySqlFlexibleServerResourceState)}.");
+                throw new ArgumentException($"Resource is not {nameof(PostgreSqlFlexibleServerResourceState)}.");
             }
 
-            return mysqlState.RequestedMySqlFlexibleServerState?.CoreCount?.ToString();
+            return postgresState.RequestedPostgreSqlFlexibleServerState?.Iops?.ToString();
         }
 
         /// <inheritdoc/>
@@ -104,21 +103,21 @@ namespace poolautoscaler.dimensions
             TokenCredential credential,
             string value)
         {
-            if (!(resource.Resource is MySqlFlexibleServerResource elasticPool))
+            if (!(resource.Resource is PostgreSqlFlexibleServerResource elasticPool))
             {
-                throw new ArgumentException("Resource is not a MySqlFlexibleServerResource.");
+                throw new ArgumentException("Resource is not a PostgreSqlFlexibleServerResource.");
             }
 
             this.ValidateDimensionValue(value);
 
-            (resource as MySqlFlexibleServerResourceState).SetCoreCount(value);
+            (resource as PostgreSqlFlexibleServerResourceState).SetIops(value);
         }
 
         private void ValidateDimensionValue(string value)
         {
             if (!float.TryParse(value, out _))
             {
-                throw new Exception("Invalid core count value {value}");
+                throw new Exception("Invalid Iops value");
             }
         }
     }

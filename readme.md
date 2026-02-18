@@ -30,16 +30,17 @@ Azure Autoscaler fills these gaps by providing intelligent, metric-based autosca
 
 | Resource Type | Supported Dimensions | Custom Metrics | Notes |
 |--------------|---------------------|----------------|-------|
-| AKS Node Pools | MinNodeCount |  | MaxNodeCount is preserved as a constraint but not scaled |
-| Azure SQL Elastic Pools | Dtu, MaxDataBytes |  |  |
-| Azure SQL Databases | Dtu, MaxDataBytes |  | MaxDataBytes supports DTU and VCore models (see notes below) |
-| Azure MySQL Flexible Server | Sku, Iops, CoreCount | custom_sku_corecount_forecast |  |
+| AKS Node Pools | MinNodeCount | Custom metrics via `CustomMetrics` (e.g. total cores / memory) | MaxNodeCount is preserved as a constraint but not scaled |
+| Azure SQL Elastic Pools | Dtu, MaxDataBytes | |  |
+| Azure SQL Databases | Dtu, MaxDataBytes | | MaxDataBytes supports DTU and VCore models (see notes below) |
+| Azure MySQL Flexible Server | Sku, Iops, CoreCount | Custom metrics via `CustomMetrics` |  |
+| Azure PostgreSQL Flexible Server | Sku, Iops, CoreCount | Custom metrics via `CustomMetrics` |  |
 | Azure Files | ProvisionedStorage, Throughput |  | Although Throughput is not a real dimension in Azure for a file share, it is exposed as an actionable dimension and the file share provisioned storage is scaled to meet the desired throughput targets |
 | Azure DevOps Parallel Jobs | HostedParallelJobs, PrivateParallelJobs | custom_azdo_queued_hosted, custom_azdo_queued_self_hosted, custom_azdo_running_hosted, custom_azdo_running_self_hosted, custom_azdo_available_hosted, custom_azdo_available_self_hosted | Uses undocumented Commerce API. Requires PAT with billing permissions. |
 
 ## Licensing
 
-Azure Autoscaler is **open source software** released under the MIT License. The source code is freely available and you are welcome to build, modify, and distribute it according to the terms of the MIT License.
+Azure Autoscaler is released under the Business Source License (BSL) 1.1. The source code is available for viewing, modification, and non-production use. For production use, please see the licensing terms below or contact the licensor for commercial licensing options.
 
 ### Prebuilt Docker Images
 
@@ -55,11 +56,11 @@ When using a prebuilt image without a valid license key, the following limitatio
 
 ### Building Your Own Images
 
-You can always build your own Docker images from the source code without any license restrictions. This gives you full functionality without requiring a license key. See the [Installation](#installation) section for build instructions.
+You can build your own Docker images from the source code. However, Azure Autoscaler uses the **Business Source License (BSL) 1.1**, so usage is limited to what the license specifies. The BSL permits copying, modification, derivative works, redistribution, and **non-production use**. For production use, you must comply with the license terms—either through the Additional Use Grant (if any) or by purchasing a commercial license. See the [LICENSE](LICENSE) file for the full terms. The [Installation](#installation) section has build instructions.
 
 ### Why Licensing?
 
-The licensing model for prebuilt images helps support the ongoing development and maintenance of Azure Autoscaler. By purchasing a license, you're directly contributing to:
+The licensing model helps support the ongoing development and maintenance of Azure Autoscaler. By purchasing a license, you're directly contributing to:
 - Continued feature development
 - Bug fixes and security updates
 - Documentation improvements
@@ -533,7 +534,7 @@ Resource expansion works for:
 
 Azure Autoscaler reads tags from resources and makes them available in the `ResourceTags` dictionary for each resource. Tags can be used to control resource behavior.
 
-For most Azure resources (SQL Databases, SQL Elastic Pools, MySQL Flexible Servers), tags are read directly from the resource.
+For most Azure resources (SQL Databases, SQL Elastic Pools, MySQL Flexible Servers, PostgreSQL Flexible Servers), tags are read directly from the resource.
 
 **Edge Cases:**
 
@@ -559,6 +560,11 @@ Because you need to make real time decisions based on resource metrics, each Sca
           FileCapacity:
             # Name is the name of the metric in Azure Metrics
             Name: FileCapacity
+            # (OPTIONAL) Namespace. When reading metrics from a custom namespace (for example, custom
+            # metrics that you previously pushed via CustomMetrics), set the Azure Monitor metric
+            # namespace here (e.g. "Custom Autoscaler"). When omitted, the default Azure namespace
+            # for the resource type is used.
+            # Namespace: "Custom Autoscaler"
             # (OPTIONAL) resourceID indicates what resource to get the metric from. Sometimes the metrics for some resource actually belong to the parent resource, and are accessed through the usage of splits. If not specified, the actual ID of the configured resource will be used.
             ResourceId: "/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${storageAccountName}/fileServices/default"
             # Evaluation window. Metric evaluation will retrieve data from (Now - Window) to Now
@@ -969,13 +975,116 @@ The autoadjust is designed to react based on metrics:
 > 
 > Even when a database belongs to an elastic pool, MaxDataBytes can be set, but pool storage limits will be enforced.
 
+## Custom Metrics
+
+Custom metrics let you push additional data points from the autoscaler into Azure Monitor, so you can build dashboards/alerts on values that are not exposed as native Azure metrics (for example, total cores across all nodes in a VMSS, or memory derived from a SKU).
+
+At the **resource configuration** level you can declare a `CustomMetrics` array:
+
+```yaml
+  - Resources:
+      aks_nodepools:
+        ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-aks/providers/Microsoft.ContainerService/managedClusters/aks-example/agentPools/{.*}"
+    Frequency: 5m
+    WhatIf: true
+    Enabled: true
+    CustomMetrics:
+      - Name: total_core_count
+        # (Optional) Namespace: overrides the global CustomMetricsNamespace when set
+        # Namespace: "Custom Autoscaler"
+        ResourceId: "${virtualMachineScaleSetId}"
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToCores(data.Extra[\"Vmss\"].Sku.Name.ToString()) * Convert.ToDouble(data.Extra[\"Vmss\"].Sku.Capacity))"
+        Frequency: 5m
+```
+
+### CustomMetrics configuration options
+
+Each entry in `CustomMetrics` supports:
+
+- **Name**: Metric name as it will appear in Azure Monitor (e.g. `total_core_count`).
+- **Namespace** (optional): Custom metric namespace. If omitted, the autoscaler uses:
+  - The global `CustomMetricsNamespace` at the root of `config.yml`, if set.
+  - Otherwise the hardcoded default **"Custom Autoscaler"**.
+- **ResourceId** (optional): ARM resource ID that receives the metric. If omitted, the current resource’s `ResourceId` is used. You can use the same replacement tokens as in normal metric definitions (e.g. `${virtualMachineScaleSetId}`).
+- **DataExpression** (required): C# expression that computes the metric value from the data context (see below). Must return a numeric value (typically `double`) that can be sent to Azure Monitor.
+- **Frequency** (optional): How often to evaluate and push this custom metric. If omitted, the resource’s `Frequency` is used.
+
+### DataExpression – available data in `data`
+
+The `DataExpression` is executed against a strongly-typed context referred to as `data` (`CustomMetricDataContext`). The most relevant properties are:
+
+- **`data.Resource`**: Wrapper around the target ARM resource.
+  - **`data.Resource.Data`**: The full ARM resource model from the Azure SDK (e.g. `VirtualMachineScaleSetResource.Data`, `MySqlFlexibleServerResource.Data`). You can access any property that ARM exposes (SKU, capacity, tags, etc.).
+- **`data.ExistingState`**: The current `ResourceState` instance for the resource (resource-type-specific object). Useful when you need autoscaler-level state rather than raw ARM.
+- **`data.ResourceParts`**: Parsed parts of the ARM resource ID (subscription, resource group, name, captured regex groups, etc.). Helpful for building IDs or using regex groups from expansion.
+- **`data.Helpers`** (`CustomMetricHelpers`):
+  - `VmSizeToCores(string vmSize)`: Returns an `int` with the core count for a VM SKU (uses `IVmSizeResolver` when available, otherwise regex fallback).
+  - `VmSizeToMemory(string vmSize)`: Returns a `long` with memory in **bytes** for a VM SKU.
+  - `VmSizeToMemoryGb(string vmSize)`: Returns a `double` with memory in **GiB** for a VM SKU.
+
+Depending on the resource type, the context may also populate `data.Extra` with additional helper objects. For example, in AKS node pool custom metrics, `data.Extra["Vmss"]` contains the underlying VMSS ARM resource.
+
+## PostgreSQL Flexible Server
+
+```yaml
+  - Resources:
+      postgresql-dev-db0:
+        ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-dev-postgresql/providers/Microsoft.DBforPostgreSQL/flexibleServers/postgresql-dev-db0"
+    Frequency: 5m
+    WhatIf: true
+    Enabled: true
+    CustomMetrics:
+      - Name: total_core_count
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToCores(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+      - Name: total_memory_gb
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToMemoryGb(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+    ScalingConfigurations:
+      Baseline:
+        ScaleDownLockWindowMinutes: 50
+        ScaleUpAllowWindowMinutes: 50
+        Metrics:
+          cpu_percent:
+            Name: cpu_percent
+            Window: 00:10
+        TimeWindow:
+          Days: All
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          autoadjust:
+            ScalingStrategy: Autoadjust
+            Dimension: Sku
+            ScaleUpCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Default).Take(3).Average() > 85"
+            ScaleDownCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Default).Take(5).Average() < 60"
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)"
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)"
+            ScaleUpCooldownSeconds: 180
+            ScaleDownCoolDownSeconds: 3600
+            DimensionValueMax: "Standard_B4ms"
+            DimensionValueMin: "Standard_B1ms"
+```
+
 ## MySQL Flexible Server
 
 ```yaml
   - Resources:
       mysql-dev-mysql0:
-        ResourceId: "/subscriptions/mysubscriptionid/resourceGroups/myresourcegroup/providers/Microsoft.DBforMySQL/flexibleServers/myserver"
+        ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-dev-mysql/providers/Microsoft.DBforMySQL/flexibleServers/mysql-dev-mysql0"
     Frequency: 5m
+    WhatIf: true
+    Enabled: true
+    # Push custom metrics for MySQL server (requires Monitoring Metrics Publisher on the server)
+    CustomMetrics:
+      - Name: total_core_count
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToCores(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+      - Name: total_memory_gb
+        DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToMemoryGb(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
     ScalingConfigurations:
       Baseline:
         ScaleDownLockWindowMinutes: 50
@@ -998,39 +1107,12 @@ The autoadjust is designed to react based on metrics:
             Dimension: Sku
             ScaleUpCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Average).Take(3).Average() > 85" # Average CPU > 85% for 3 minutes
             ScaleDownCondition: "(data) => data.Metrics[\"cpu_percent\"].Values.Select(i => i.Average).Take(5).Average() < 60" # Average CPU < 60% for 5 minutes
-            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
-            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specify DTU number manually, and system will find closest valid tier
+            ScaleUpTarget: "(data) => data.NextDimensionValue(1)" # You could actually specify SKU manually, and system will find closest valid tier
+            ScaleDownTarget: "(data) => data.PreviousDimensionValue(1)" # You could actually specify SKU manually, and system will find closest valid tier
             ScaleUpCooldownSeconds: 180
             ScaleDownCoolDownSeconds: 3600
             DimensionValueMax: "Standard_B4ms"
             DimensionValueMin: "Standard_B1ms"
-      ForecastDaily:
-        Metrics:
-          custom_sku_corecount_forecast:
-            Name: custom_sku_corecount_forecast # This metric provides a SKU forecast based on last 90 days of activity so that no resizing is needed within the proposed time window. Its internals are currently hardcoded and should be parameterized. Useful because MySQL resizing is very disruptive (i.e. ~5 min downtime). 
-        TimeWindow:
-          Days: All
-          Months: All
-          StartTime: "00:00"
-          EndTime: "23:59"
-          TimeZone: "Romance Standard Time"
-        ScalingRules:
-          fixed:
-            ScalingStrategy: Fixed
-            Dimension: Sku
-            ScaleTarget: "(data) => (np(data.Metrics[\"custom_sku_corecount_forecast\"].Values.FirstOrDefault()).CustomString).ToString()"
-      MinSku:
-        TimeWindow:
-          Days: All
-          Months: All
-          StartTime: "00:00"
-          EndTime: "23:59"
-          TimeZone: "Romance Standard Time"
-        ScalingRules:
-          fixed:
-            ScalingStrategy: Fixed
-            Dimension: Sku
-            ScaleTarget: "(data) => (\"Standard_B1ms\")"
       Iops:
         Metrics:
           storage_io_count:

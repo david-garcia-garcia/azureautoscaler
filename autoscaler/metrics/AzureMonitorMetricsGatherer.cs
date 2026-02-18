@@ -57,10 +57,12 @@ namespace poolautoscaler.metrics
                     var metricWindow = TimeSpan.Parse(metric.Window);
                     var metricTimeGrain = TimeSpan.Parse(metric.TimeGrain ?? "00:01");
                     var targetResource = metric.ResourceId ?? state.Resource.Id;
+                    var metricNamespace = string.IsNullOrWhiteSpace(metric.Namespace) ? null : metric.Namespace;
                     string splitName = metric.SplitName;
                     string splitValue = metric.SplitValue;
 
                     targetResource = state.ReplaceResourceParts(targetResource);
+                    metricNamespace = metricNamespace == null ? null : state.ReplaceResourceParts(metricNamespace);
                     splitName = state.ReplaceResourceParts(splitName);
                     splitValue = state.ReplaceResourceParts(splitValue);
 
@@ -97,7 +99,8 @@ namespace poolautoscaler.metrics
                             cancellationToken,
                             splitName,
                             splitValue,
-                            aggregations);
+                            aggregations,
+                            metricNamespace: metricNamespace);
                     }
                     catch (Azure.RequestFailedException ex) when (ex.Status == 400)
                     {

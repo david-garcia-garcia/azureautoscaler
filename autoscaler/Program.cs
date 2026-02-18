@@ -61,6 +61,15 @@ namespace AzureSqlElasticPoolAutoscaler
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddLogging();
+                    services.AddMemoryCache();
+                    services.AddSingleton<poolautoscaler.resourcemanagement.IResourceLocationResolver>(sp =>
+                        new poolautoscaler.resourcemanagement.ResourceLocationResolver(
+                            sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
+                            sp.GetRequiredService<ILoggerFactory>().CreateLogger("ResourceLocationResolver")));
+                    services.AddSingleton<poolautoscaler.metrics.IVmSizeResolver>(sp =>
+                        new poolautoscaler.metrics.VmSizeResolver(
+                            sp.GetRequiredService<ILoggerFactory>().CreateLogger("VmSizeResolver")));
+                    services.AddSingleton<poolautoscaler.resourcemanagement.IResourceStateFactory, poolautoscaler.resourcemanagement.ResourceStateFactory>();
                     services.AddSingleton<LicenseService>();
                     services.AddSingleton<ResourceManager>();
                     services.AddHostedService<AutoscalerService>();
@@ -144,22 +153,34 @@ namespace AzureSqlElasticPoolAutoscaler
         {
             if (args.Length < 4)
             {
-                Console.WriteLine("Usage: poolautoscaler generate-license <private_key.pem> <licensedTo> <expirationDate> <maxResources>");
+                Console.WriteLine("Usage: poolautoscaler generate-license <private_key.pem> <licensedTo> <expirationDate> <maxResources> [allowedSubscriptionIds]");
                 Console.WriteLine();
                 Console.WriteLine("Example:");
                 Console.WriteLine("  poolautoscaler generate-license private_key.pem \"Acme Corp\" \"2025-12-31T23:59:59Z\" 10");
+                Console.WriteLine("  poolautoscaler generate-license private_key.pem \"Acme Corp\" \"2025-12-31T23:59:59Z\" 10 \"sub-id-1,sub-id-2\"");
                 Console.WriteLine();
                 Console.WriteLine("Arguments:");
-                Console.WriteLine("  private_key.pem  - Path to RSA private key file");
-                Console.WriteLine("  licensedTo       - Name of the licensee");
-                Console.WriteLine("  expirationDate   - Expiration date in ISO 8601 format (e.g., 2025-12-31T23:59:59Z)");
-                Console.WriteLine("  maxResources     - Maximum number of Azure resources allowed");
+                Console.WriteLine("  private_key.pem       - Path to RSA private key file");
+                Console.WriteLine("  licensedTo            - Name of the licensee");
+                Console.WriteLine("  expirationDate        - Expiration date in ISO 8601 format (e.g., 2025-12-31T23:59:59Z)");
+                Console.WriteLine("  maxResources          - Maximum number of Azure resources allowed");
+                Console.WriteLine("  allowedSubscriptionIds - Optional. Comma-separated Azure subscription IDs. When omitted or empty, all subscriptions are allowed.");
                 Environment.Exit(1);
                 return;
             }
 
+            IReadOnlyList<string>? allowedSubscriptionIds = null;
+            if (args.Length >= 5 && !string.IsNullOrWhiteSpace(args[4]))
+            {
+                allowedSubscriptionIds = args[4]
+                    .Split(',')
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .ToList();
+            }
+
             var service = new poolautoscaler.licensing.LicenseService();
-            var result = service.Generate(args[0], args[1], args[2], args[3]);
+            var result = service.Generate(args[0], args[1], args[2], args[3], allowedSubscriptionIds);
 
             if (!result.Success)
             {
@@ -194,13 +215,15 @@ namespace AzureSqlElasticPoolAutoscaler
             private readonly DateTime startTime;
             private readonly LicenseService licenseService;
             private readonly ResourceManager resourceManager;
+            private readonly poolautoscaler.resourcemanagement.IResourceLocationResolver resourceLocationResolver;
 
             /// <summary>Initializes a new instance of the <see cref="AutoscalerService"/> class.</summary>
             /// <param name="configuration">Application configuration.</param>
             /// <param name="factory">Logger factory.</param>
             /// <param name="licenseService">License service.</param>
             /// <param name="resourceManager">Resource manager.</param>
-            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService, ResourceManager resourceManager)
+            /// <param name="resourceLocationResolver">Resolves resource IDs to region for custom metrics.</param>
+            public AutoscalerService(IConfiguration configuration, ILoggerFactory factory, LicenseService licenseService, ResourceManager resourceManager, poolautoscaler.resourcemanagement.IResourceLocationResolver resourceLocationResolver)
             {
                 this.RawConfiguration = configuration;
                 this.Configuration = configuration.Get<Configuration>();
@@ -208,6 +231,7 @@ namespace AzureSqlElasticPoolAutoscaler
                 this.Logger = factory.CreateLogger("autoscaler");
                 this.licenseService = licenseService;
                 this.resourceManager = resourceManager;
+                this.resourceLocationResolver = resourceLocationResolver;
 
                 this.LicenseInfo = this.licenseService.GetLicenseInfo();
 
@@ -240,9 +264,12 @@ namespace AzureSqlElasticPoolAutoscaler
                 dimensions.Add(new DimensionAzureSqlDatabaseMaxDataBytes());
                 dimensions.Add(new DimensionMySqlFlexibleServerSku());
                 dimensions.Add(new DimensionMySqlFlexibleServerCoreCount());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerSku());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerCoreCount());
                 dimensions.Add(new DimensionAzureAksNodePoolMinNodeCount());
                 dimensions.Add(new DimensionStorageFileShareProvisionedStorage());
                 dimensions.Add(new DimensionMySqlFlexibleServerIops());
+                dimensions.Add(new DimensionPostgreSqlFlexibleServerIops());
                 dimensions.Add(new DimensionStorageFileShareThroughput());
                 dimensions.Add(new DimensionFabricCapacitySku());
                 dimensions.Add(new DimensionAzureDevOpsHostedParallelJobs());
@@ -277,8 +304,16 @@ namespace AzureSqlElasticPoolAutoscaler
                 }
 
                 ArmClient client = new ArmClient(credential);
+                var armClientWrapper = new ArmClientWrapper(client);
 
-                var resourceProcessor = new ResourceProcessor(this.LogFactory, dimensions, credential, client, this.LicenseInfo);
+                var resourceProcessor = new ResourceProcessor(
+                    this.LogFactory,
+                    dimensions,
+                    credential,
+                    armClientWrapper,
+                    this.LicenseInfo,
+                    this.resourceLocationResolver,
+                    defaultCustomMetricsNamespace: this.Configuration.CustomMetricsNamespace);
 
                 const int MinIterationIntervalSeconds = 2;
 
@@ -311,6 +346,15 @@ namespace AzureSqlElasticPoolAutoscaler
                                 "License {0}: Skipping resource (limit: {1} resources)",
                                 this.LicenseInfo.Reason,
                                 this.LicenseInfo.License.MaxResources);
+                            continue;
+                        }
+
+                        var subscriptionId = resourceState.ResourceParts.GetValueOrDefault("subscriptionId");
+                        if (!this.LicenseInfo.License.IsSubscriptionAllowed(subscriptionId))
+                        {
+                            resourceState.Logger.LogWarning(
+                                "License: Skipping resource - subscription {SubscriptionId} is not in the license allowed list.",
+                                subscriptionId ?? "(none - non-ARM resource)");
                             continue;
                         }
 

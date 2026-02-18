@@ -2,21 +2,40 @@ using System.Text.RegularExpressions;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.metrics;
 using poolautoscaler.resources.AksNodePool;
 using poolautoscaler.resources.AzureDevops;
 using poolautoscaler.resources.FabricCapacity;
 using poolautoscaler.resources.MsSqlDatabase;
 using poolautoscaler.resources.MssqlElasticPool;
 using poolautoscaler.resources.MySqlFlexibleServer;
+using poolautoscaler.resources.PostgreSqlFlexibleServer;
 using poolautoscaler.resources.StorageFileShare;
 
 namespace poolautoscaler.resourcemanagement
 {
     /// <summary>
     /// Factory for creating and expanding resource states by resource ID pattern.
+    /// Created states receive the service provider so they can resolve dependencies on demand.
     /// </summary>
-    public static class ResourceStateFactory
+    public sealed class ResourceStateFactory : IResourceStateFactory
     {
+        private readonly IResourceLocationResolver resourceLocationResolver;
+        private readonly IVmSizeResolver vmSizeResolver;
+
+        /// <summary>Initializes a new instance of the <see cref="ResourceStateFactory"/> class.</summary>
+        /// <param name="serviceProvider">The service provider (reserved for future use).</param>
+        /// <param name="resourceLocationResolver">Resource location resolver to inject into created states.</param>
+        /// <param name="vmSizeResolver">VM size resolver to inject into created states.</param>
+        public ResourceStateFactory(
+            IServiceProvider serviceProvider,
+            IResourceLocationResolver resourceLocationResolver,
+            IVmSizeResolver vmSizeResolver)
+        {
+            this.resourceLocationResolver = resourceLocationResolver;
+            this.vmSizeResolver = vmSizeResolver;
+        }
+
         /// <summary>
         /// Regex matching SQL elastic pool resource IDs.
         /// </summary>
@@ -31,6 +50,11 @@ namespace poolautoscaler.resourcemanagement
         /// Regex matching MySQL flexible server resource IDs.
         /// </summary>
         public static readonly Regex MySqlFlexibleServer = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.DBforMySQL/flexibleServers/(?<serverName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// Regex matching PostgreSQL flexible server resource IDs.
+        /// </summary>
+        public static readonly Regex PostgreSqlFlexibleServer = new Regex(@"^/subscriptions/(?<subscriptionId>[^/]+)/resourceGroups/(?<resourceGroupName>[^/]+)/providers/Microsoft.DBforPostgreSQL/flexibleServers/(?<serverName>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>
         /// Regex matching AKS node pool resource IDs.
@@ -75,35 +99,27 @@ namespace poolautoscaler.resourcemanagement
             return null;
         }
 
-        /// <summary>
-        /// Expands a resource ID that may contain wildcards into a dictionary of key to resource ID.
-        /// </summary>
-        /// <param name="client">The ARM client.</param>
-        /// <param name="key">The key for the resource entry.</param>
-        /// <param name="resourceId">The resource ID or wildcard pattern.</param>
-        /// <param name="logger">The logger.</param>
-        /// <param name="stoppingToken">Cancellation token.</param>
-        /// <returns>A dictionary of key to expanded resource IDs.</returns>
-        public static async Task<Dictionary<string, string>> ExpandResources(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
+        /// <inheritdoc />
+        public async Task<Dictionary<string, string>> ExpandResourcesAsync(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken cancellationToken = default)
         {
             // Make sure these are ordered from most specific to least specific
             Match match;
 
             if ((match = ElasticPools.Match(resourceId)).Success)
             {
-                return await MssqlElasticPoolResourceStateHelper.ExpandElasticPoolWildcard(client, key, resourceId, logger, stoppingToken);
+                return await MssqlElasticPoolResourceStateHelper.ExpandElasticPoolWildcard(client, key, resourceId, logger, cancellationToken);
             }
             else if ((match = SqlDatabase.Match(resourceId)).Success)
             {
-                return await MsSqlDatabaseResourceStateHelper.ExpandSqlDatabaseWildcard(client, key, resourceId, logger, stoppingToken);
+                return await MsSqlDatabaseResourceStateHelper.ExpandSqlDatabaseWildcard(client, key, resourceId, logger, cancellationToken);
             }
             else if ((match = AksNodePool.Match(resourceId)).Success)
             {
-                return await AksNodePoolResourceStateHelper.ExpandNodePoolWildcard(client, key, resourceId, logger, stoppingToken);
+                return await AksNodePoolResourceStateHelper.ExpandNodePoolWildcard(client, key, resourceId, logger, cancellationToken);
             }
             else if ((match = FileShare.Match(resourceId)).Success)
             {
-                return await StorageFileShareResourceStateHelper.ExpandFileShareWildcard(client, key, resourceId, logger, stoppingToken);
+                return await StorageFileShareResourceStateHelper.ExpandFileShareWildcard(client, key, resourceId, logger, cancellationToken);
             }
 
             // Fabric capacities don't support expansion (no wildcards)
@@ -113,16 +129,8 @@ namespace poolautoscaler.resourcemanagement
             return result;
         }
 
-        /// <summary>
-        /// Creates a <see cref="ResourceState"/> for the given resource ID and configuration.
-        /// </summary>
-        /// <param name="resourceId">The resource ID or URI.</param>
-        /// <param name="logger">The logger.</param>
-        /// <param name="resourceConfiguration">The resource configuration.</param>
-        /// <param name="resourceInstance">Optional resource instance (e.g. for Azure DevOps).</param>
-        /// <returns>A new resource state instance.</returns>
-        /// <exception cref="ArgumentException">Thrown when the resource type is not supported.</exception>
-        public static ResourceState Create(string resourceId, ILogger logger, Resource resourceConfiguration, ResourceInstance? resourceInstance = null)
+        /// <inheritdoc />
+        public ResourceState Create(string resourceId, ILogger logger, Resource resourceConfiguration, ResourceInstance? resourceInstance = null)
         {
             // Make sure these are ordered from most specific to least specific
             Match match;
@@ -130,43 +138,49 @@ namespace poolautoscaler.resourcemanagement
 
             if ((match = ElasticPools.Match(resourceId)).Success)
             {
-                state = new MssqlElasticPoolResourceState(resourceId, logger, resourceConfiguration);
+                state = new MssqlElasticPoolResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
                 PopulateResourceParts(state, match);
                 return state;
             }
             else if ((match = SqlDatabase.Match(resourceId)).Success)
             {
-                state = new MsSqlDatabaseResourceState(resourceId, logger, resourceConfiguration);
+                state = new MsSqlDatabaseResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
                 PopulateResourceParts(state, match);
                 return state;
             }
             else if ((match = MySqlFlexibleServer.Match(resourceId)).Success)
             {
-                state = new MySqlFlexibleServerResourceState(resourceId, logger, resourceConfiguration);
+                state = new MySqlFlexibleServerResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
+                PopulateResourceParts(state, match);
+                return state;
+            }
+            else if ((match = PostgreSqlFlexibleServer.Match(resourceId)).Success)
+            {
+                state = new PostgreSqlFlexibleServerResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
                 PopulateResourceParts(state, match);
                 return state;
             }
             else if ((match = AksNodePool.Match(resourceId)).Success)
             {
-                state = new AksNodePoolResourceState(resourceId, logger, resourceConfiguration);
+                state = new AksNodePoolResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
                 PopulateResourceParts(state, match);
                 return state;
             }
             else if ((match = FileShare.Match(resourceId)).Success)
             {
-                state = new StorageFileShareResourceState(resourceId, logger, resourceConfiguration);
+                state = new StorageFileShareResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
                 PopulateResourceParts(state, match);
                 return state;
             }
             else if ((match = FabricCapacity.Match(resourceId)).Success)
             {
-                state = new FabricCapacityResourceState(resourceId, logger, resourceConfiguration);
+                state = new FabricCapacityResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver);
                 PopulateResourceParts(state, match);
                 return state;
             }
             else if ((match = AzureDevOpsParallelJobs.Match(resourceId)).Success)
             {
-                state = new AzureDevOpsParallelJobsResourceState(resourceId, logger, resourceConfiguration, resourceInstance);
+                state = new AzureDevOpsParallelJobsResourceState(resourceId, logger, resourceConfiguration, this.resourceLocationResolver, this.vmSizeResolver, resourceInstance);
                 PopulateResourceParts(state, match);
                 return state;
             }

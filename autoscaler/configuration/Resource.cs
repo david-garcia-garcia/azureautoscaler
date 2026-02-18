@@ -20,5 +20,8 @@ namespace poolautoscaler.configuration
 
         /// <summary>Scaling configurations keyed by ID.</summary>
         public Dictionary<string, ScalingConfiguration> ScalingConfigurations { get; set; }
+
+        /// <summary>Custom metrics to push to Azure Monitor.</summary>
+        public List<CustomMetricConfig> CustomMetrics { get; set; }
     }
 }
