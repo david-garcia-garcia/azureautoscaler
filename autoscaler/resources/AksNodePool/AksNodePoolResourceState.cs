@@ -209,14 +209,6 @@ namespace poolautoscaler.resources.AksNodePool
 
             var nodePool = (ContainerServiceAgentPoolResource)this.Resource;
 
-            if (nodePool.Data.ProvisioningState != "Succeeded")
-            {
-                this.Logger.LogWarning($"AKS node pool in provisioning state '{nodePool.Data.ProvisioningState}'. Resource will be disabled until next refresh.");
-                this.DisabledUntil["ProvisioningState"] = DateTime.MaxValue;
-                return;
-            }
-
-            this.DisabledUntil.TryRemove("ProvisioningState");
             var vmssResult = await this.GetVmssForNodePool(client, credential, cancellationToken, nodePool);
 
             this.Vmss = vmssResult.Data;
@@ -226,14 +218,7 @@ namespace poolautoscaler.resources.AksNodePool
 
             this.ResourceTagsPopulate(nodePool.Data?.Tags);
             this.ResourceTagsMerge(this.Vmss?.Tags, $"VMSS '{this.Vmss.Name}'");
-
-            if (nodePool.Data.NodeLabels != null)
-            {
-                foreach (var label in nodePool.Data.NodeLabels)
-                {
-                    this.ResourceTags[label.Key] = label.Value;
-                }
-            }
+            this.ResourceTagsMerge(nodePool.Data?.NodeLabels, $"Node labels");
 
             this.RequestedAksNodePoolState = new AksNodePoolState();
 
@@ -242,6 +227,15 @@ namespace poolautoscaler.resources.AksNodePool
                 MaxNodeCount = nodePool.Data.MaxCount,
                 MinNodeCount = nodePool.Data.MinCount
             };
+
+            if (nodePool.Data.ProvisioningState != "Succeeded")
+            {
+                this.Logger.LogWarning($"AKS node pool in provisioning state '{nodePool.Data.ProvisioningState}'. Resource will be disabled until next refresh.");
+                this.DisabledUntil["ProvisioningState"] = DateTime.MaxValue;
+                return;
+            }
+
+            this.DisabledUntil.TryRemove("ProvisioningState");
         }
 
     }
