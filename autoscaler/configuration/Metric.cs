@@ -12,6 +12,12 @@ namespace poolautoscaler.configuration
         /// <summary>Metric name (e.g. Azure Monitor metric).</summary>
         public string Name { get; set; }
 
+        /// <summary>
+        /// Optional Azure Monitor metric namespace to query this metric from.
+        /// Required for custom metrics (for example, "Custom Autoscaler") when the same metric name doesn't exist in the default namespace.
+        /// </summary>
+        public string? Namespace { get; set; }
+
         /// <summary>Resource ID to query.</summary>
         public string ResourceId { get; set; }
 

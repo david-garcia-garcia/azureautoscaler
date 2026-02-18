@@ -560,6 +560,11 @@ Because you need to make real time decisions based on resource metrics, each Sca
           FileCapacity:
             # Name is the name of the metric in Azure Metrics
             Name: FileCapacity
+            # (OPTIONAL) Namespace. When reading metrics from a custom namespace (for example, custom
+            # metrics that you previously pushed via CustomMetrics), set the Azure Monitor metric
+            # namespace here (e.g. "Custom Autoscaler"). When omitted, the default Azure namespace
+            # for the resource type is used.
+            # Namespace: "Custom Autoscaler"
             # (OPTIONAL) resourceID indicates what resource to get the metric from. Sometimes the metrics for some resource actually belong to the parent resource, and are accessed through the usage of splits. If not specified, the actual ID of the configured resource will be used.
             ResourceId: "/subscriptions/${subscriptionId}/resourceGroups/${resourceGroupName}/providers/Microsoft.Storage/storageAccounts/${storageAccountName}/fileServices/default"
             # Evaluation window. Metric evaluation will retrieve data from (Now - Window) to Now

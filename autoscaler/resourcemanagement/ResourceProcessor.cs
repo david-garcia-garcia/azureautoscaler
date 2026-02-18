@@ -332,8 +332,9 @@ namespace poolautoscaler.resourcemanagement
                     var rangeSuffix = FormatDimensionRangeSuffix(rule);
 
                     capturingLogger.LogDebug(
-                        "Rule '{RuleId}' request changed from {From} to {To}{Range}",
+                        "Rule '{RuleId}' requested '{targetDimensionValue}' resulting in a changed target from {From} to {To}{Range}",
                         rule.Id,
+                        targetDimensionValue,
                         existingDimensionRequest ?? "(null)",
                         newDimensionRequest,
                         rangeSuffix);
