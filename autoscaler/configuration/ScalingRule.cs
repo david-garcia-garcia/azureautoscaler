@@ -193,5 +193,21 @@ namespace poolautoscaler.configuration
         /// Do not scale down again until this amount of time has passed.
         /// </summary>
         public int ScaleDownCooldownSeconds { get; set; }
+
+        /// <summary>
+        /// Optional metric ID to use for determining the last scale time for this specific rule.
+        /// When set, the metric's time series is inspected to infer when this rule last effectively
+        /// scaled (for example, when node_count changed).
+        /// </summary>
+        public string? LastScaleMetric { get; set; }
+
+        /// <summary>
+        /// Last known scale time used for this specific rule.
+        /// This is updated at evaluation time and acts as a rule-level memory that survives
+        /// gaps in ARM change history or metric windows. When determining the effective last
+        /// scale for cooldowns, the newest of: metric-based timestamp, this value, and the
+        /// resource-level LastScale is used.
+        /// </summary>
+        public DateTime? LastScale { get; set; }
     }
 }

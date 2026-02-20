@@ -7,7 +7,6 @@ using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
-using YamlDotNet.Serialization;
 
 namespace poolautoscaler.resourcemanagement
 {
@@ -147,6 +146,109 @@ namespace poolautoscaler.resourcemanagement
             return $" (valid range: {interval})";
         }
 
+        /// <summary>
+        /// Determines the effective last scale time for a specific rule.
+        ///
+        /// Candidates (newest wins):
+        /// - Last change detected in the configured LastScaleMetric time series (if any).
+        /// - Rule-level LastScale (remembered from previous evaluations).
+        /// - Resource-level LastScale on the underlying state.
+        ///
+        /// This ensures that even when ARM history/metrics no longer cover the original scale
+        /// moment, the rule still has a monotonic notion of "last scale" for cooldowns.
+        /// </summary>
+        private DateTime GetLastScaleTimeForRule(
+            ResourceState state,
+            ScalingRule rule,
+            Dictionary<string, MetricEvalDtoResult> metrics,
+            ILogger logger)
+        {
+            // We know this is non-null from the RunLoop guard.
+            var candidate = state.LastScale!.Value;
+
+            // 1) Metric-based candidate: last time the tracked metric changed.
+            DateTime? metricLastChange = null;
+
+            if (!string.IsNullOrWhiteSpace(rule.LastScaleMetric) &&
+                metrics.TryGetValue(rule.LastScaleMetric, out var lastScaleMetricResult) &&
+                lastScaleMetricResult.Values != null &&
+                lastScaleMetricResult.Values.Any())
+            {
+                var orderedValues = lastScaleMetricResult.Values
+                    .OrderBy(v => v.TimeStamp)
+                    .ToList();
+
+                double? lastValue = null;
+
+                foreach (var value in orderedValues)
+                {
+                    var current = value.Default
+                                  ?? value.Average
+                                  ?? value.Maximum
+                                  ?? value.Minimum
+                                  ?? value.Total
+                                  ?? value.Count;
+
+                    if (current == null)
+                    {
+                        continue;
+                    }
+
+                    if (lastValue == null)
+                    {
+                        lastValue = current;
+                        continue;
+                    }
+
+                    if (Math.Abs(current.Value - lastValue.Value) > double.Epsilon)
+                    {
+                        metricLastChange = value.TimeStamp.UtcDateTime;
+                        lastValue = current;
+                    }
+                }
+
+                if (metricLastChange.HasValue)
+                {
+                    logger.LogDebug(
+                        "Rule '{RuleId}' using LastScaleMetric '{MetricId}' with last change timestamp {Timestamp}",
+                        rule.Id,
+                        rule.LastScaleMetric,
+                        metricLastChange.Value);
+                }
+                else
+                {
+                    logger.LogDebug(
+                        "Rule '{RuleId}' specified LastScaleMetric '{MetricId}' but no value changes were detected in current window.",
+                        rule.Id,
+                        rule.LastScaleMetric);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(rule.LastScaleMetric))
+            {
+                logger.LogWarning(
+                    "Rule '{RuleId}' specified LastScaleMetric '{MetricId}' but metric not found or has no values in current window.",
+                    rule.Id,
+                    rule.LastScaleMetric);
+            }
+
+            // 2) Rule-level remembered LastScale.
+            if (rule.LastScale.HasValue && rule.LastScale.Value > candidate)
+            {
+                candidate = rule.LastScale.Value;
+            }
+
+            // 3) Metric-based candidate, if newer than what we have so far.
+            if (metricLastChange.HasValue && metricLastChange.Value > candidate)
+            {
+                candidate = metricLastChange.Value;
+            }
+
+            // Persist back to the rule so we have a stable memory across runs.
+            rule.LastScale = candidate;
+
+            return candidate;
+        }
+
         private async Task RunLoop(ResourceState state, CancellationToken stoppingToken)
         {
             var logger = state.Logger;
@@ -188,7 +290,7 @@ namespace poolautoscaler.resourcemanagement
             // This is a very sloppy and unreliable metric, but helps. It captures changes
             // made to the resource either internally our externally. Of course a change does not mean
             // that an actual scale operation happened.... but on most operational scenarios it works.
-            var lapsedSinceLastScaleOperation = utcNow - state.LastScale.Value;
+            var defaultLapsedSinceLastScaleOperation = utcNow - state.LastScale.Value;
 
             state.LastDisabledMessageLogged = DateTime.MinValue;
             var capturingLogger = new CapturingLogger(logger);
@@ -226,11 +328,11 @@ namespace poolautoscaler.resourcemanagement
                 }
 
                 capturingLogger.LogDebug(
-                    "Evaluating scale configuration {Id}: ScaleDownLockWindowMinutes={ScaleDownLockWindowMinutes}, ScaleUpAllowWindowMinutes={ScaleUpAllowWindowMinutes}, lapsedSinceLastScaleOperation={lapsedSinceLastScaleOperation}",
+                    "Evaluating scale configuration {Id}: ScaleDownLockWindowMinutes={ScaleDownLockWindowMinutes}, ScaleUpAllowWindowMinutes={ScaleUpAllowWindowMinutes}, defaultLapsedSinceLastScaleOperation={lapsedSinceLastScaleOperation}",
                     setting.Id,
                     setting.ScaleDownLockWindowMinutes,
                     setting.ScaleUpAllowWindowMinutes,
-                    lapsedSinceLastScaleOperation.ToString(@"hh\:mm\:ss"));
+                    defaultLapsedSinceLastScaleOperation.ToString(@"hh\:mm\:ss"));
 
                 var invalidMetrics = metrics.Where(m => !m.Value.Valid).ToList();
                 if (invalidMetrics.Any())
@@ -260,15 +362,21 @@ namespace poolautoscaler.resourcemanagement
                     }
 
                     capturingLogger.LogDebug("Current request state {State}", HelperExtensions.SerializeSimple(state.RequestedStateRaw));
-                    capturingLogger.LogDebug("Rule '{0}' evaluating: ScaleDownCooldownSeconds={1}, ScaleUpCooldownSeconds={2}", rule.Id, rule.ScaleDownCooldownSeconds, rule.ScaleUpCooldownSeconds);
-
                     dimension.ValidateRuleConfiguration(rule);
+
+                    var lastScaleTimeForRule = this.GetLastScaleTimeForRule(state, rule, metrics, capturingLogger);
+                    var lapsedSinceLastScaleOperation = utcNow - lastScaleTimeForRule;
 
                     var strategy = GetRuleStrategy(rule);
                     var currentDimensionValue = dimension.GetCurrentDimensionValue(state);
                     var targetDimensionValue = await strategy.EvaluateTargetDimensionValue(rule, dimension, state, capturingLogger, this.credential, stoppingToken, metrics);
 
-                    if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1)
+                    var isScaleDown = dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == -1;
+                    var isScaleUp = dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == 1;
+
+                    capturingLogger.LogDebug("Rule '{0}' evaluated: ScaleDownCooldownSeconds={1}, ScaleUpCooldownSeconds={2}, isScaleDown={3}, isScaleUp={4}, lapsedSinceLastScaleOperation={5}", rule.Id, rule.ScaleDownCooldownSeconds, rule.ScaleUpCooldownSeconds, isScaleDown, isScaleUp, lapsedSinceLastScaleOperation.ToString(@"hh\:mm\:ss"));
+
+                    if (isScaleDown)
                     {
                         if (lapsedSinceLastScaleOperation.TotalSeconds < rule.ScaleDownCooldownSeconds)
                         {
@@ -293,7 +401,7 @@ namespace poolautoscaler.resourcemanagement
                         }
                     }
 
-                    if (dimension.Compare(state.Resource, targetDimensionValue, currentDimensionValue) == 1)
+                    if (isScaleUp)
                     {
                         if (lapsedSinceLastScaleOperation.TotalSeconds < rule.ScaleUpCooldownSeconds)
                         {
