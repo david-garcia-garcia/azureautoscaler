@@ -790,6 +790,8 @@ The autoadjust is designed to react based on metrics:
 * **ScaleDownCooldDownSeconds**: After a scale operation, minimum amount of time required to allow a new downscale operation.
 * **DimensionValueMax**: Upper limit that both ScaleUpTarget and ScaleDownTarget will be capped. (yes, you could take care of this within the lambda expression itself, it is just here for convenience)
 * **DimensionValueMin**: Lower limit that both ScaleUpTarget and ScaleDownTarget will be capped. (yes, you could take care of this within the lambda expression itself, it is just here for convenience)
+* **LastScaleMetric** (optional): Name of a metric in the `Metrics` section that reflects when this rule’s target dimension effectively changed (for example, an AKS `node_count` metric backed by a custom metric). The autoscaler walks that metric’s time series and finds the last point where the value changed; that timestamp becomes a candidate for the rule’s last scale time.
+* **LastScale** (internal): A per‑rule timestamp that remembers the last effective scale time used for cooldowns. On each evaluation, the autoscaler takes the newest of: the resource‑level `LastScale`, the rule’s own `LastScale`, and the metric‑based last change derived from `LastScaleMetric`, then writes the winner back into `LastScale`.
 
 > [!NOTE]
 >
@@ -806,6 +808,13 @@ The autoadjust is designed to react based on metrics:
     Frequency: 5m
     ScalingConfigurations:
       baseline:
+        CustomMetrics:
+          - Name: total_vm_count
+            ResourceId: "${virtualMachineScaleSetId}"
+            DataExpression: "(data) => Convert.ToDouble(data.Extra[\"Vmss\"].Sku.Capacity)"
+          - Name: min_node_count
+            ResourceId: "${virtualMachineScaleSetId}"
+            DataExpression: "(data) => Convert.ToDouble(data.Resource.Data.MinCount)"
         Metrics:
           node_cpu_usage_percentage:
             Name: Percentage CPU
@@ -825,6 +834,9 @@ The autoadjust is designed to react based on metrics:
           TimeZone: UTC
         ScalingRules:
           autoadjust:
+            # Use a metric that reflects when this rule effectively scaled (node_count)
+            # to derive a per‑rule last scale time for cooldowns.
+            LastScaleMetric: node_count
             ScalingStrategy: Autoadjust
             Dimension: MinNodeCount
             DimensionValueMax: "5"
