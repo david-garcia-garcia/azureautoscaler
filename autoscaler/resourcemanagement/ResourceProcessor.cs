@@ -7,6 +7,7 @@ using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
+using YamlDotNet.Serialization;
 
 namespace poolautoscaler.resourcemanagement
 {
@@ -259,7 +260,7 @@ namespace poolautoscaler.resourcemanagement
                     }
 
                     capturingLogger.LogDebug("Current request state {State}", HelperExtensions.SerializeSimple(state.RequestedStateRaw));
-                    capturingLogger.LogTrace("Evaluating rule {Id}", rule.Id);
+                    capturingLogger.LogDebug("Rule '{0}' evaluating: ScaleDownCooldownSeconds={1}, ScaleUpCooldownSeconds={2}", rule.Id, rule.ScaleDownCooldownSeconds, rule.ScaleUpCooldownSeconds);
 
                     dimension.ValidateRuleConfiguration(rule);
 
