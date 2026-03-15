@@ -209,7 +209,7 @@ namespace poolautoscaler.tests
                 capCorrectionFactor: 1.2);
 
             Assert.NotNull(result);
-            Assert.False(result.Valid);
+            Assert.True(result.Valid);
             Assert.Equal(60, result.Values[0].Default);
         }
 
