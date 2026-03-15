@@ -9,12 +9,16 @@ using poolautoscaler.resourcemanagement;
 namespace poolautoscaler.metrics
 {
     /// <summary>
-    /// Computes a simple forecast for any metric from history.
-    /// When the observed value is constrained by a max-available metric (capped), the forecast is flagged as potentially underestimated.
+    /// Computes a slot-based baseline forecast from metric history and optional snap transformations.
+    /// Baseline calculation groups history into daily windows, keeps per-slot values, then projects each target day
+    /// using compatible historical days selected by affinity factors (same day, weekday, weekend).
+    /// When the observed value is constrained by a max-available metric (capped), points are corrected (e.g. multiplied by a factor)
+    /// and the capped flag is kept for logging; the forecast remains valid and is used for scaling.
     /// </summary>
     internal sealed class MetricForecastService
     {
         private const double CapThreshold = 0.95; // Consider capped when value >= 95% of max at that time
+        private const double DefaultCappedCorrectionFactor = 1.2;
         private const double MarginMinutes = 15; // Match points within 15 minutes when aligning series
         private const int MinSlotMinutes = 15;
         private const int MaxSlotMinutes = 60;
@@ -36,6 +40,16 @@ namespace poolautoscaler.metrics
                 new ForecastModeSnap(),
                 new ForecastModeRaw()
             };
+        }
+
+        /// <summary>
+        /// Test hook to validate ForecastMode routing and snap behavior without invoking external I/O paths.
+        /// </summary>
+        /// <param name="result">Forecast result containing baseline values.</param>
+        /// <param name="metric">Metric configuration with ForecastMode and mode-specific settings.</param>
+        public void ApplySnapForTesting(MetricForecastResult result, Metric metric)
+        {
+            this.ApplySnap(result, metric);
         }
 
         /// <summary>
@@ -142,6 +156,8 @@ namespace poolautoscaler.metrics
             var sameDay = metric.ForecastAffinitySameDayFactor ?? 1.0;
             var weekday = metric.ForecastAffinityWeekdayFactor ?? 0.3;
             var weekend = metric.ForecastAffinityWeekendFactor ?? 0.3;
+            var capDetectThreshold = ResolveCappedCorrectionThreshold(metric.ForecastCappedCorrectionThreshold);
+            var capCorrectionFactor = ResolveCappedCorrectionFactor(metric.ForecastCappedCorrectionFactor);
             var fullForecast = this.ComputeFullForecastFromHistory(
                 mainResult.Values,
                 maxSeries,
@@ -152,7 +168,9 @@ namespace poolautoscaler.metrics
                 sameDay,
                 weekday,
                 weekend,
-                slotMinutes);
+                slotMinutes,
+                capDetectThreshold,
+                capCorrectionFactor);
             if (fullForecast != null)
             {
                 this.ApplySnap(fullForecast, metric);
@@ -302,6 +320,8 @@ namespace poolautoscaler.metrics
             var sameDay = metric.ForecastAffinitySameDayFactor ?? 1.0;
             var weekday = metric.ForecastAffinityWeekdayFactor ?? 0.3;
             var weekend = metric.ForecastAffinityWeekendFactor ?? 0.3;
+            var capDetectThreshold = ResolveCappedCorrectionThreshold(metric.ForecastCappedCorrectionThreshold);
+            var capCorrectionFactor = ResolveCappedCorrectionFactor(metric.ForecastCappedCorrectionFactor);
             var fullForecast = this.ComputeFullForecastFromHistory(
                 mainResult.Values,
                 maxSeries,
@@ -312,7 +332,9 @@ namespace poolautoscaler.metrics
                 sameDay,
                 weekday,
                 weekend,
-                slotMinutes);
+                slotMinutes,
+                capDetectThreshold,
+                capCorrectionFactor);
             if (fullForecast == null)
             {
                 return null;
@@ -366,9 +388,19 @@ namespace poolautoscaler.metrics
             var anyCapped = fullForecast.CappedByDayAndHour.TryGetValue(dayOfWeek, out var cappedBySlot) && cappedBySlot.TryGetValue(slotIndex, out var capped) && capped;
             if (!anyCapped && fullForecast.CappedByDayAndHour.TryGetValue(dayOfWeek, out var dayCapped) && dayCapped.Values.Any(c => c))
             {
-                anyCapped = true; // fallback to day max: still mark capped if any slot that day was capped
+                anyCapped = true; // fallback to day max: any slot that day was capped
             }
 
+            if (anyCapped)
+            {
+                this.logger.LogInformation(
+                    "Forecast for {MetricId} at {DayOfWeek} slot {SlotIndex} is based on capped/estimated history (corrected values used in baseline).",
+                    fullForecast.MetricId,
+                    dayOfWeek,
+                    slotIndex);
+            }
+
+            // Capped points are already corrected when building the baseline; we do not invalidate the forecast.
             return new MetricEvalDtoResult
             {
                 ExecutedAggregations = fullForecast.ExecutedAggregations,
@@ -380,21 +412,20 @@ namespace poolautoscaler.metrics
                         Average = value,
                         Maximum = value,
                         Default = value,
-                        Valid = !anyCapped,
-                        InvalidReason = anyCapped
-                            ? "Forecast may be underestimated: metric was constrained by max_available_metric at some points."
-                            : null
+                        Valid = true,
+                        InvalidReason = null
                     }
                 },
-                Valid = !anyCapped,
-                InvalidReason = anyCapped
-                    ? "Forecast may be underestimated: metric was constrained by max at some points."
-                    : null
+                Valid = true,
+                InvalidReason = null
             };
         }
 
         /// <summary>
-        /// Computes the full forecast (all days of week) from pre-fetched history. Expensive; result is cacheable. Use <see cref="GetCurrentForecastValue"/> to get the value to apply for a given time.
+        /// Computes the full baseline forecast (all days of week) from pre-fetched history.
+        /// The baseline is built per slot: for each target day, compatible historical windows are selected via affinity factors,
+        /// and the projected slot value is the maximum observed slot value among compatible windows.
+        /// Expensive; result is cacheable. Use <see cref="GetCurrentForecastValue"/> to get the value to apply for a given time.
         /// </summary>
         /// <param name="mainValues">Main metric time series.</param>
         /// <param name="maxSeries">Max/cap metric time series.</param>
@@ -406,6 +437,8 @@ namespace poolautoscaler.metrics
         /// <param name="weekdayFactor">Affinity weight for weekday-to-weekday. Default 0.3.</param>
         /// <param name="weekendFactor">Affinity weight for weekend-to-weekend. Default 0.3.</param>
         /// <param name="slotMinutes">Slot interval in minutes (15, 30, or 60). Default 60.</param>
+        /// <param name="capDetectThreshold">Ratio threshold (0-1) to classify points as capped against maxSeries. Default 0.95.</param>
+        /// <param name="capCorrectionFactor">Multiplier applied to capped points before baseline aggregation. Default 1.0 (disabled).</param>
         /// <returns>Cacheable full forecast, or null if no daily windows.</returns>
         internal MetricForecastResult? ComputeFullForecastFromHistory(
             List<MetricEvalDtoResultValue> mainValues,
@@ -417,11 +450,15 @@ namespace poolautoscaler.metrics
             double sameDayFactor = 1.0,
             double weekdayFactor = 0.3,
             double weekendFactor = 0.3,
-            int slotMinutes = 60)
+            int slotMinutes = 60,
+            double capDetectThreshold = CapThreshold,
+            double capCorrectionFactor = DefaultCappedCorrectionFactor)
         {
             slotMinutes = ResolveSlotMinutes(slotMinutes);
+            capDetectThreshold = ResolveCappedCorrectionThreshold(capDetectThreshold);
+            capCorrectionFactor = ResolveCappedCorrectionFactor(capCorrectionFactor);
             var slotsPerDay = (24 * 60) / slotMinutes;
-            var dailyWindows = this.BuildDailyWindows(mainValues, maxSeries, startDate, endDate, slotMinutes);
+            var dailyWindows = this.BuildDailyWindows(mainValues, maxSeries, startDate, endDate, slotMinutes, capDetectThreshold, capCorrectionFactor);
             if (!dailyWindows.Any())
             {
                 this.logger.LogDebug("No daily windows with data for metric {MetricId}; cannot produce forecast.", metricId);
@@ -493,6 +530,8 @@ namespace poolautoscaler.metrics
         /// <param name="sameDayFactor">Affinity for same day (used when no Metric config, e.g. tests). Default 1.0.</param>
         /// <param name="weekdayFactor">Affinity for weekday-to-weekday. Default 0.3.</param>
         /// <param name="weekendFactor">Affinity for weekend-to-weekend. Default 0.3.</param>
+        /// <param name="capDetectThreshold">Ratio threshold (0-1) to classify points as capped against maxSeries. Default 0.95.</param>
+        /// <param name="capCorrectionFactor">Multiplier applied to capped points before baseline aggregation. Default 1.0 (disabled).</param>
         /// <returns>Single-value forecast result for the reference time, or invalid result if no data.</returns>
         internal MetricEvalDtoResult? ComputeForecastFromHistory(
             List<MetricEvalDtoResultValue> mainValues,
@@ -504,9 +543,23 @@ namespace poolautoscaler.metrics
             string metricId,
             double sameDayFactor = 1.0,
             double weekdayFactor = 0.3,
-            double weekendFactor = 0.3)
+            double weekendFactor = 0.3,
+            double capDetectThreshold = CapThreshold,
+            double capCorrectionFactor = DefaultCappedCorrectionFactor)
         {
-            var fullForecast = this.ComputeFullForecastFromHistory(mainValues, maxSeries, startDate, endDate, aggregations, metricId, sameDayFactor, weekdayFactor, weekendFactor);
+            var fullForecast = this.ComputeFullForecastFromHistory(
+                mainValues,
+                maxSeries,
+                startDate,
+                endDate,
+                aggregations,
+                metricId,
+                sameDayFactor,
+                weekdayFactor,
+                weekendFactor,
+                slotMinutes: MaxSlotMinutes,
+                capDetectThreshold: capDetectThreshold,
+                capCorrectionFactor: capCorrectionFactor);
             if (fullForecast == null)
             {
                 return new MetricEvalDtoResult
@@ -558,6 +611,30 @@ namespace poolautoscaler.metrics
                         slotsWithData.Min(),
                         slotsWithData.Max(),
                         slotsPerDay);
+                }
+            }
+
+            // Log capped/estimated summary: (day, slot) combinations that were at or near limit in history and were corrected
+            if (forecast.CappedByDayAndHour != null && forecast.CappedByDayAndHour.Any())
+            {
+                var cappedCount = 0;
+                var daysWithCapped = 0;
+                foreach (var kv in forecast.CappedByDayAndHour)
+                {
+                    var slotCount = kv.Value?.Count(c => c.Value) ?? 0;
+                    if (slotCount > 0)
+                    {
+                        daysWithCapped++;
+                        cappedCount += slotCount;
+                    }
+                }
+
+                if (cappedCount > 0)
+                {
+                    this.logger.LogDebug(
+                        "Capped/estimated: {CappedSlots} (day,slot) combination(s) across {DaysWithCapped} day(s) of week had usage at or near limit in history; values were corrected and used in baseline.",
+                        cappedCount,
+                        daysWithCapped);
                 }
             }
 
@@ -718,7 +795,9 @@ namespace poolautoscaler.metrics
             List<MetricEvalDtoResultValue> maxSeries,
             DateTimeOffset startDate,
             DateTimeOffset endDate,
-            int slotMinutes)
+            int slotMinutes,
+            double capDetectThreshold,
+            double capCorrectionFactor)
         {
             var slotsPerDay = (24 * 60) / slotMinutes;
             var results = new List<DailyWindowResult>();
@@ -753,16 +832,17 @@ namespace poolautoscaler.metrics
                         .OrderBy(x => x.dist)
                         .FirstOrDefault();
                     double? maxAtPoint = closest != null ? (closest.x.Maximum ?? closest.x.Average) : null;
-                    var pointCapped = maxAtPoint.HasValue && maxAtPoint.Value > 0 && primary.Value >= CapThreshold * maxAtPoint.Value;
+                    var pointCapped = maxAtPoint.HasValue && maxAtPoint.Value > 0 && primary.Value >= capDetectThreshold * maxAtPoint.Value;
+                    var correctedValue = pointCapped ? primary.Value * capCorrectionFactor : primary.Value;
 
                     if (pointCapped)
                     {
                         windowCapped = true;
                     }
 
-                    if (!windowMax.HasValue || primary.Value > windowMax.Value)
+                    if (!windowMax.HasValue || correctedValue > windowMax.Value)
                     {
-                        windowMax = primary.Value;
+                        windowMax = correctedValue;
                     }
 
                     var minutesFromMidnight = (v.TimeStamp - date).TotalMinutes;
@@ -776,9 +856,9 @@ namespace poolautoscaler.metrics
                         slotIndex = slotsPerDay - 1;
                     }
 
-                    if (!valueBySlot.TryGetValue(slotIndex, out var existing) || primary.Value > existing)
+                    if (!valueBySlot.TryGetValue(slotIndex, out var existing) || correctedValue > existing)
                     {
-                        valueBySlot[slotIndex] = primary.Value;
+                        valueBySlot[slotIndex] = correctedValue;
                     }
 
                     if (pointCapped)
@@ -837,6 +917,16 @@ namespace poolautoscaler.metrics
         private static int ResolveSlotMinutes(int value)
         {
             return Math.Clamp(value, MinSlotMinutes, MaxSlotMinutes);
+        }
+
+        private static double ResolveCappedCorrectionThreshold(double? value)
+        {
+            return Math.Clamp(value ?? CapThreshold, 0, 1);
+        }
+
+        private static double ResolveCappedCorrectionFactor(double? value)
+        {
+            return Math.Max(value ?? DefaultCappedCorrectionFactor, 1);
         }
 
         private static string ResolveMaxMetricName(Metric metric, ScalingConfiguration setting)

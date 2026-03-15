@@ -81,6 +81,175 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
+        public void ForecastModeAnchorWindow_TryApply_OnlyChangesInsideConfiguredWindows()
+        {
+            var strategy = new ForecastModeAnchorWindow();
+            var monday = new Dictionary<int, double>();
+            for (var s = 0; s < 48; s++)
+            {
+                if (s < 6) // 00:00-03:00
+                {
+                    monday[s] = 85;
+                }
+                else if (s < 14) // 03:00-07:00
+                {
+                    monday[s] = 5;
+                }
+                else if (s < 40) // 07:00-20:00
+                {
+                    monday[s] = 11;
+                }
+                else if (s < 46) // 20:00-23:00
+                {
+                    monday[s] = 115;
+                }
+                else // 23:00-24:00
+                {
+                    monday[s] = 85;
+                }
+            }
+
+            var result = new MetricForecastResult
+            {
+                SlotMinutes = 30,
+                ValueByDayAndHour = new Dictionary<DayOfWeek, Dictionary<int, double>>
+                {
+                    [DayOfWeek.Monday] = monday
+                },
+                MetricId = "test"
+            };
+
+            var metric = new Metric
+            {
+                ForecastMode = "AnchorWindow",
+                ForecastAnchorWindows = new List<string> { "20:00-23:00", "03:00-07:00" },
+                ForecastSnapPercentile = 90
+            };
+
+            var applied = strategy.TryApply(result, metric);
+
+            Assert.True(applied);
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.True(result.SnappedValueByDayAndHour.TryGetValue(DayOfWeek.Monday, out var bySlot));
+            Assert.NotNull(bySlot);
+
+            // Expect only two transitions for Monday:
+            // 00:00-03:00 => 85, 03:00-20:00 => 5, 20:00-24:00 => 115.
+            Assert.Equal(85, bySlot[0]);
+            Assert.Equal(5, bySlot[6]);
+            Assert.Equal(5, bySlot[39]);
+            Assert.Equal(115, bySlot[40]);
+            Assert.Equal(115, bySlot[47]);
+
+            var ordered = bySlot.Keys.OrderBy(k => k).Select(k => bySlot[k]).ToList();
+            var transitions = 0;
+            for (var i = 1; i < ordered.Count; i++)
+            {
+                if (!ordered[i].Equals(ordered[i - 1]))
+                {
+                    transitions++;
+                }
+            }
+
+            Assert.Equal(2, transitions);
+        }
+
+        [Fact]
+        public void ForecastModeAnchorWindow_TryApply_CarriesValueAcrossMidnightWithoutWindowSwitch()
+        {
+            var strategy = new ForecastModeAnchorWindow();
+            var monday = new Dictionary<int, double>();
+            var tuesday = new Dictionary<int, double>();
+            for (var s = 0; s < 48; s++)
+            {
+                // Monday window percentiles: 03:00-07:00 => 5, 20:00-23:00 => 115
+                monday[s] = s < 6 ? 85 : (s < 14 ? 5 : (s < 40 ? 5 : (s < 46 ? 115 : 115)));
+
+                // Tuesday day-start baseline differs on purpose; midnight should still carry Monday's final value.
+                // Tuesday window percentiles: 03:00-07:00 => 6, 20:00-23:00 => 81
+                tuesday[s] = s < 6 ? 94 : (s < 14 ? 6 : (s < 40 ? 6 : (s < 46 ? 81 : 81)));
+            }
+
+            var result = new MetricForecastResult
+            {
+                SlotMinutes = 30,
+                ValueByDayAndHour = new Dictionary<DayOfWeek, Dictionary<int, double>>
+                {
+                    [DayOfWeek.Monday] = monday,
+                    [DayOfWeek.Tuesday] = tuesday
+                },
+                MetricId = "test"
+            };
+
+            var metric = new Metric
+            {
+                ForecastMode = "AnchorWindow",
+                ForecastAnchorWindows = new List<string> { "20:00-23:00", "03:00-07:00" },
+                ForecastSnapPercentile = 90
+            };
+
+            var applied = strategy.TryApply(result, metric);
+
+            Assert.True(applied);
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.True(result.SnappedValueByDayAndHour.TryGetValue(DayOfWeek.Monday, out var mon));
+            Assert.True(result.SnappedValueByDayAndHour.TryGetValue(DayOfWeek.Tuesday, out var tue));
+
+            // No switch window at midnight: Tuesday 00:00 should carry Monday 23:30.
+            Assert.Equal(mon[47], tue[0]);
+            Assert.Equal(115, tue[0]);
+            Assert.Equal(115, tue[5]); // carry until 03:00 window starts
+            Assert.Equal(6, tue[6]);   // switch at 03:00 window
+        }
+
+        [Fact]
+        public void ForecastModeAnchorWindow_TryApply_CarriesValueFromSundayToMondayAtMidnight()
+        {
+            var strategy = new ForecastModeAnchorWindow();
+            var sunday = new Dictionary<int, double>();
+            var monday = new Dictionary<int, double>();
+            for (var s = 0; s < 48; s++)
+            {
+                // Sunday window percentiles: 03:00-07:00 => 9, 20:00-23:00 => 31
+                sunday[s] = s < 6 ? 20 : (s < 14 ? 9 : (s < 40 ? 9 : (s < 46 ? 31 : 31)));
+
+                // Monday starts differently in baseline on purpose.
+                monday[s] = s < 6 ? 85 : (s < 14 ? 5 : (s < 40 ? 5 : (s < 46 ? 115 : 115)));
+            }
+
+            var result = new MetricForecastResult
+            {
+                SlotMinutes = 30,
+                ValueByDayAndHour = new Dictionary<DayOfWeek, Dictionary<int, double>>
+                {
+                    [DayOfWeek.Sunday] = sunday,
+                    [DayOfWeek.Monday] = monday
+                },
+                MetricId = "test"
+            };
+
+            var metric = new Metric
+            {
+                ForecastMode = "AnchorWindow",
+                ForecastAnchorWindows = new List<string> { "20:00-23:00", "03:00-07:00" },
+                ForecastSnapPercentile = 90
+            };
+
+            var applied = strategy.TryApply(result, metric);
+
+            Assert.True(applied);
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.True(result.SnappedValueByDayAndHour.TryGetValue(DayOfWeek.Sunday, out var sun));
+            Assert.True(result.SnappedValueByDayAndHour.TryGetValue(DayOfWeek.Monday, out var mon));
+
+            // No switch window at week boundary: Monday 00:00 should carry Sunday 23:30.
+            Assert.Equal(sun[47], mon[0]);
+            Assert.Equal(31, mon[0]);
+            Assert.Equal(31, mon[5]); // carry until 03:00 window starts
+            Assert.Equal(5, mon[6]);  // switch at 03:00 window
+        }
+
+        [Fact]
         public void ForecastModeAnchorWindow_TryApply_WithNoWindows_ReturnsFalse()
         {
             var strategy = new ForecastModeAnchorWindow();
@@ -119,6 +288,56 @@ namespace poolautoscaler.tests
             Assert.Contains("3 windows", result.SnappedParameterSummary);
             Assert.True(result.SnappedValueByDayAndHour.TryGetValue(DayOfWeek.Monday, out var bySlot));
             Assert.True(bySlot.Count > 0);
+        }
+
+        [Fact]
+        public void ForecastModeSnap_TryApply_WithNullStepWindows_UsesDefaultThree()
+        {
+            var strategy = new ForecastModeSnap();
+            var result = new MetricForecastResult
+            {
+                SlotMinutes = 30,
+                ValueByDayAndHour = MakeBaseline(48, 40, 60),
+                MetricId = "test"
+            };
+            var metric = new Metric
+            {
+                ForecastMode = "Snap",
+                ForecastSnapStepWindows = null,
+                ForecastSnapPercentile = 95
+            };
+
+            var applied = strategy.TryApply(result, metric);
+
+            Assert.True(applied);
+            Assert.Equal("Snap", result.SnappedModeName);
+            Assert.Contains("3 windows", result.SnappedParameterSummary);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public void ForecastModeSnap_TryApply_WithZeroOrNegativeStepWindows_ClampsToOneAndApplies(int stepWindows)
+        {
+            var strategy = new ForecastModeSnap();
+            var result = new MetricForecastResult
+            {
+                SlotMinutes = 30,
+                ValueByDayAndHour = MakeBaseline(48, 40, 60),
+                MetricId = "test"
+            };
+            var metric = new Metric
+            {
+                ForecastMode = "Snap",
+                ForecastSnapStepWindows = stepWindows,
+                ForecastSnapPercentile = 95
+            };
+
+            var applied = strategy.TryApply(result, metric);
+
+            Assert.True(applied);
+            Assert.Equal("Snap", result.SnappedModeName);
+            Assert.Contains("1 windows", result.SnappedParameterSummary);
         }
 
         [Fact]

@@ -4,7 +4,7 @@ using poolautoscaler.metrics.Dto;
 
 namespace poolautoscaler.metrics.ForecastModes
 {
-    /// <summary>AnchorWindow mode: time windows (e.g. 20:00-23:00, 03:00-07:00); within each window the value changes once at a dynamic time T chosen to minimize total resource usage (previous segment value until T, then percentile from T to end).</summary>
+    /// <summary>AnchorWindow mode: time windows (e.g. 20:00-23:00, 03:00-07:00). Changes are only applied in configured windows; outside windows, the previous value is carried forward to avoid extra transitions.</summary>
     public sealed class ForecastModeAnchorWindow : IForecastModeStrategy
     {
         /// <inheritdoc />
@@ -135,7 +135,7 @@ namespace poolautoscaler.metrics.ForecastModes
             return segments;
         }
 
-        /// <summary>Compute snapped values: each segment (window or gap) gets one change time T per day. From segment start to T we use the previous segment's value; from T to segment end we use this segment's percentile. T is chosen to minimize total resource usage. Segment percentiles and T are computed per day so change times can differ by day when baseline differs.</summary>
+        /// <summary>Compute snapped values: each window segment gets one change time T per day. From segment start to T we use the previous value; from T to segment end we use this window percentile. Non-window segments do not introduce new transitions (value is carried), except the leading 00:00 gap that keeps its own percentile as the initial day value.</summary>
         /// <param name="baseline">Baseline forecast per (day, slot).</param>
         /// <param name="slotMinutes">Slot duration in minutes.</param>
         /// <param name="slotsPerDay">Number of slots per day.</param>
@@ -237,7 +237,8 @@ namespace poolautoscaler.metrics.ForecastModes
                 }
             }
 
-            // Per-day, per-segment change time T. Windows: use window percentile for the entire window (one value per window, change only at segment boundaries). Gaps: when prevValue > P step down at first slot where baseline <= P; when prevValue < P use P from start.
+            // Per-day, per-segment change time T. Windows: one value per window, starting at segment boundary.
+            // Gaps do not define a change time; they carry the previous value (except the leading 00:00 gap).
             var changeTimeMinByDay = new Dictionary<DayOfWeek, int?[]>();
             foreach (var (day, segP) in segmentPercentileByDay)
             {
@@ -257,49 +258,14 @@ namespace poolautoscaler.metrics.ForecastModes
                         continue;
                     }
 
-                    int prevK;
-                    if (k == 0 && lastWindowSegmentIndex >= 0)
-                    {
-                        prevK = lastWindowSegmentIndex;
-                    }
-                    else
-                    {
-                        prevK = (k - 1 + segments.Count) % segments.Count;
-                    }
-
-                    var prevValue = segP[prevK];
-                    var p = segP[k];
-
-                    if (prevValue < p)
-                    {
-                        changeTimeMin[k] = a;
-                    }
-                    else if (prevValue > p)
-                    {
-                        // Gap: step down at first slot where this day's baseline <= P.
-                        var firstSlotBelowP = (int?)null;
-                        foreach (var slotIndex in bySlot.Keys.OrderBy(x => x))
-                        {
-                            var minuteOfDay = slotIndex * slotMinutes;
-                            if (minuteOfDay >= a && minuteOfDay < b && bySlot[slotIndex] <= p)
-                            {
-                                firstSlotBelowP = minuteOfDay;
-                                break;
-                            }
-                        }
-
-                        changeTimeMin[k] = firstSlotBelowP ?? a;
-                    }
-                    else
-                    {
-                        changeTimeMin[k] = a;
-                    }
+                    changeTimeMin[k] = null;
                 }
 
                 changeTimeMinByDay[day] = changeTimeMin;
             }
 
             var snapped = new Dictionary<DayOfWeek, Dictionary<int, double>>();
+            double? previousDayLastValue = null;
             foreach (var day in days)
             {
                 if (!baseline.TryGetValue(day, out var bySlot) || !segmentPercentileByDay.TryGetValue(day, out var segP) || !changeTimeMinByDay.TryGetValue(day, out var changeTimeMin))
@@ -308,7 +274,7 @@ namespace poolautoscaler.metrics.ForecastModes
                 }
 
                 var outBySlot = new Dictionary<int, double>();
-                foreach (var slotIndex in bySlot.Keys)
+                foreach (var slotIndex in bySlot.Keys.OrderBy(x => x))
                 {
                     var minuteOfDay = slotIndex * slotMinutes;
                     if (minuteOfDay >= ForecastModeHelper.MinutesPerDay)
@@ -324,16 +290,33 @@ namespace poolautoscaler.metrics.ForecastModes
                             continue;
                         }
 
-                        var tOpt = changeTimeMin[k];
-                        if (tOpt.HasValue)
+                        if (!isWindow)
                         {
-                            var t = tOpt.GetValueOrDefault();
-                            var prevK = (k == 0 && lastWindowSegmentIndex >= 0) ? lastWindowSegmentIndex : (k - 1 + segments.Count) % segments.Count;
-                            outBySlot[slotIndex] = minuteOfDay < t ? segP[prevK] : segP[k];
+                            // Keep non-window segments flat by carrying previous value.
+                            // For day-start gap (00:00..), carry value from previous day to avoid a midnight jump.
+                            if (k == 0 && a == 0)
+                            {
+                                outBySlot[slotIndex] = previousDayLastValue ?? segP[k];
+                            }
+                            else
+                            {
+                                var prevK = (k == 0 && lastWindowSegmentIndex >= 0) ? lastWindowSegmentIndex : (k - 1 + segments.Count) % segments.Count;
+                                outBySlot[slotIndex] = segP[prevK];
+                            }
                         }
                         else
                         {
-                            outBySlot[slotIndex] = segP[k];
+                            var tOpt = changeTimeMin[k];
+                            if (tOpt.HasValue)
+                            {
+                                var t = tOpt.GetValueOrDefault();
+                                var prevK = (k == 0 && lastWindowSegmentIndex >= 0) ? lastWindowSegmentIndex : (k - 1 + segments.Count) % segments.Count;
+                                outBySlot[slotIndex] = minuteOfDay < t ? segP[prevK] : segP[k];
+                            }
+                            else
+                            {
+                                outBySlot[slotIndex] = segP[k];
+                            }
                         }
 
                         break;
@@ -343,6 +326,29 @@ namespace poolautoscaler.metrics.ForecastModes
                 if (outBySlot.Any())
                 {
                     snapped[day] = outBySlot;
+                    previousDayLastValue = outBySlot.OrderBy(kv => kv.Key).Last().Value;
+                }
+            }
+
+            // Ensure week continuity: Sunday -> Monday should not jump at midnight when 00:00 belongs to a non-window gap.
+            if (snapped.TryGetValue(DayOfWeek.Sunday, out var sundayOut)
+                && sundayOut.Any()
+                && snapped.TryGetValue(DayOfWeek.Monday, out var mondayOut)
+                && mondayOut.Any()
+                && segments.Any())
+            {
+                var firstSegment = segments[0];
+                if (!firstSegment.IsWindow && firstSegment.StartMin == 0)
+                {
+                    var sundayLastValue = sundayOut.OrderBy(kv => kv.Key).Last().Value;
+                    foreach (var slotIndex in mondayOut.Keys.OrderBy(x => x).ToList())
+                    {
+                        var minuteOfDay = slotIndex * slotMinutes;
+                        if (minuteOfDay >= firstSegment.StartMin && minuteOfDay < firstSegment.EndMin)
+                        {
+                            mondayOut[slotIndex] = sundayLastValue;
+                        }
+                    }
                 }
             }
 

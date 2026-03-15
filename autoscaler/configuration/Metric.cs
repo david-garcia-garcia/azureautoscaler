@@ -114,6 +114,19 @@ namespace poolautoscaler.configuration
         /// </summary>
         public double? ForecastAffinityWeekendFactor { get; set; }
 
+        /// <summary>
+        /// Threshold ratio (0-1) to consider a point potentially capped when comparing main usage to ForecastMetricMax.
+        /// Example: 0.95 means usage >= 95% of available capacity is considered capped. Defaults to 0.95.
+        /// </summary>
+        public double? ForecastCappedCorrectionThreshold { get; set; }
+
+        /// <summary>
+        /// Multiplicative factor applied to capped points to compensate likely under-observation.
+        /// Example: 1.15 means a capped value of 50 is treated as 57.5 for baseline aggregation.
+        /// Values less than 1 are clamped to 1 (no correction). Defaults to 1.2.
+        /// </summary>
+        public double? ForecastCappedCorrectionFactor { get; set; }
+
         // -------------------------------------------------------------------------
         // Forecast snap (optional): transform baseline forecast for scaling decisions.
         // -------------------------------------------------------------------------

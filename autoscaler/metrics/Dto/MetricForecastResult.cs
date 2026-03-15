@@ -14,7 +14,7 @@ namespace poolautoscaler.metrics.Dto
         /// <summary>Forecast value per day of week and slot index. ValueByDayAndHour[day][slotIndex] = projected value.</summary>
         public Dictionary<DayOfWeek, Dictionary<int, double>> ValueByDayAndHour { get; set; } = new Dictionary<DayOfWeek, Dictionary<int, double>>();
 
-        /// <summary>Whether the forecast for that (day, slot) was constrained by the max metric (potentially underestimated).</summary>
+        /// <summary>Whether the forecast for that (day, slot) was built from history that was constrained by the max metric at some points. Those points are corrected (e.g. multiplied by a factor) and used in the baseline; this flag is for logging/information only and does not invalidate the forecast.</summary>
         public Dictionary<DayOfWeek, Dictionary<int, bool>> CappedByDayAndHour { get; set; } = new Dictionary<DayOfWeek, Dictionary<int, bool>>();
 
         /// <summary>Snapped forecast (Anchors or Snap mode). When set, scaling uses this instead of ValueByDayAndHour. Same shape (day, slot) -> value.</summary>

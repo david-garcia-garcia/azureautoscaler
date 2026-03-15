@@ -694,6 +694,122 @@ Metric=storage_used, valid=False, values=5, aggregation=avg, valuedetail=5242880
 
 Invalid values are prefixed with `!` to make them easy to spot. This makes it easy to diagnose when and why Azure metrics are returning bad data.
 
+### Forecast Metrics and ForecastMode
+
+Forecasting is configured at the metric level and works in two phases:
+
+1. **Baseline forecast**: with `ForecastEnable: true`, the autoscaler uses historical data (`ForecastTimeRange`) and slot granularity (`ForecastSlotMinutes`) to produce a projected value per day-of-week and time slot.
+2. **Optional snap transform**: `ForecastMode` can transform the baseline projection before it is used by scaling rules.
+
+#### Baseline forecast details (affinity + capped-point handling)
+
+Baseline projection uses compatible historical days and these affinity parameters:
+
+- `ForecastAffinitySameDayFactor` (default `1.0`): weight when sample day equals target day.
+- `ForecastAffinityWeekdayFactor` (default `0.3`): weight for weekday-to-weekday (different day).
+- `ForecastAffinityWeekendFactor` (default `0.3`): weight for weekend-to-weekend (different day).
+
+The service also supports capped-point compensation using `ForecastMetricMax`:
+
+- `ForecastCappedCorrectionThreshold` (default `0.95`): if observed usage is above this fraction of available capacity, point is considered likely capped.
+- `ForecastCappedCorrectionFactor` (default `1.2`): multiplier applied to capped points before baseline aggregation (for example, `1.20` increases capped points by 20%).
+
+This helps differentiate cases like:
+
+- `50 / 50` capacity (likely capped, should be treated as potentially higher), versus
+- `50 / 100` capacity (not capped, keep value unchanged).
+
+If `ForecastMode` is unset or `Raw`, the baseline is used as-is. The supported values are:
+
+- `Raw`: baseline only (no transform)
+- `Anchors`: fixed interval boundaries (`ForecastSnapAnchorHours`)
+- `AnchorWindow`: configured windows (`ForecastAnchorWindows`) with optimized change moment
+- `Snap`: rolling window percentile using `ForecastSnapStepWindows`
+
+Use the generated forecast metric (`<metricId>_forecast`) in scaling rules when you want decisions driven by projected demand instead of only recent observations.
+
+#### Detailed ForecastMode behavior (Anchors, AnchorWindow, Snap)
+
+`Raw` needs no extra settings; when omitted or set to `Raw`, the baseline forecast is used directly.
+
+##### Anchors (fixed schedule boundaries)
+
+Use `Anchors` when you want stable blocks in the day and predictable transition points.
+
+- Configure `ForecastSnapAnchorHours` with one or more `HH:mm` values.
+- Those values define interval boundaries for the full day.
+- For each interval, autoscaler computes one percentile value from baseline samples in that interval.
+- Every slot inside the interval uses that same snapped value.
+
+**Example (2 daily intervals: 05:00-20:00 and 20:00-05:00):**
+
+```yaml
+Metrics:
+  workload_absolute:
+    Name: custom_workload_absolute
+    Window: 00:05
+    Aggregations: ["Average"]
+    ForecastEnable: true
+    ForecastMetricMax: "total_capacity"
+    ForecastMode: Anchors
+    ForecastSnapAnchorHours: ["05:00", "20:00"]
+    ForecastSnapPercentile: 95
+```
+
+##### AnchorWindow (windows with optimized change moment)
+
+Use `AnchorWindow` when you know important time windows (for example business hours), but you want the switch moment inside each segment to adapt based on observed patterns.
+
+- Configure `ForecastAnchorWindows` as `HH:mm-HH:mm` ranges (you can define multiple windows).
+- Windows can wrap around midnight (for example `20:00-03:00`).
+- Autoscaler computes per-segment percentiles and selects change timing to reduce overprovisioning while respecting percentile constraints.
+- This mode is useful when strict fixed boundaries are too rigid but you still want time-aware behavior.
+
+**Example (night and early-morning windows):**
+
+```yaml
+Metrics:
+  workload_absolute:
+    Name: custom_workload_absolute
+    Window: 00:05
+    Aggregations: ["Average"]
+    ForecastEnable: true
+    ForecastMetricMax: "total_capacity"
+    ForecastMode: AnchorWindow
+    ForecastAnchorWindows: ["20:00-23:00", "03:00-07:00"]
+    ForecastSnapPercentile: 90
+```
+
+##### Snap (rolling look-ahead window)
+
+Use `Snap` when you want smoothing based on the current slot plus upcoming slots, without defining explicit clock windows.
+
+- Configure `ForecastSnapStepWindows` as number of consecutive slots to evaluate (`current + next N-1`).
+- For each slot, autoscaler computes percentile over that rolling window.
+- If `ForecastSnapStepWindows` is missing, default is `3`.
+- If `ForecastSnapStepWindows` is `0` or negative, it is clamped to `1`.
+
+**Example (3-slot look-ahead at 95th percentile):**
+
+```yaml
+Metrics:
+  workload_absolute:
+    Name: custom_workload_absolute
+    Window: 00:05
+    Aggregations: ["Average"]
+    ForecastEnable: true
+    ForecastMetricMax: "total_capacity"
+    ForecastMode: Snap
+    ForecastSnapStepWindows: 3
+    ForecastSnapPercentile: 95
+```
+
+#### Metric selection guidance for stable forecasting
+
+For stable scaling outcomes, prefer forecasting on a metric that represents an **absolute capacity/value** related to the target dimension (for example, available DTU) instead of only relative utilization percentages. Absolute metrics make it easier to map forecast outputs to concrete scale targets and reduce oscillation risk when utilization percent changes due to denominator shifts.
+
+Some resource types do not expose a native absolute metric. In those cases, generate an equivalent signal as a **custom metric** (for example, current capacity, available headroom, or queue-backed demand translated to required units). This tool supports sending and using custom metrics, so forecast inputs can be standardized even when Azure Monitor does not provide the exact built-in metric you need.
+
 ### Scaling Rules
 
 A scaling rule determines a target value for one of the resources dimensions. A dimension is an attribute on the target resources (i.e. DTU for elastic pools, IOPS or MaxSizeBytes for FileShares), consider that:

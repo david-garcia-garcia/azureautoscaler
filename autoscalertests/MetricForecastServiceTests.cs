@@ -131,7 +131,7 @@ namespace poolautoscaler.tests
         [Fact]
         public void ComputeForecastFromHistory_WithFullDay_IncludesAllPointsInDay()
         {
-            // One day: points at 08:00 (20), 10:00 (60), 20:00 (100). Full day used -> max = 100.
+            // One day: points at 08:00 (20), 10:00 (60), 20:00 (100). At-cap point gets corrected by default factor 1.2 -> max = 120.
             var day = new DateTimeOffset(2025, 2, 10, 0, 0, 0, TimeSpan.Zero);
             var main = new List<MetricEvalDtoResultValue>
             {
@@ -153,13 +153,14 @@ namespace poolautoscaler.tests
                 "test_metric");
 
             Assert.NotNull(result);
-            Assert.Equal(100, result.Values[0].Default);
+            Assert.True(result.Values[0].Default.HasValue);
+            Assert.Equal(120d, result.Values[0].Default.Value, 6);
         }
 
         [Fact]
-        public void ComputeForecastFromHistory_WhenUsageAtCap_FlagsAsInvalidAndCapped()
+        public void ComputeForecastFromHistory_WhenUsageAtCap_AppliesCorrectionAndRemainsValid()
         {
-            // One point at 98 with max 100 -> capped (>= 95%). Forecast value still 98 but Valid = false.
+            // One point at 98 with max 100 -> capped (>= 95%). Default correction factor 1.2 => 117.6. Forecast remains valid (we use corrected estimate).
             var day = new DateTimeOffset(2025, 2, 10, 0, 0, 0, TimeSpan.Zero);
             var t = day.AddHours(10);
             var main = new List<MetricEvalDtoResultValue> { Point(t, 98) };
@@ -177,9 +178,68 @@ namespace poolautoscaler.tests
                 "test_metric");
 
             Assert.NotNull(result);
+            Assert.True(result.Valid);
+            Assert.Null(result.InvalidReason);
+            Assert.True(result.Values[0].Default.HasValue);
+            Assert.Equal(117.6d, result.Values[0].Default.Value, 6);
+        }
+
+        [Fact]
+        public void ComputeForecastFromHistory_WhenUsageAtCap_AppliesCappedCorrectionFactor()
+        {
+            var day = new DateTimeOffset(2025, 2, 10, 0, 0, 0, TimeSpan.Zero);
+            var t = day.AddHours(10);
+            var main = new List<MetricEvalDtoResultValue> { Point(t, 50) };
+            var max = new List<MetricEvalDtoResultValue> { Point(t, 50) };
+            var start = day;
+            var end = day.AddDays(1);
+
+            var result = this.service.ComputeForecastFromHistory(
+                main,
+                max,
+                start,
+                end,
+                day.AddHours(12),
+                DefaultAggregations,
+                "test_metric",
+                sameDayFactor: 1.0,
+                weekdayFactor: 0.3,
+                weekendFactor: 0.3,
+                capDetectThreshold: 0.95,
+                capCorrectionFactor: 1.2);
+
+            Assert.NotNull(result);
             Assert.False(result.Valid);
-            Assert.Equal(98, result.Values[0].Default);
-            Assert.Contains("underestimated", result.InvalidReason, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal(60, result.Values[0].Default);
+        }
+
+        [Fact]
+        public void ComputeForecastFromHistory_WhenUsageBelowCapThreshold_DoesNotApplyCorrection()
+        {
+            var day = new DateTimeOffset(2025, 2, 10, 0, 0, 0, TimeSpan.Zero);
+            var t = day.AddHours(10);
+            var main = new List<MetricEvalDtoResultValue> { Point(t, 50) };
+            var max = new List<MetricEvalDtoResultValue> { Point(t, 100) };
+            var start = day;
+            var end = day.AddDays(1);
+
+            var result = this.service.ComputeForecastFromHistory(
+                main,
+                max,
+                start,
+                end,
+                day.AddHours(12),
+                DefaultAggregations,
+                "test_metric",
+                sameDayFactor: 1.0,
+                weekdayFactor: 0.3,
+                weekendFactor: 0.3,
+                capDetectThreshold: 0.95,
+                capCorrectionFactor: 1.2);
+
+            Assert.NotNull(result);
+            Assert.True(result.Valid);
+            Assert.Equal(50, result.Values[0].Default);
         }
 
         [Fact]
@@ -280,9 +340,198 @@ namespace poolautoscaler.tests
 
             Assert.NotNull(result);
 
-            // 96 >= 0.95 * 100 -> capped
-            Assert.False(result.Valid);
-            Assert.Equal(96, result.Values[0].Default);
+            // 96 >= 0.95 * 100 -> capped and corrected by default factor 1.2. Forecast remains valid.
+            Assert.True(result.Valid);
+            Assert.True(result.Values[0].Default.HasValue);
+            Assert.Equal(115.2d, result.Values[0].Default.Value, 6);
+        }
+
+        [Fact]
+        public void ApplySnapForTesting_WithRawMode_DoesNotPopulateSnapped()
+        {
+            var result = BuildBaselineForecastResult();
+            var metric = new Metric { ForecastMode = "Raw" };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.Null(result.SnappedValueByDayAndHour);
+        }
+
+        [Fact]
+        public void ApplySnapForTesting_WithAnchorsMode_PopulatesSnapped()
+        {
+            var result = BuildBaselineForecastResult();
+            var metric = new Metric
+            {
+                ForecastMode = "Anchors",
+                ForecastSnapAnchorHours = new List<string> { "05:00", "20:00" },
+                ForecastSnapPercentile = 90
+            };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.Equal("Anchors", result.SnappedModeName);
+            Assert.Equal(90, result.SnappedPercentile);
+        }
+
+        [Fact]
+        public void ApplySnapForTesting_WithAnchorWindowMode_PopulatesSnapped()
+        {
+            var result = BuildBaselineForecastResult();
+            var metric = new Metric
+            {
+                ForecastMode = "AnchorWindow",
+                ForecastAnchorWindows = new List<string> { "20:00-23:00", "03:00-07:00" },
+                ForecastSnapPercentile = 80
+            };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.Equal("AnchorWindow", result.SnappedModeName);
+            Assert.Equal(80, result.SnappedPercentile);
+        }
+
+        [Fact]
+        public void ApplySnapForTesting_WithSnapMode_PopulatesSnapped()
+        {
+            var result = BuildBaselineForecastResult(slotMinutes: 30);
+            var metric = new Metric
+            {
+                ForecastMode = "Snap",
+                ForecastSnapStepWindows = 3,
+                ForecastSnapPercentile = 95
+            };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.Equal("Snap", result.SnappedModeName);
+            Assert.Equal(95, result.SnappedPercentile);
+            Assert.Contains("3 windows", result.SnappedParameterSummary);
+        }
+
+        [Theory]
+        [InlineData("Unknown")]
+        [InlineData("anchor")]
+        public void ApplySnapForTesting_WithUnrecognizedMode_DoesNotThrowAndDoesNotPopulate(string mode)
+        {
+            var result = BuildBaselineForecastResult();
+            var metric = new Metric { ForecastMode = mode };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.Null(result.SnappedValueByDayAndHour);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void ApplySnapForTesting_WithNullOrEmptyMode_DoesNotPopulate(string? mode)
+        {
+            var result = BuildBaselineForecastResult();
+            var metric = new Metric { ForecastMode = mode };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.Null(result.SnappedValueByDayAndHour);
+        }
+
+        [Theory]
+        [InlineData("anchors", "Anchors")]
+        [InlineData("ANCHORWINDOW", "AnchorWindow")]
+        [InlineData("snap", "Snap")]
+        public void ApplySnapForTesting_WithCaseInsensitiveMode_AppliesCanonicalMode(string mode, string expectedMode)
+        {
+            var result = BuildBaselineForecastResult(slotMinutes: mode.Equals("snap", StringComparison.OrdinalIgnoreCase) ? 30 : 60);
+            var metric = new Metric { ForecastMode = mode };
+
+            if (expectedMode == "Anchors")
+            {
+                metric.ForecastSnapAnchorHours = new List<string> { "05:00", "20:00" };
+            }
+            else if (expectedMode == "AnchorWindow")
+            {
+                metric.ForecastAnchorWindows = new List<string> { "20:00-23:00", "03:00-07:00" };
+            }
+            else
+            {
+                metric.ForecastSnapStepWindows = 3;
+            }
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.Equal(expectedMode, result.SnappedModeName);
+        }
+
+        [Fact]
+        public void ApplySnapForTesting_WithSnapAndNullStepWindows_UsesDefaultThree()
+        {
+            var result = BuildBaselineForecastResult(slotMinutes: 30);
+            var metric = new Metric
+            {
+                ForecastMode = "Snap",
+                ForecastSnapStepWindows = null,
+                ForecastSnapPercentile = 95
+            };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.Equal("Snap", result.SnappedModeName);
+            Assert.Contains("3 windows", result.SnappedParameterSummary);
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(-1)]
+        public void ApplySnapForTesting_WithSnapAndInvalidStepWindows_ClampsToOne(int stepWindows)
+        {
+            var result = BuildBaselineForecastResult(slotMinutes: 30);
+            var metric = new Metric
+            {
+                ForecastMode = "Snap",
+                ForecastSnapStepWindows = stepWindows,
+                ForecastSnapPercentile = 95
+            };
+
+            this.service.ApplySnapForTesting(result, metric);
+
+            Assert.NotNull(result.SnappedValueByDayAndHour);
+            Assert.Equal("Snap", result.SnappedModeName);
+            Assert.Contains("1 windows", result.SnappedParameterSummary);
+        }
+
+        private static MetricForecastResult BuildBaselineForecastResult(int slotMinutes = 60)
+        {
+            var slotsPerDay = (24 * 60) / slotMinutes;
+            var days = new[]
+            {
+                DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+                DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday
+            };
+
+            var baseline = new Dictionary<DayOfWeek, Dictionary<int, double>>();
+            foreach (var day in days)
+            {
+                var bySlot = new Dictionary<int, double>();
+                for (var s = 0; s < slotsPerDay; s++)
+                {
+                    bySlot[s] = 10 + s;
+                }
+
+                baseline[day] = bySlot;
+            }
+
+            return new MetricForecastResult
+            {
+                SlotMinutes = slotMinutes,
+                ValueByDayAndHour = baseline,
+                MetricId = "test_metric"
+            };
         }
     }
 }
