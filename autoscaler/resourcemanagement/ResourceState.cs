@@ -526,6 +526,7 @@ namespace poolautoscaler.resourcemanagement
                 {
                     if (this.LastScale == null)
                     {
+                        this.Logger.LogInformation("Could not deterimine last scale from change history. Initializing to DateTime.MinValue");
                         this.LastScale = DateTime.MinValue;
                     }
 
