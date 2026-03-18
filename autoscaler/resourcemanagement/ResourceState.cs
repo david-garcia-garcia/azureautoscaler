@@ -375,6 +375,26 @@ namespace poolautoscaler.resourcemanagement
         }
 
         /// <summary>
+        /// Optional custom forecast for a metric. When a metric has ForecastEnable, this is called first.
+        /// Return null to use the generic forecast (history-based); return a result to supply a custom forecast (e.g. resource-specific logic).
+        /// </summary>
+        /// <param name="metric">The metric configuration (with ForecastEnable and forecast parameters).</param>
+        /// <param name="setting">The scaling configuration.</param>
+        /// <param name="client">The ARM client.</param>
+        /// <param name="credential">The token credential.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The forecast result, or null to fall back to generic forecast.</returns>
+        public virtual Task<MetricEvalDtoResult?> GetMetricForecast(
+            Metric metric,
+            ScalingConfiguration setting,
+            ArmClient client,
+            TokenCredential credential,
+            CancellationToken cancellationToken)
+        {
+            return Task.FromResult<MetricEvalDtoResult?>(null);
+        }
+
+        /// <summary>
         /// Applies all pending changes to the resource.
         /// </summary>
         /// <param name="operation">The patch operation to apply.</param>

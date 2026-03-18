@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
 using Azure.Core;
 using Azure.Monitor.Query;
@@ -17,6 +18,7 @@ namespace poolautoscaler.metrics
     {
         private readonly TokenCredential credential;
         private readonly ArmClient armClient;
+        private readonly ConcurrentDictionary<string, MetricForecastResult> forecastCache = new ConcurrentDictionary<string, MetricForecastResult>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AzureMonitorMetricsGatherer"/> class.
@@ -153,6 +155,36 @@ namespace poolautoscaler.metrics
                     }
 
                     metrics.Add(metric.Id, metricResult);
+
+                    if (metric.ForecastEnable)
+                    {
+                        MetricEvalDtoResult? forecastResult = await state.GetMetricForecast(metric, setting, this.armClient, this.credential, cancellationToken);
+                        if (forecastResult == null)
+                        {
+                            var forecastService = new MetricForecastService(logger);
+                            var cacheKey = $"{state.Resource.Id}|{setting.Id}|{metric.Id}";
+                            var now = DateTime.UtcNow;
+
+                            if (this.forecastCache.TryGetValue(cacheKey, out var cached) && cached.ExpiresAtUtc > now)
+                            {
+                                forecastResult = forecastService.GetCurrentForecastValue(cached, new DateTimeOffset(now, TimeSpan.Zero));
+                            }
+                            else
+                            {
+                                var fullForecast = await forecastService.GetFullForecastAsync(state, metric, setting, metricsClient, cancellationToken);
+                                if (fullForecast != null)
+                                {
+                                    this.forecastCache[cacheKey] = fullForecast;
+                                    forecastResult = forecastService.GetCurrentForecastValue(fullForecast, new DateTimeOffset(now, TimeSpan.Zero));
+                                }
+                            }
+                        }
+
+                        if (forecastResult != null)
+                        {
+                            metrics.Add(metric.Id + "_forecast", forecastResult);
+                        }
+                    }
                 }
             }
 
