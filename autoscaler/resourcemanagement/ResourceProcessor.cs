@@ -92,8 +92,8 @@ namespace poolautoscaler.resourcemanagement
             catch (Exception ex)
             {
                 resourceState.Logger.LogError(ex, ex.Message);
-                resourceState.Logger.LogWarning("Resource evaluation will be disabled for 1 hour."); // Hardcoded right now
-                resourceState.DisabledUntil["Unhandled exception: " + ex.Message] = DateTime.UtcNow.AddHours(1);
+                resourceState.Logger.LogWarning("Resource evaluation will be disabled for 1 hour.");
+                resourceState.DisabledUntil[ResourceState.UnhandledExceptionPrefix + ex.Message] = DateTime.UtcNow.Add(ResourceState.UnhandledExceptionDisableDuration);
             }
             finally
             {
@@ -466,10 +466,40 @@ namespace poolautoscaler.resourcemanagement
                 }
                 else
                 {
-                    await state.ApplyChanges(patchOperation, stoppingToken);
-                }
+                    state.DisabledUntil[ResourceState.ScaleOperationInProgress] = DateTime.MaxValue;
+                    logger.LogInformation("Dispatching scale operation (background)");
 
-                state.LastScale = this.utcNowProvider();
+                    var patchOp = patchOperation;
+                    var getUtcNow = this.utcNowProvider;
+
+                    _ = Task.Run(
+                            async () =>
+                            {
+                                var resState = state;
+                                var resLogger = resState.Logger;
+                                try
+                                {
+                                    resLogger.LogInformation("Starting scale operation (background)");
+                                    await resState.ApplyChanges(patchOp, stoppingToken);
+                                    resState.LastScale = getUtcNow();
+                                    resLogger.LogInformation("Scale operation completed successfully");
+                                }
+                                catch (OperationCanceledException)
+                                {
+                                    resLogger.LogInformation("Scale operation was cancelled");
+                                }
+                                catch (Exception ex)
+                                {
+                                    resLogger.LogError(ex, "Scale operation failed: {Message}", ex.Message);
+                                    resState.DisabledUntil[ResourceState.UnhandledExceptionPrefix + ex.Message] = DateTime.UtcNow.Add(ResourceState.UnhandledExceptionDisableDuration);
+                                }
+                                finally
+                                {
+                                    resState.DisabledUntil.Remove(ResourceState.ScaleOperationInProgress);
+                                }
+                            },
+                            stoppingToken);
+                }
             }
             else
             {
