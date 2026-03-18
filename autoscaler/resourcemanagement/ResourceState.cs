@@ -239,6 +239,23 @@ namespace poolautoscaler.resourcemanagement
             return this.ResourceId;
         }
 
+        /// <summary>
+        /// Key used in <see cref="DisabledUntil"/> when a scale operation is in progress.
+        /// The key doubles as the user-facing message: "the resource is already running a scale operation".
+        /// </summary>
+        public const string ScaleOperationInProgress = "the resource is already running a scale operation";
+
+        /// <summary>
+        /// Prefix for <see cref="DisabledUntil"/> keys when an unhandled exception disables the resource.
+        /// Full key format: "Unhandled exception: " + ex.Message.
+        /// </summary>
+        public const string UnhandledExceptionPrefix = "Unhandled exception: ";
+
+        /// <summary>
+        /// Duration to disable a resource after an unhandled exception.
+        /// </summary>
+        public static readonly TimeSpan UnhandledExceptionDisableDuration = TimeSpan.FromHours(1);
+
         private const string AutoscalerDisabledTag = "autoscaler.disabled";
 
         private DateTime? LastEvaluation;
