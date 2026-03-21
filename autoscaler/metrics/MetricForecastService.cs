@@ -502,6 +502,9 @@ namespace poolautoscaler.metrics
                 }
             }
 
+            var samplesPerDay = dailyWindows.GroupBy(w => w.DayOfWeek).ToDictionary(g => g.Key, g => g.Count());
+            var buildInfo = new ForecastBuildInfo(startDate, endDate, dailyWindows.Count, samplesPerDay);
+
             var fullForecast = new MetricForecastResult
             {
                 SlotMinutes = slotMinutes,
@@ -509,18 +512,12 @@ namespace poolautoscaler.metrics
                 CappedByDayAndHour = cappedByDayAndHour,
                 ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
                 MetricId = metricId,
-                ExecutedAggregations = aggregations
+                ExecutedAggregations = aggregations,
+                BuildInfo = buildInfo,
             };
 
-            var samplesPerDay = dailyWindows.GroupBy(w => w.DayOfWeek).ToDictionary(g => g.Key, g => g.Count());
             var baselineDiagnosticLines = new List<string>();
-            AppendFullWeeklyForecastLines(
-                baselineDiagnosticLines,
-                fullForecast,
-                startDate,
-                endDate,
-                dailyWindows.Count,
-                samplesPerDay);
+            AppendFullWeeklyForecastLines(baselineDiagnosticLines, fullForecast, buildInfo);
             fullForecast.DiagnosticLines = baselineDiagnosticLines;
             return fullForecast;
         }
@@ -627,13 +624,7 @@ namespace poolautoscaler.metrics
         }
 
         /// <summary>Appends full weekly baseline table and reliability lines (same content as former LogFullWeeklyForecast).</summary>
-        private static void AppendFullWeeklyForecastLines(
-            List<string> lines,
-            MetricForecastResult forecast,
-            DateTimeOffset startDateUtc,
-            DateTimeOffset endDateUtc,
-            int daysWithDataCount,
-            Dictionary<DayOfWeek, int> samplesPerDayOfWeek)
+        private static void AppendFullWeeklyForecastLines(List<string> lines, MetricForecastResult forecast, ForecastBuildInfo buildInfo)
         {
             const int DayColumnWidth = 4;
             const int CellWidth = 7;
@@ -642,11 +633,7 @@ namespace poolautoscaler.metrics
             var slotsPerDay = (24 * 60) / slotMinutes;
             lines.Add($"---------- Full weekly forecast (projected value per day and slot UTC, {slotMinutes}min slots): {forecast.MetricId} ----------");
 
-            var weeksAnalyzed = (endDateUtc - startDateUtc).TotalDays / 7.0;
-            lines.Add(
-                $"Reliability: Analyzed {weeksAnalyzed:F1} weeks ({startDateUtc:yyyy-MM-dd} to {endDateUtc:yyyy-MM-dd} UTC). {daysWithDataCount} days had data.");
-            var samplesByDay = string.Join(", ", days.Select(d => samplesPerDayOfWeek.TryGetValue(d, out var n) ? $"{d}: {n}" : $"{d}: 0"));
-            lines.Add($"Samples per day of week: {samplesByDay}.");
+            buildInfo.AppendReliabilityDiagnosticLines(lines);
             var slotsWithData = forecast.ValueByDayAndHour.Values.Select(d => d.Count).ToList();
             if (slotsWithData.Any())
             {

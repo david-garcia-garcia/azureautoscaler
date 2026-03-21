@@ -90,6 +90,25 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
+        public void ForecastBuildInfo_AppendReliabilityDiagnosticLines_MatchesExpectedShape()
+        {
+            var start = new DateTimeOffset(2025, 2, 1, 0, 0, 0, TimeSpan.Zero);
+            var end = new DateTimeOffset(2025, 2, 8, 0, 0, 0, TimeSpan.Zero);
+            var samples = new Dictionary<DayOfWeek, int> { [DayOfWeek.Monday] = 3, [DayOfWeek.Tuesday] = 2 };
+            var info = new ForecastBuildInfo(start, end, 5, samples);
+            var lines = new List<string>();
+            info.AppendReliabilityDiagnosticLines(lines);
+
+            Assert.Equal(2, lines.Count);
+            Assert.Contains("Reliability:", lines[0], StringComparison.Ordinal);
+            Assert.Contains("2025-02-01", lines[0], StringComparison.Ordinal);
+            Assert.Contains("2025-02-08", lines[0], StringComparison.Ordinal);
+            Assert.Contains("5 days had data", lines[0], StringComparison.Ordinal);
+            Assert.Contains("Samples per day of week:", lines[1], StringComparison.Ordinal);
+            Assert.Contains("Monday: 3", lines[1], StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void EmitDiagnostics_LogsEachLine()
         {
             var dto = new MetricEvalDtoResult

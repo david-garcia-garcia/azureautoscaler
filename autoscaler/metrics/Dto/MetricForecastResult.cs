@@ -40,5 +40,8 @@ namespace poolautoscaler.metrics.Dto
 
         /// <summary>Pre-rendered diagnostic lines: baseline weekly table when the full forecast is computed, then optional snapped section after snap is applied.</summary>
         public IReadOnlyList<string>? DiagnosticLines { get; set; }
+
+        /// <summary>Structured summary of how the baseline was built (history window, sample counts). Populated with <see cref="DiagnosticLines"/> when the full forecast is computed.</summary>
+        public ForecastBuildInfo? BuildInfo { get; set; }
     }
 }
