@@ -37,5 +37,8 @@ namespace poolautoscaler.metrics.Dto
 
         /// <summary>Aggregations used (for building metric result).</summary>
         public IList<MetricAggregationType> ExecutedAggregations { get; set; }
+
+        /// <summary>Pre-rendered diagnostic lines: baseline weekly table when the full forecast is computed, then optional snapped section after snap is applied.</summary>
+        public IReadOnlyList<string>? DiagnosticLines { get; set; }
     }
 }

@@ -174,10 +174,7 @@ namespace poolautoscaler.metrics
             if (fullForecast != null)
             {
                 this.ApplySnap(fullForecast, metric);
-                if (fullForecast.SnappedValueByDayAndHour != null)
-                {
-                    this.LogSnappedForecastTable(fullForecast);
-                }
+                RefreshForecastDiagnosticLines(fullForecast);
             }
 
             return fullForecast;
@@ -341,6 +338,7 @@ namespace poolautoscaler.metrics
             }
 
             this.ApplySnap(fullForecast, metric);
+            RefreshForecastDiagnosticLines(fullForecast);
             return this.GetCurrentForecastValue(fullForecast, now);
         }
 
@@ -393,7 +391,7 @@ namespace poolautoscaler.metrics
 
             if (anyCapped)
             {
-                this.logger.LogInformation(
+                this.logger.LogDebug(
                     "Forecast for {MetricId} at {DayOfWeek} slot {SlotIndex} is based on capped/estimated history (corrected values used in baseline).",
                     fullForecast.MetricId,
                     dayOfWeek,
@@ -401,7 +399,7 @@ namespace poolautoscaler.metrics
             }
 
             // Capped points are already corrected when building the baseline; we do not invalidate the forecast.
-            return new MetricEvalDtoResult
+            var ok = new MetricEvalDtoResult
             {
                 ExecutedAggregations = fullForecast.ExecutedAggregations,
                 Values = new List<MetricEvalDtoResultValue>
@@ -419,6 +417,12 @@ namespace poolautoscaler.metrics
                 Valid = true,
                 InvalidReason = null
             };
+            if (fullForecast.DiagnosticLines != null && fullForecast.DiagnosticLines.Count > 0)
+            {
+                ok.Diagnostics = new MetricEvaluationDiagnostics(fullForecast.DiagnosticLines);
+            }
+
+            return ok;
         }
 
         /// <summary>
@@ -508,12 +512,16 @@ namespace poolautoscaler.metrics
                 ExecutedAggregations = aggregations
             };
 
-            var buildInfo = new ForecastBuildInfo(
+            var samplesPerDay = dailyWindows.GroupBy(w => w.DayOfWeek).ToDictionary(g => g.Key, g => g.Count());
+            var baselineDiagnosticLines = new List<string>();
+            AppendFullWeeklyForecastLines(
+                baselineDiagnosticLines,
+                fullForecast,
                 startDate,
                 endDate,
                 dailyWindows.Count,
-                dailyWindows.GroupBy(w => w.DayOfWeek).ToDictionary(g => g.Key, g => g.Count()));
-            this.LogFullWeeklyForecast(fullForecast, buildInfo);
+                samplesPerDay);
+            fullForecast.DiagnosticLines = baselineDiagnosticLines;
             return fullForecast;
         }
 
@@ -571,50 +579,81 @@ namespace poolautoscaler.metrics
                 };
             }
 
+            RefreshForecastDiagnosticLines(fullForecast);
             return this.GetCurrentForecastValue(fullForecast, referenceTimeUtc);
         }
 
-        /// <summary>Logs the full weekly forecast (every day of week, every slot) at Debug level, plus reliability summary. Tables are split into at most <see cref="MaxColumnsPerTable"/> columns each.</summary>
-        private void LogFullWeeklyForecast(MetricForecastResult forecast, ForecastBuildInfo? buildInfo = null)
+        /// <summary>
+        /// Updates <see cref="MetricForecastResult.DiagnosticLines"/> to baseline (if present) plus optional snapped tables.
+        /// Baseline lines are produced in <see cref="ComputeFullForecastFromHistory"/>; this method strips any prior snapped block and re-appends it when snap data exists.
+        /// </summary>
+        /// <param name="forecast">The full forecast with baseline <see cref="MetricForecastResult.DiagnosticLines"/> already set.</param>
+        internal static void RefreshForecastDiagnosticLines(MetricForecastResult forecast)
         {
-            if (!this.LogFullWeeklyForecastEnabled())
+            if (forecast?.DiagnosticLines == null || forecast.DiagnosticLines.Count == 0)
             {
                 return;
             }
 
+            var lines = StripSnappedDiagnosticSection(forecast.DiagnosticLines);
+            if (forecast.SnappedValueByDayAndHour != null)
+            {
+                AppendSnappedForecastTableLines(lines, forecast);
+            }
+
+            forecast.DiagnosticLines = lines;
+        }
+
+        /// <summary>Removes a previously appended snapped section so <see cref="RefreshForecastDiagnosticLines"/> can be idempotent.</summary>
+        private static List<string> StripSnappedDiagnosticSection(IReadOnlyList<string> lines)
+        {
+            const string endBaseline = "---------- End full weekly forecast ----------";
+            var endIdx = -1;
+            for (var i = 0; i < lines.Count; i++)
+            {
+                if (lines[i] == endBaseline)
+                {
+                    endIdx = i;
+                    break;
+                }
+            }
+
+            if (endIdx < 0)
+            {
+                return lines.ToList();
+            }
+
+            return lines.Take(endIdx + 1).ToList();
+        }
+
+        /// <summary>Appends full weekly baseline table and reliability lines (same content as former LogFullWeeklyForecast).</summary>
+        private static void AppendFullWeeklyForecastLines(
+            List<string> lines,
+            MetricForecastResult forecast,
+            DateTimeOffset startDateUtc,
+            DateTimeOffset endDateUtc,
+            int daysWithDataCount,
+            Dictionary<DayOfWeek, int> samplesPerDayOfWeek)
+        {
             const int DayColumnWidth = 4;
             const int CellWidth = 7;
             var days = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday };
             var slotMinutes = forecast.SlotMinutes;
             var slotsPerDay = (24 * 60) / slotMinutes;
-            this.logger.LogDebug(
-                "---------- Full weekly forecast (projected value per day and slot UTC, {SlotMin}min slots): {MetricId} ----------",
-                slotMinutes,
-                forecast.MetricId);
+            lines.Add($"---------- Full weekly forecast (projected value per day and slot UTC, {slotMinutes}min slots): {forecast.MetricId} ----------");
 
-            if (buildInfo != null)
+            var weeksAnalyzed = (endDateUtc - startDateUtc).TotalDays / 7.0;
+            lines.Add(
+                $"Reliability: Analyzed {weeksAnalyzed:F1} weeks ({startDateUtc:yyyy-MM-dd} to {endDateUtc:yyyy-MM-dd} UTC). {daysWithDataCount} days had data.");
+            var samplesByDay = string.Join(", ", days.Select(d => samplesPerDayOfWeek.TryGetValue(d, out var n) ? $"{d}: {n}" : $"{d}: 0"));
+            lines.Add($"Samples per day of week: {samplesByDay}.");
+            var slotsWithData = forecast.ValueByDayAndHour.Values.Select(d => d.Count).ToList();
+            if (slotsWithData.Any())
             {
-                var weeksAnalyzed = buildInfo.TotalWeeksAnalyzed;
-                this.logger.LogDebug(
-                    "Reliability: Analyzed {Weeks:F1} weeks ({Start:yyyy-MM-dd} to {End:yyyy-MM-dd} UTC). {DaysWithData} days had data.",
-                    weeksAnalyzed,
-                    buildInfo.StartDateUtc,
-                    buildInfo.EndDateUtc,
-                    buildInfo.DaysWithDataCount);
-                var samplesByDay = string.Join(", ", days.Select(d => buildInfo.SamplesPerDayOfWeek.TryGetValue(d, out var n) ? $"{d}: {n}" : $"{d}: 0"));
-                this.logger.LogDebug("Samples per day of week: {SamplesByDay}.", samplesByDay);
-                var slotsWithData = forecast.ValueByDayAndHour.Values.Select(d => d.Count).ToList();
-                if (slotsWithData.Any())
-                {
-                    this.logger.LogDebug(
-                        "Forecast coverage: each day has between {MinSlots} and {MaxSlots} slots with data (of {SlotsPerDay}).",
-                        slotsWithData.Min(),
-                        slotsWithData.Max(),
-                        slotsPerDay);
-                }
+                lines.Add(
+                    $"Forecast coverage: each day has between {slotsWithData.Min()} and {slotsWithData.Max()} slots with data (of {slotsPerDay}).");
             }
 
-            // Log capped/estimated summary: (day, slot) combinations that were at or near limit in history and were corrected
             if (forecast.CappedByDayAndHour != null && forecast.CappedByDayAndHour.Any())
             {
                 var cappedCount = 0;
@@ -631,10 +670,8 @@ namespace poolautoscaler.metrics
 
                 if (cappedCount > 0)
                 {
-                    this.logger.LogDebug(
-                        "Capped/estimated: {CappedSlots} (day,slot) combination(s) across {DaysWithCapped} day(s) of week had usage at or near limit in history; values were corrected and used in baseline.",
-                        cappedCount,
-                        daysWithCapped);
+                    lines.Add(
+                        $"Capped/estimated: {cappedCount} (day,slot) combination(s) across {daysWithCapped} day(s) of week had usage at or near limit in history; values were corrected and used in baseline.");
                 }
             }
 
@@ -644,7 +681,7 @@ namespace poolautoscaler.metrics
                 var header = "Day".PadRight(DayColumnWidth) + string.Join(
                     string.Empty,
                     Enumerable.Range(0, colCount).Select(i => FormatSlotLabel(colStart + i, slotMinutes).PadLeft(CellWidth)));
-                this.logger.LogDebug(header);
+                lines.Add(header);
                 foreach (var day in days)
                 {
                     var bySlot = forecast.ValueByDayAndHour.TryGetValue(day, out var d) ? d : null;
@@ -656,22 +693,22 @@ namespace poolautoscaler.metrics
                         row += val.PadLeft(CellWidth);
                     }
 
-                    this.logger.LogDebug(row);
+                    lines.Add(row);
                 }
 
                 if (colStart + colCount < slotsPerDay)
                 {
-                    this.logger.LogDebug(string.Empty);
+                    lines.Add(string.Empty);
                 }
             }
 
-            this.logger.LogDebug("---------- End full weekly forecast ----------");
+            lines.Add("---------- End full weekly forecast ----------");
         }
 
-        /// <summary>Logs the snapped forecast table (same format as baseline) right after the regular forecast. Only called when SnappedValueByDayAndHour is set.</summary>
-        private void LogSnappedForecastTable(MetricForecastResult forecast)
+        /// <summary>Appends snapped forecast table lines (same content as former LogSnappedForecastTable).</summary>
+        private static void AppendSnappedForecastTableLines(List<string> lines, MetricForecastResult forecast)
         {
-            if (forecast.SnappedValueByDayAndHour == null || !this.LogFullWeeklyForecastEnabled())
+            if (forecast.SnappedValueByDayAndHour == null)
             {
                 return;
             }
@@ -697,10 +734,7 @@ namespace poolautoscaler.metrics
 
             details.Add($"{slotMinutes}min slots");
             var detailsLine = string.Join(", ", details);
-            this.logger.LogDebug(
-                "---------- Snapped forecast ({Details}): {MetricId} ----------",
-                detailsLine,
-                forecast.MetricId);
+            lines.Add($"---------- Snapped forecast ({detailsLine}): {forecast.MetricId} ----------");
 
             for (var colStart = 0; colStart < slotsPerDay; colStart += MaxColumnsPerTable)
             {
@@ -708,7 +742,7 @@ namespace poolautoscaler.metrics
                 var header = "Day".PadRight(DayColumnWidth) + string.Join(
                     string.Empty,
                     Enumerable.Range(0, colCount).Select(i => FormatSlotLabel(colStart + i, slotMinutes).PadLeft(CellWidth)));
-                this.logger.LogDebug(header);
+                lines.Add(header);
                 foreach (var day in days)
                 {
                     var bySlot = forecast.SnappedValueByDayAndHour.TryGetValue(day, out var d) ? d : null;
@@ -720,16 +754,16 @@ namespace poolautoscaler.metrics
                         row += val.PadLeft(CellWidth);
                     }
 
-                    this.logger.LogDebug(row);
+                    lines.Add(row);
                 }
 
                 if (colStart + colCount < slotsPerDay)
                 {
-                    this.logger.LogDebug(string.Empty);
+                    lines.Add(string.Empty);
                 }
             }
 
-            this.logger.LogDebug("---------- End snapped forecast ----------");
+            lines.Add("---------- End snapped forecast ----------");
         }
 
         /// <summary>Fills SnappedValueByDayAndHour from baseline (ValueByDayAndHour) using metric's snap config. Does not modify baseline.</summary>
@@ -781,12 +815,6 @@ namespace poolautoscaler.metrics
             var h = totalMinutes / 60;
             var m = totalMinutes % 60;
             return slotMinutes < 60 ? $"{h:D2}:{m:D2}" : h.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        /// <summary>Override in tests to enable full weekly forecast debug logging. Production uses LogDebug so it depends on log level.</summary>
-        private bool LogFullWeeklyForecastEnabled()
-        {
-            return true;
         }
 
         /// <summary>Builds daily windows: for each day in range, uses all points in that calendar day (full 24h) and computes per-slot max and capped flag.</summary>
@@ -957,31 +985,5 @@ namespace poolautoscaler.metrics
             public Dictionary<int, bool> CappedByHour { get; set; } = new Dictionary<int, bool>();
         }
 
-        /// <summary>Summary of how the forecast was built, for reliability debug output.</summary>
-        private sealed class ForecastBuildInfo
-        {
-            public ForecastBuildInfo(
-                DateTimeOffset startDateUtc,
-                DateTimeOffset endDateUtc,
-                int daysWithDataCount,
-                Dictionary<DayOfWeek, int> samplesPerDayOfWeek)
-            {
-                this.StartDateUtc = startDateUtc;
-                this.EndDateUtc = endDateUtc;
-                this.DaysWithDataCount = daysWithDataCount;
-                this.SamplesPerDayOfWeek = samplesPerDayOfWeek;
-                this.TotalWeeksAnalyzed = (endDateUtc - startDateUtc).TotalDays / 7.0;
-            }
-
-            public DateTimeOffset StartDateUtc { get; }
-
-            public DateTimeOffset EndDateUtc { get; }
-
-            public int DaysWithDataCount { get; }
-
-            public double TotalWeeksAnalyzed { get; }
-
-            public Dictionary<DayOfWeek, int> SamplesPerDayOfWeek { get; }
-        }
     }
 }

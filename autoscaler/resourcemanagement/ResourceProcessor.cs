@@ -294,6 +294,7 @@ namespace poolautoscaler.resourcemanagement
 
             state.LastDisabledMessageLogged = DateTime.MinValue;
             var capturingLogger = new CapturingLogger(logger);
+            var metricResultsWithDiagnostics = new List<MetricEvalDtoResult>();
 
             foreach (var setting in scalingConfigurations)
             {
@@ -325,6 +326,12 @@ namespace poolautoscaler.resourcemanagement
                         aggregationType,
                         valuesDetail,
                         invalidReason);
+                    if (metricResult.Diagnostics != null)
+                    {
+                        // Use resource logger (not capturing) so large forecast tables are not duplicated by Replay on scale.
+                        metricResult.EmitDiagnostics(logger, LogLevel.Debug);
+                        metricResultsWithDiagnostics.Add(metricResult);
+                    }
                 }
 
                 capturingLogger.LogDebug(
@@ -455,6 +462,11 @@ namespace poolautoscaler.resourcemanagement
             if (patchOperation.HasChanges)
             {
                 capturingLogger.Replay(LogLevel.Information, LogLevel.Debug);
+
+                foreach (var metricWithDiag in metricResultsWithDiagnostics)
+                {
+                    metricWithDiag.EmitDiagnostics(logger, LogLevel.Information);
+                }
 
                 logger.LogInformation("Existing resource state {State}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
                 logger.LogInformation("Target resource state: {State}", HelperExtensions.SerializeSimple(patchOperation.PatchData));
