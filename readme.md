@@ -2,6 +2,70 @@
 
 Azure Autoscaler is a powerful, self-hosted solution for automatically scaling Azure resources based on real-time metrics, schedules, and usage forecasts. It helps optimize costs while maintaining performance for various Azure services.
 
+## Table of contents
+
+**Overview**
+
+- [Why Azure Autoscaler?](#why-azure-autoscaler)
+- [Features](#features)
+- [Supported Resource Types](#supported-resource-types)
+- [Licensing](#licensing)
+  - [Prebuilt Docker Images](#prebuilt-docker-images)
+  - [Building Your Own Images](#building-your-own-images)
+  - [Why Licensing?](#why-licensing)
+
+**Setup**
+
+- [Installation](#installation)
+  - [Locally with docker](#locally-with-docker)
+  - [For kubernetes (with terraform examples)](#for-kubernetes-with-terraform-examples)
+  - [For container services](#for-container-services)
+
+**Configuration**
+
+- [The configuration file](#the-configuration-file)
+  - [Configuration lifecycle](#configuration-lifecycle)
+- [Global structure](#global-structure)
+  - [Resource-Specific Logging](#resource-specific-logging)
+- [Resource structure](#resource-structure)
+  - [Scaling configurations](#scaling-configurations)
+  - [Resource Expansion](#resource-expansion)
+  - [Resource Tags](#resource-tags)
+  - [Metrics](#metrics)
+  - [Using the Default Property in Rules](#using-the-default-property-in-rules)
+  - [Metric Validation](#metric-validation)
+  - [Forecast Metrics and ForecastMode](#forecast-metrics-and-forecastmode)
+    - [Baseline forecast details (affinity + capped-point handling)](#baseline-forecast-details-affinity--capped-point-handling)
+    - [Detailed ForecastMode behavior (Anchors, AnchorWindow, Snap)](#detailed-forecastmode-behavior-anchors-anchorwindow-snap)
+    - [Metric selection guidance for stable forecasting](#metric-selection-guidance-for-stable-forecasting)
+  - [Scaling Rules](#scaling-rules)
+  - [Scaling Rule Strategy Fixed](#scaling-rule-strategy-fixed)
+  - [Scaling Rule Strategy Autoadjust](#scaling-rule-strategy-autoadjust)
+
+**Examples**
+
+- [Examples](#examples)
+- [AKS Node Pool](#aks-node-pool)
+- [SQL Elastic Pool](#sql-elastic-pool)
+- [SQL Database](#sql-database)
+  - [DTU Scaling Example](#dtu-scaling-example)
+  - [MaxDataBytes Scaling Example](#maxdatabytes-scaling-example)
+- [Custom Metrics](#custom-metrics)
+  - [CustomMetrics configuration options](#custommetrics-configuration-options)
+  - [DataExpression – available data in `data`](#dataexpression--available-data-in-data)
+- [PostgreSQL Flexible Server](#postgresql-flexible-server)
+- [MySQL Flexible Server](#mysql-flexible-server)
+- [Azure Files](#azure-files)
+- [Azure DevOps Parallel Jobs](#azure-devops-parallel-jobs)
+  - [Prerequisites](#prerequisites)
+  - [Firewall Requirements](#firewall-requirements)
+  - [Resource ID Format](#resource-id-format)
+  - [Supported Dimensions](#supported-dimensions)
+  - [Custom Metrics](#custom-metrics-1)
+  - [Example Configuration](#example-configuration)
+
+*Anchors match GitHub’s Markdown heading IDs (e.g. on github.com). If a link does not jump correctly in another viewer, use that viewer’s heading outline or search.*
+
 ## Why Azure Autoscaler?
 
 Azure provides built-in autoscaling capabilities for some resources, but there are significant gaps that Azure Autoscaler addresses:
