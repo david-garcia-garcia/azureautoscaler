@@ -35,5 +35,10 @@ namespace poolautoscaler.metrics.Dto
             this.ExecutedAggregations != null && this.ExecutedAggregations.Any()
                 ? this.ExecutedAggregations.First()
                 : null;
+
+        /// <summary>
+        /// Optional diagnostics (e.g. full forecast tables) emitted at Debug during evaluation and at Information when a scale applies.
+        /// </summary>
+        public MetricEvaluationDiagnostics? Diagnostics { get; set; }
     }
 }

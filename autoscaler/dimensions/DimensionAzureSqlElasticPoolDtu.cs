@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resources.MssqlElasticPool;
+using poolautoscaler.utils;
 
 namespace poolautoscaler.dimensions
 {
@@ -47,7 +48,7 @@ namespace poolautoscaler.dimensions
         /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
-            if (int.TryParse(dimensionValue1, out var value1) && int.TryParse(dimensionValue2, out var value2))
+            if (IntParseUtils.TryParseInt(dimensionValue1, out var value1) && IntParseUtils.TryParseInt(dimensionValue2, out var value2))
             {
                 return value1.CompareTo(value2);
             }
@@ -79,7 +80,7 @@ namespace poolautoscaler.dimensions
 
             var capacityValues = MssqlElasticPoolResourceStateHelper.GetCapacityValues(elasticPool.Data.Sku);
 
-            int position = Array.IndexOf(capacityValues, int.Parse(value));
+            int position = Array.IndexOf(capacityValues, IntParseUtils.ParseInt(value));
 
             if (position < capacityValues.Length - 1)
             {
@@ -126,7 +127,7 @@ namespace poolautoscaler.dimensions
 
             var capacityValues = MssqlElasticPoolResourceStateHelper.GetCapacityValues(elasticPool.Data.Sku);
 
-            var position = Array.IndexOf(capacityValues, int.Parse(value));
+            var position = Array.IndexOf(capacityValues, IntParseUtils.ParseInt(value));
 
             if (position == 0)
             {
@@ -146,25 +147,29 @@ namespace poolautoscaler.dimensions
             TokenCredential credential,
             string value)
         {
-            if (!(resource.Resource is ElasticPoolResource elasticPool))
+            if (resource.Resource is not ElasticPoolResource)
             {
                 throw new ArgumentException($"Resource is not {nameof(ElasticPoolResource)}.");
             }
 
+            if (resource is not MssqlElasticPoolResourceState poolState)
+            {
+                throw new ArgumentException($"Resource is not {nameof(MssqlElasticPoolResourceState)}.");
+            }
+
             this.ValidateDimensionValue(value);
 
-            (resource as MssqlElasticPoolResourceState).SetDtuCapacity(int.Parse(value));
+            poolState.SetDtuCapacity(IntParseUtils.ParseInt(value));
         }
 
         private void ValidateDimensionValue(string value)
         {
-            if (int.TryParse(value, out var parsed))
+            if (IntParseUtils.TryParseInt(value, out var parsed))
             {
                 if (MssqlElasticPoolResourceStateHelper.StandardDtuCapacities.Contains(parsed)
                     || MssqlElasticPoolResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
                 {
                     return;
-
                 }
             }
 
