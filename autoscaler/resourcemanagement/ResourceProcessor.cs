@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Azure.Core;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
@@ -492,9 +493,13 @@ namespace poolautoscaler.resourcemanagement
                                 try
                                 {
                                     resLogger.LogInformation("Starting scale operation (background)");
+                                    var scaleStopwatch = Stopwatch.StartNew();
                                     await resState.ApplyChanges(patchOp, stoppingToken);
+                                    scaleStopwatch.Stop();
                                     resState.LastScale = getUtcNow();
-                                    resLogger.LogInformation("Scale operation completed successfully");
+                                    resLogger.LogInformation(
+                                        "Scale operation completed successfully after {Elapsed}",
+                                        scaleStopwatch.Elapsed.ToString(@"hh\:mm\:ss"));
                                 }
                                 catch (OperationCanceledException)
                                 {
