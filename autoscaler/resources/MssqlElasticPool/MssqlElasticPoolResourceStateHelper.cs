@@ -88,7 +88,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
             {
                 case "StandardPool": return StandardDtuCapacities;
                 case "PremiumPool": return PremiumDtuCapacities;
-                default: throw new ArgumentException("Invalid SKU.");
+                default: throw new ArgumentException($"Invalid elastic pool SKU for DTU scaling: Name='{sku.Name}'. Expected StandardPool or PremiumPool.");
             }
         }
 
@@ -101,7 +101,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
             {
                 case "StandardPool": return StandardDataMaxSize;
                 case "PremiumPool": return PremiumDataMaxSize;
-                default: throw new ArgumentException("Invalid SKU.");
+                default: throw new ArgumentException($"Invalid elastic pool SKU for storage capacity: Name='{sku.Name}'. Expected StandardPool or PremiumPool.");
             }
         }
 

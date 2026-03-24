@@ -132,7 +132,8 @@ namespace poolautoscaler.dimensions
                 return;
             }
 
-            throw new ArgumentException("DimensionMySqlFlexibleServerSku value not supported.");
+            throw new ArgumentException(
+                $"MySQL Flexible Server SKU value '{value}' is not supported. It must match a known flexible server SKU name.");
         }
     }
 }

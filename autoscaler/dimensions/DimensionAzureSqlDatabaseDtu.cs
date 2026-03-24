@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.resources.MsSqlDatabase;
+using poolautoscaler.utils;
 
 namespace poolautoscaler.dimensions
 {
@@ -87,7 +88,7 @@ namespace poolautoscaler.dimensions
         /// <inheritdoc/>
         public int Compare(ArmResource resource, string dimensionValue1, string dimensionValue2)
         {
-            if (int.TryParse(dimensionValue1, out var value1) && int.TryParse(dimensionValue2, out var value2))
+            if (IntParseUtils.TryParseInt(dimensionValue1, out var value1) && IntParseUtils.TryParseInt(dimensionValue2, out var value2))
             {
                 return value1.CompareTo(value2);
             }
@@ -116,7 +117,7 @@ namespace poolautoscaler.dimensions
 
             var capacityValues = MsSqlDatabaseResourceStateHelper.GetCapacityValues(sqlDatabase.Data.Sku);
 
-            int position = Array.IndexOf(capacityValues, int.Parse(value));
+            int position = Array.IndexOf(capacityValues, IntParseUtils.ParseInt(value));
 
             if (position < capacityValues.Length - 1)
             {
@@ -148,7 +149,7 @@ namespace poolautoscaler.dimensions
 
             var capacityValues = MsSqlDatabaseResourceStateHelper.GetCapacityValues(sqlDatabase.Data.Sku);
 
-            int position = Array.IndexOf(capacityValues, int.Parse(value));
+            int position = Array.IndexOf(capacityValues, IntParseUtils.ParseInt(value));
 
             if (position == 0)
             {
@@ -174,22 +175,25 @@ namespace poolautoscaler.dimensions
 
             this.ValidateDimensionValue(value);
 
-            (resource as MsSqlDatabaseResourceState).SetDtuCapacity(int.Parse(value));
+            (resource as MsSqlDatabaseResourceState).SetDtuCapacity(IntParseUtils.ParseInt(value));
         }
 
         private void ValidateDimensionValue(string value)
         {
-            if (int.TryParse(value, out var parsed))
+            if (!IntParseUtils.TryParseInt(value, out var parsed))
             {
-                if (MsSqlDatabaseResourceStateHelper.StandardDtuCapacities.Contains(parsed)
-                    || MsSqlDatabaseResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
-                {
-                    return;
-
-                }
+                throw new ArgumentException(
+                    $"Azure SQL database DTU value '{value}' is not supported: value is not a valid integer.");
             }
 
-            throw new ArgumentException("DimensionAzureSqlElasticPoolCapacity value not supported.");
+            if (MsSqlDatabaseResourceStateHelper.StandardDtuCapacities.Contains(parsed)
+                || MsSqlDatabaseResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
+            {
+                return;
+            }
+
+            throw new ArgumentException(
+                $"Azure SQL database DTU value '{value}' (capacity {parsed}) is not a supported Standard or Premium DTU tier.");
         }
     }
 }

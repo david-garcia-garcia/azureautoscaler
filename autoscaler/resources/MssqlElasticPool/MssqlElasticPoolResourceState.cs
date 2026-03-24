@@ -140,7 +140,8 @@ namespace poolautoscaler.resources.MssqlElasticPool
         {
             if (!(operation.PatchData is MssqlElasticPoolState internalPatch))
             {
-                throw new Exception();
+                throw new ArgumentException(
+                    $"Patch data must be {nameof(MssqlElasticPoolState)}; actual type was '{operation.PatchData?.GetType().FullName ?? "null"}'.");
             }
 
             ElasticPoolPatch patch = new ElasticPoolPatch();
