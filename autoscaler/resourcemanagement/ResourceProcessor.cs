@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Azure.Core;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
@@ -8,6 +7,8 @@ using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.strategies;
 using poolautoscaler.utils;
+using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 
 namespace poolautoscaler.resourcemanagement
 {
@@ -442,7 +443,18 @@ namespace poolautoscaler.resourcemanagement
                         await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
                     }
 
-                    await dimension.SetDimensionValue(stoppingToken, state, capturingLogger, this.credential, targetDimensionValue);
+                    try
+                    {
+                        await dimension.SetDimensionValue(stoppingToken, state, capturingLogger, this.credential, targetDimensionValue);
+                    }
+                    catch (ArgumentException argumentException)
+                    {
+                        // Replay the capturing logger details to shine some light on what generated targetDimensionValue which is probably
+                        // the cause of the failing call to SetDimensionValue. There is not much control on how they are generated
+                        // as they come from externally configured lambdas most of the time.
+                        capturingLogger.Replay(LogLevel.Warning, LogLevel.Debug);
+                        ExceptionDispatchInfo.Capture(argumentException).Throw();
+                    }
 
                     var newDimensionRequest = dimension.GetRequestedDimensionValue(state);
 
