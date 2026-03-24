@@ -164,16 +164,20 @@ namespace poolautoscaler.dimensions
 
         private void ValidateDimensionValue(string value)
         {
-            if (IntParseUtils.TryParseInt(value, out var parsed))
+            if (!IntParseUtils.TryParseInt(value, out var parsed))
             {
-                if (MssqlElasticPoolResourceStateHelper.StandardDtuCapacities.Contains(parsed)
-                    || MssqlElasticPoolResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
-                {
-                    return;
-                }
+                throw new ArgumentException(
+                    $"Azure SQL elastic pool DTU value '{value}' is not supported: value is not a valid integer.");
             }
 
-            throw new ArgumentException("DimensionAzureSqlElasticPoolCapacity value not supported.");
+            if (MssqlElasticPoolResourceStateHelper.StandardDtuCapacities.Contains(parsed)
+                || MssqlElasticPoolResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
+            {
+                return;
+            }
+
+            throw new ArgumentException(
+                $"Azure SQL elastic pool DTU value '{value}' (capacity {parsed}) is not a supported StandardPool or PremiumPool DTU tier.");
         }
     }
 }

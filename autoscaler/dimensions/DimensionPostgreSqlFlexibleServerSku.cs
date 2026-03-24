@@ -129,7 +129,8 @@ namespace poolautoscaler.dimensions
                 return;
             }
 
-            throw new ArgumentException("DimensionPostgreSqlFlexibleServerSku value not supported.");
+            throw new ArgumentException(
+                $"PostgreSQL Flexible Server SKU value '{value}' is not supported. It must match a known flexible server SKU name.");
         }
     }
 }

@@ -187,7 +187,8 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
 
             if (!(operation.PatchData is Dto.MySqlFlexibleServerState internalPatch))
             {
-                throw new ArgumentException();
+                throw new ArgumentException(
+                    $"Patch data must be {nameof(Dto.MySqlFlexibleServerState)}; actual type was '{operation.PatchData?.GetType().FullName ?? "null"}'.");
             }
 
             MySqlFlexibleServerPatch patch = new MySqlFlexibleServerPatch();

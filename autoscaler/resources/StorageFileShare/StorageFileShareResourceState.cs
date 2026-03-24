@@ -119,7 +119,8 @@ namespace poolautoscaler.resources.StorageFileShare
 
             if (!(operation.PatchData is StorageFileShareState internalPatch))
             {
-                throw new ArgumentException();
+                throw new ArgumentException(
+                    $"Patch data must be {nameof(StorageFileShareState)}; actual type was '{operation.PatchData?.GetType().FullName ?? "null"}'.");
             }
 
             if (DateTime.UtcNow < fileShare.Data.NextAllowedQuotaDowngradeOn

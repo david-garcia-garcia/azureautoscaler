@@ -138,7 +138,8 @@ namespace poolautoscaler.resources.MsSqlDatabase
 
             if (!(operation.PatchData is MsSqlDatabaseState internalPatch))
             {
-                throw new Exception();
+                throw new ArgumentException(
+                    $"Patch data must be {nameof(MsSqlDatabaseState)}; actual type was '{operation.PatchData?.GetType().FullName ?? "null"}'.");
             }
 
             SqlDatabasePatch patch = new SqlDatabasePatch();

@@ -187,7 +187,8 @@ namespace poolautoscaler.resources.PostgreSqlFlexibleServer
 
             if (!(operation.PatchData is Dto.PostgreSqlFlexibleServerState internalPatch))
             {
-                throw new ArgumentException();
+                throw new ArgumentException(
+                    $"Patch data must be {nameof(Dto.PostgreSqlFlexibleServerState)}; actual type was '{operation.PatchData?.GetType().FullName ?? "null"}'.");
             }
 
             PostgreSqlFlexibleServerPatch patch = new PostgreSqlFlexibleServerPatch();
