@@ -222,6 +222,27 @@ namespace poolautoscaler.resources.MsSqlDatabase
             throw new Exception($"Could not find previous storage size for {sizeGb} GB with SKU {sku.Name}");
         }
 
+        /// <summary>
+        /// Snaps an arbitrary DTU value to the nearest valid capacity tier (rounded up).
+        /// If the value exceeds all tiers, the highest tier is returned.
+        /// </summary>
+        /// <param name="sku">The SQL SKU (Standard or Premium).</param>
+        /// <param name="value">The raw DTU value to snap.</param>
+        /// <returns>The nearest valid DTU capacity that is >= <paramref name="value"/>.</returns>
+        public static int SnapToNearestCapacity(SqlSku sku, int value)
+        {
+            var capacityValues = GetCapacityValues(sku);
+            foreach (var capacity in capacityValues)
+            {
+                if (capacity >= value)
+                {
+                    return capacity;
+                }
+            }
+
+            return capacityValues[capacityValues.Length - 1];
+        }
+
         /// <summary>Gets DTU capacity values for the given SKU (Standard or Premium).</summary>
         /// <param name="sku">The SQL SKU.</param>
         /// <returns>Array of DTU capacities.</returns>

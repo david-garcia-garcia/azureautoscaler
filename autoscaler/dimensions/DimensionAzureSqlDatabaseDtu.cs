@@ -168,32 +168,20 @@ namespace poolautoscaler.dimensions
             TokenCredential credential,
             string value)
         {
-            if (!(resource.Resource is SqlDatabaseResource elasticPool))
+            if (resource.Resource is not SqlDatabaseResource sqlDatabase)
             {
                 throw new ArgumentException($"Resource is not {nameof(SqlDatabaseResource)}.");
             }
 
-            this.ValidateDimensionValue(value);
-
-            (resource as MsSqlDatabaseResourceState).SetDtuCapacity(IntParseUtils.ParseInt(value));
-        }
-
-        private void ValidateDimensionValue(string value)
-        {
-            if (!IntParseUtils.TryParseInt(value, out var parsed))
+            if (resource is not MsSqlDatabaseResourceState dbState)
             {
-                throw new ArgumentException(
-                    $"Azure SQL database DTU value '{value}' is not supported: value is not a valid integer.");
+                throw new ArgumentException($"Resource is not {nameof(MsSqlDatabaseResourceState)}.");
             }
 
-            if (MsSqlDatabaseResourceStateHelper.StandardDtuCapacities.Contains(parsed)
-                || MsSqlDatabaseResourceStateHelper.PremiumDtuCapacities.Contains(parsed))
-            {
-                return;
-            }
+            var parsed = IntParseUtils.ParseInt(value);
+            var snapped = MsSqlDatabaseResourceStateHelper.SnapToNearestCapacity(sqlDatabase.Data.Sku, parsed);
 
-            throw new ArgumentException(
-                $"Azure SQL database DTU value '{value}' (capacity {parsed}) is not a supported Standard or Premium DTU tier.");
+            dbState.SetDtuCapacity(snapped);
         }
     }
 }
