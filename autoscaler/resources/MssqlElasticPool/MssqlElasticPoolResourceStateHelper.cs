@@ -79,6 +79,27 @@ namespace poolautoscaler.resources.MssqlElasticPool
             throw new Exception("No tier can accomodate DTU and/or capacity request.");
         }
 
+        /// <summary>
+        /// Snaps an arbitrary DTU value to the nearest valid capacity tier (rounded up).
+        /// If the value exceeds all tiers, the highest tier is returned.
+        /// </summary>
+        /// <param name="sku">The SQL SKU (StandardPool or PremiumPool).</param>
+        /// <param name="value">The raw DTU value to snap.</param>
+        /// <returns>The nearest valid DTU capacity that is >= <paramref name="value"/>.</returns>
+        public static long SnapToNearestCapacity(SqlSku sku, long value)
+        {
+            var capacityValues = GetCapacityValues(sku);
+            foreach (var capacity in capacityValues)
+            {
+                if (capacity >= value)
+                {
+                    return capacity;
+                }
+            }
+
+            return capacityValues[capacityValues.Length - 1];
+        }
+
         /// <summary>Gets DTU capacity values for the given elastic pool SKU.</summary>
         /// <param name="sku">The SQL SKU (StandardPool or PremiumPool).</param>
         /// <returns>Array of DTU capacities.</returns>

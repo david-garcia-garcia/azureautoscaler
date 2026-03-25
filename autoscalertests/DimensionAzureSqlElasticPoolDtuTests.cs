@@ -79,6 +79,9 @@ namespace poolautoscaler.tests
         {
             var state = new MssqlElasticPoolResourceState(this.resourceId, this.loggerMock.Object, this.config);
             var mockPool = new Mock<ElasticPoolResource>();
+            var sku = new SqlSku("StandardPool") { Capacity = 50 };
+            var poolData = new ElasticPoolData(AzureLocation.EastUS) { Sku = sku };
+            mockPool.SetupGet(p => p.Data).Returns(poolData);
             this.SetResourceOnState(state, mockPool.Object);
 
             state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
@@ -97,6 +100,39 @@ namespace poolautoscaler.tests
                 "49.3");
 
             Assert.Equal(50, state.RequestedMssqlElasticPoolState.Sku!.Capacity);
+        }
+
+        [Theory]
+        [InlineData("81", 100)]
+        [InlineData("51", 100)]
+        [InlineData("101", 200)]
+        [InlineData("150", 200)]
+        [InlineData("100", 100)]
+        [InlineData("50", 50)]
+        public async Task SetDimensionValue_WithNonTierValue_SnapsUpToNearestValidTier(string input, int expectedCapacity)
+        {
+            var state = new MssqlElasticPoolResourceState(this.resourceId, this.loggerMock.Object, this.config);
+            var mockPool = new Mock<ElasticPoolResource>();
+            var sku = new SqlSku("StandardPool") { Capacity = 50 };
+            var poolData = new ElasticPoolData(AzureLocation.EastUS) { Sku = sku };
+            mockPool.SetupGet(p => p.Data).Returns(poolData);
+            this.SetResourceOnState(state, mockPool.Object);
+
+            state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
+            {
+                Sku = new SqlSku("StandardPool") { Capacity = 50 },
+                MaxSizeBytes = 107374182400,
+            };
+            state.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();
+
+            await this.dimension.SetDimensionValue(
+                CancellationToken.None,
+                state,
+                this.loggerMock.Object,
+                Mock.Of<TokenCredential>(),
+                input);
+
+            Assert.Equal(expectedCapacity, state.RequestedMssqlElasticPoolState.Sku!.Capacity);
         }
 
         [Fact]
