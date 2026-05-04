@@ -1,6 +1,7 @@
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement.Dto;
 
 namespace poolautoscaler.resourcemanagement
 {
@@ -11,15 +12,17 @@ namespace poolautoscaler.resourcemanagement
     public interface IResourceStateFactory
     {
         /// <summary>
-        /// Expands a resource ID that may contain wildcards into a dictionary of key to resource ID.
+        /// Expands a resource ID that may contain wildcards into a dictionary of key to <see cref="ExpandedResource"/>.
+        /// Each entry carries the resolved resource ID and a <see cref="ResourceFilterContext"/> built from the ARM data
+        /// fetched during expansion. For non-wildcard (literal) resource IDs the context is <c>null</c>.
         /// </summary>
         /// <param name="client">The ARM client.</param>
         /// <param name="key">The key for the resource entry.</param>
         /// <param name="resourceId">The resource ID or wildcard pattern.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A dictionary of key to expanded resource IDs.</returns>
-        Task<Dictionary<string, string>> ExpandResourcesAsync(
+        /// <returns>A dictionary of key to <see cref="ExpandedResource"/>.</returns>
+        Task<Dictionary<string, ExpandedResource>> ExpandResourcesAsync(
             ArmClient client,
             string key,
             string resourceId,

@@ -66,6 +66,23 @@ namespace poolautoscaler.configuration
 
                 resource.FrequencyParsed = DurationParser.ParseDuration(resource.Frequency);
 
+                if (resource.Resources != null)
+                {
+                    foreach (var resourceInstance in resource.Resources.Values)
+                    {
+                        if (!string.IsNullOrEmpty(resourceInstance.ResourceFilter))
+                        {
+                            resourceInstance.ResourceFilterExpression =
+                                (Func<ResourceFilterContext, bool>)ExpressionParserUtils.ParseExpression(
+                                    resourceInstance.ResourceFilter,
+                                    "r",
+                                    typeof(ResourceFilterContext),
+                                    typeof(bool),
+                                    1);
+                        }
+                    }
+                }
+
                 if (resource.CustomMetrics != null)
                 {
                     foreach (var customMetric in resource.CustomMetrics)

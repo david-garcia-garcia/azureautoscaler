@@ -594,6 +594,69 @@ Resource expansion works for:
 * SQL Databases in an Azure SQL Server
 * SQL Elastic Pools in an Azure SQL Server
 
+### Resource Filter
+
+When using wildcard expansion, you can narrow down the discovered resources using `ResourceFilter` — an optional C# lambda expression compiled at startup. Only resources for which the expression returns `true` are added to the autoscaler's resource set. Resources with a literal (non-wildcard) `ResourceId` are never filtered.
+
+The lambda receives a `ResourceFilterContext` parameter with the following properties:
+
+| Property | Type | Description |
+|---|---|---|
+| `ResourceName` | `string` | The name of the expanded resource (database name, pool name, etc.) |
+| `Tags` | `IDictionary<string, string>` | Azure tags on the resource at expansion time |
+| `Resource` | `object` | The raw ARM resource object — Dynamic LINQ resolves members against the actual runtime type at runtime |
+
+Access resource-type-specific properties directly via `r.Resource` — the same pattern already used in `DataExpression` for custom metrics (e.g. `data.Resource.Data.Sku.Name`).
+
+#### Azure SQL Database SKU reference
+
+When filtering SQL databases expanded from a `databases/*` wildcard, the `Sku.Name` value identifies the database model:
+
+| `Sku.Name` | Model | `Sku.Family` | Notes |
+|---|---|---|---|
+| `Basic` | DTU | `null` | 5 DTU fixed |
+| `Standard` | DTU | `null` | S0–S9 |
+| `Premium` | DTU | `null` | P1–P15 |
+| `ElasticPool` | DTU (pooled) | `null` | Member of an elastic pool — uses pool-level metrics, not per-database DTU |
+| `GeneralPurpose` | vCore | non-null (e.g. `Gen5`) | GP_Gen5_2, GP_Fsv2_8, GP_DC_2, … |
+| `BusinessCritical` | vCore | non-null | BC_Gen5_4, … |
+| `Hyperscale` | vCore | non-null | HS_Gen5_4, … |
+
+**Example — standalone DTU SQL databases only** (`Basic`, `Standard`, `Premium`; excludes elastic-pool members and vCore):
+
+```yaml
+  - Resources:
+      sql_dtu_databases:
+        ResourceId: "/subscriptions/.../servers/mysqlserver/databases/*"
+        ResourceFilter: "(r) => r.Resource.Data.Sku.Name == \"Basic\" || r.Resource.Data.Sku.Name == \"Standard\" || r.Resource.Data.Sku.Name == \"Premium\""
+```
+
+**Example — vCore databases only** (excludes all DTU tiers and elastic-pool members):
+
+```yaml
+  - Resources:
+      sql_vcore_databases:
+        ResourceId: "/subscriptions/.../servers/mysqlserver/databases/*"
+        ResourceFilter: "(r) => r.Resource.Data.Sku.Family != null"
+```
+
+**Example — tag-based filtering** (only databases tagged `env=prod`):
+
+```yaml
+  - Resources:
+      sql_prod_databases:
+        ResourceId: "/subscriptions/.../servers/mysqlserver/databases/*"
+        ResourceFilter: "(r) => r.Tags.ContainsKey(\"env\") && r.Tags[\"env\"] == \"prod\""
+```
+
+After expansion the autoscaler logs a summary at `Information` level for each resource instance with a filter set:
+
+```
+ResourceFilter 'sql_dtu_databases': 8 discovered, 3 filtered out, 5 added.
+```
+
+> **Note:** If the expression fails to compile (e.g. references a non-existent property), startup fails immediately with a descriptive error. Invalid filters are never silently ignored.
+
 ### Resource Tags
 
 Azure Autoscaler reads tags from resources and makes them available in the `ResourceTags` dictionary for each resource. Tags can be used to control resource behavior.

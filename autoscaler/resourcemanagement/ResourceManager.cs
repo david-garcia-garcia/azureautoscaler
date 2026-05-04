@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement.Dto;
 
 namespace poolautoscaler.resourcemanagement
 {
@@ -105,7 +106,7 @@ namespace poolautoscaler.resourcemanagement
 
                 foreach (var resourceInstance in resource.Resources)
                 {
-                    Dictionary<string, string> expandedResourceIds;
+                    Dictionary<string, ExpandedResource> expandedResourceIds;
                     try
                     {
                         expandedResourceIds = await this.resourceStateFactory.ExpandResourcesAsync(
@@ -131,22 +132,40 @@ namespace poolautoscaler.resourcemanagement
                         continue;
                     }
 
+                    var filter = resourceInstance.Value.ResourceFilterExpression;
+                    int instanceDiscovered = expandedResourceIds.Count;
+                    int instanceFiltered = 0;
+                    int instanceAdded = 0;
+
                     foreach (var expandedResourceId in expandedResourceIds)
                     {
                         resourceInstance.Value.Id = resourceInstance.Key;
+
+                        if (filter != null && expandedResourceId.Value.Context != null
+                            && !filter(expandedResourceId.Value.Context))
+                        {
+                            this.logger.LogDebug(
+                                "Resource '{Name}' excluded by ResourceFilter on '{InstanceKey}'.",
+                                expandedResourceId.Value.Context.ResourceName,
+                                resourceInstance.Key);
+                            instanceFiltered++;
+                            continue;
+                        }
+
+                        var resourceId = expandedResourceId.Value.ResourceId;
                         discoveredResources.Add(expandedResourceId.Key);
 
                         if (this.resources.ContainsKey(expandedResourceId.Key))
                         {
-                            this.logger.LogTrace("Keeping existing resource: {Id}", expandedResourceId.Value);
+                            this.logger.LogTrace("Keeping existing resource: {Id}", resourceId);
                         }
                         else
                         {
-                            this.logger.LogInformation("Adding new resource {Key}: {Id}", expandedResourceId.Key, expandedResourceId.Value);
+                            this.logger.LogInformation("Adding new resource {Key}: {Id}", expandedResourceId.Key, resourceId);
 
                             var resourceLogger = this.logFactory.CreateLogger(expandedResourceId.Key);
                             var state = this.resourceStateFactory.Create(
-                                expandedResourceId.Value,
+                                resourceId,
                                 resourceLogger,
                                 resource,
                                 resourceInstance.Value);
@@ -156,7 +175,18 @@ namespace poolautoscaler.resourcemanagement
                                 string.Join(", ", state.ResourceParts.Select((i) => $"{i.Key}={i.Value}")));
                             this.resources[expandedResourceId.Key] = state;
                             addedResources++;
+                            instanceAdded++;
                         }
+                    }
+
+                    if (filter != null)
+                    {
+                        this.logger.LogInformation(
+                            "ResourceFilter '{InstanceKey}': {Discovered} discovered, {Filtered} filtered out, {Added} added.",
+                            resourceInstance.Key,
+                            instanceDiscovered,
+                            instanceFiltered,
+                            instanceAdded);
                     }
                 }
             }

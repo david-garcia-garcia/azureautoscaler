@@ -2,7 +2,9 @@ using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.Storage;
 using Microsoft.Extensions.Logging;
+using poolautoscaler.configuration;
 using poolautoscaler.resourcemanagement;
+using poolautoscaler.resourcemanagement.Dto;
 
 namespace poolautoscaler.resources.StorageFileShare
 {
@@ -53,9 +55,9 @@ namespace poolautoscaler.resources.StorageFileShare
         /// <param name="logger">The logger.</param>
         /// <param name="stoppingToken">Cancellation token.</param>
         /// <returns>A dictionary of key to expanded resource IDs.</returns>
-        public static async Task<Dictionary<string, string>> ExpandFileShareWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
+        public static async Task<Dictionary<string, ExpandedResource>> ExpandFileShareWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
-            var result = new Dictionary<string, string>();
+            var result = new Dictionary<string, ExpandedResource>();
 
             var match = ResourceStateFactory.FileShare.Match(resourceId);
             if (!match.Success)
@@ -67,7 +69,7 @@ namespace poolautoscaler.resources.StorageFileShare
             var pattern = ResourceStateFactory.GetResourcePattern(fileShareName);
             if (pattern == null)
             {
-                result.Add(key, resourceId);
+                result.Add(key, new ExpandedResource { ResourceId = resourceId, Context = null });
                 return result;
             }
 
@@ -84,7 +86,13 @@ namespace poolautoscaler.resources.StorageFileShare
                 if (pattern.IsMatch(fileShare.Data.Name))
                 {
                     var expandedId = $"{storageAccountId}/fileServices/default/shares/{fileShare.Data.Name}";
-                    result.Add(key + "_" + fileShare.Data.Name, expandedId);
+                    var context = new ResourceFilterContext
+                    {
+                        ResourceName = fileShare.Data.Name,
+                        Tags = new Dictionary<string, string>(),
+                        Resource = fileShare,
+                    };
+                    result.Add(key + "_" + fileShare.Data.Name, new ExpandedResource { ResourceId = expandedId, Context = context });
                     logger.LogDebug("Expanded file share: {0}", expandedId);
                 }
             }

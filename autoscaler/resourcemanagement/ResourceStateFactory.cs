@@ -3,6 +3,7 @@ using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.configuration;
 using poolautoscaler.metrics;
+using poolautoscaler.resourcemanagement.Dto;
 using poolautoscaler.resources.AksNodePool;
 using poolautoscaler.resources.AzureDevops;
 using poolautoscaler.resources.FabricCapacity;
@@ -100,7 +101,7 @@ namespace poolautoscaler.resourcemanagement
         }
 
         /// <inheritdoc />
-        public async Task<Dictionary<string, string>> ExpandResourcesAsync(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken cancellationToken = default)
+        public async Task<Dictionary<string, ExpandedResource>> ExpandResourcesAsync(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken cancellationToken = default)
         {
             // Make sure these are ordered from most specific to least specific
             Match match;
@@ -122,10 +123,9 @@ namespace poolautoscaler.resourcemanagement
                 return await StorageFileShareResourceStateHelper.ExpandFileShareWildcard(client, key, resourceId, logger, cancellationToken);
             }
 
-            // Fabric capacities don't support expansion (no wildcards)
-
-            var result = new Dictionary<string, string>();
-            result.Add(key, resourceId);
+            // Fabric capacities and other non-wildcard resources: context is null (filter is skipped)
+            var result = new Dictionary<string, ExpandedResource>();
+            result.Add(key, new ExpandedResource { ResourceId = resourceId, Context = null });
             return result;
         }
 

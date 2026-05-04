@@ -3,7 +3,9 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.Sql;
 using Azure.ResourceManager.Sql.Models;
 using Microsoft.Extensions.Logging;
+using poolautoscaler.configuration;
 using poolautoscaler.resourcemanagement;
+using poolautoscaler.resourcemanagement.Dto;
 
 namespace poolautoscaler.resources.MsSqlDatabase
 {
@@ -298,16 +300,16 @@ namespace poolautoscaler.resources.MsSqlDatabase
             throw new Exception("No tier can accomodate DTU and/or capacity request.");
         }
 
-        /// <summary>Expands a SQL database resource ID that may contain wildcards into concrete resource IDs.</summary>
+        /// <summary>Expands a SQL database resource ID that may contain wildcards into concrete resource IDs with filter contexts.</summary>
         /// <param name="client">The ARM client.</param>
         /// <param name="key">The key for the resource entry.</param>
         /// <param name="resourceId">The resource ID or wildcard pattern.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="stoppingToken">Cancellation token.</param>
-        /// <returns>A dictionary of key to expanded resource IDs.</returns>
-        public static async Task<Dictionary<string, string>> ExpandSqlDatabaseWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
+        /// <returns>A dictionary of key to <see cref="ExpandedResource"/>.</returns>
+        public static async Task<Dictionary<string, ExpandedResource>> ExpandSqlDatabaseWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
-            var result = new Dictionary<string, string>();
+            var result = new Dictionary<string, ExpandedResource>();
             var match = ResourceStateFactory.SqlDatabase.Match(resourceId);
             if (!match.Success)
             {
@@ -318,7 +320,7 @@ namespace poolautoscaler.resources.MsSqlDatabase
             var pattern = ResourceStateFactory.GetResourcePattern(databaseName);
             if (pattern == null)
             {
-                result.Add(key, resourceId);
+                result.Add(key, new ExpandedResource { ResourceId = resourceId, Context = null });
                 return result;
             }
 
@@ -336,7 +338,13 @@ namespace poolautoscaler.resources.MsSqlDatabase
                 if (pattern.IsMatch(database.Data.Name))
                 {
                     var expandedId = $"{serverId}/databases/{database.Data.Name}";
-                    result.Add(key + "_" + database.Data.Name, expandedId);
+                    var context = new ResourceFilterContext
+                    {
+                        ResourceName = database.Data.Name,
+                        Tags = database.Data.Tags ?? new Dictionary<string, string>(),
+                        Resource = database,
+                    };
+                    result.Add(key + "_" + database.Data.Name, new ExpandedResource { ResourceId = expandedId, Context = context });
                     logger.LogDebug("Expanded SQL database: {0}", expandedId);
                 }
             }
