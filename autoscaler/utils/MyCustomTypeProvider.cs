@@ -1,4 +1,5 @@
 using System.Linq.Dynamic.Core.CustomTypeProviders;
+using poolautoscaler.configuration;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.strategies.Dto;
 
@@ -18,6 +19,7 @@ namespace poolautoscaler.utils
                 typeof(CustomMetricHelpers),
                 typeof(VmssMetricView),
                 typeof(VmssSkuView),
+                typeof(ResourceFilterContext),
             }.ToHashSet();
     }
 }

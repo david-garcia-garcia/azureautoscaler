@@ -2,7 +2,9 @@ using Azure.Core;
 using Azure.ResourceManager;
 using Azure.ResourceManager.ContainerService;
 using Microsoft.Extensions.Logging;
+using poolautoscaler.configuration;
 using poolautoscaler.resourcemanagement;
+using poolautoscaler.resourcemanagement.Dto;
 
 namespace poolautoscaler.resources.AksNodePool
 {
@@ -20,9 +22,9 @@ namespace poolautoscaler.resources.AksNodePool
         /// <param name="logger">The logger.</param>
         /// <param name="stoppingToken">Cancellation token.</param>
         /// <returns>A dictionary of key to expanded resource IDs.</returns>
-        public static async Task<Dictionary<string, string>> ExpandNodePoolWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
+        public static async Task<Dictionary<string, ExpandedResource>> ExpandNodePoolWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
-            var result = new Dictionary<string, string>();
+            var result = new Dictionary<string, ExpandedResource>();
 
             var match = ResourceStateFactory.AksNodePool.Match(resourceId);
             if (!match.Success)
@@ -34,7 +36,7 @@ namespace poolautoscaler.resources.AksNodePool
             var pattern = ResourceStateFactory.GetResourcePattern(nodePoolName);
             if (pattern == null)
             {
-                result.Add(key, resourceId);
+                result.Add(key, new ExpandedResource { ResourceId = resourceId, Context = null });
                 return result;
             }
 
@@ -51,7 +53,13 @@ namespace poolautoscaler.resources.AksNodePool
                 if (pattern.IsMatch(nodePool.Data.Name))
                 {
                     var expandedId = $"{clusterId}/agentPools/{nodePool.Data.Name}";
-                    result.Add(key + "_" + nodePool.Data.Name, expandedId);
+                    var context = new ResourceFilterContext
+                    {
+                        ResourceName = nodePool.Data.Name,
+                        Tags = nodePool.Data.Tags ?? new Dictionary<string, string>(),
+                        Resource = nodePool,
+                    };
+                    result.Add(key + "_" + nodePool.Data.Name, new ExpandedResource { ResourceId = expandedId, Context = context });
                     logger.LogDebug("Expanded AKS node pool: {0}", expandedId);
                 }
             }

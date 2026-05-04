@@ -145,6 +145,23 @@ Resources:
   - Resources:
       example_sql_database:
         ResourceId: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example-databases/providers/Microsoft.Sql/servers/sqlexample-server/databases/*"
+        # Optional: filter wildcard-expanded databases using a C# lambda expression.
+        # ResourceFilterContext exposes ResourceName (string), Tags (IDictionary<string,string>),
+        # and Resource (the raw ARM object; member access resolves at runtime via Dynamic LINQ).
+        #
+        # Azure SQL Database Sku.Name values:
+        #   DTU standalone : "Basic" | "Standard" | "Premium"          (Sku.Family = null)
+        #   DTU pooled     : "ElasticPool"                              (Sku.Family = null, pool-level metrics only)
+        #   vCore          : "GeneralPurpose" | "BusinessCritical" | "Hyperscale"  (Sku.Family = "Gen5" / "Fsv2" / …)
+        #
+        # Include only standalone DTU databases (Basic, Standard, Premium):
+        # ResourceFilter: "(r) => r.Resource.Data.Sku.Name == \"Basic\" || r.Resource.Data.Sku.Name == \"Standard\" || r.Resource.Data.Sku.Name == \"Premium\""
+        #
+        # Include only vCore databases:
+        # ResourceFilter: "(r) => r.Resource.Data.Sku.Family != null"
+        #
+        # Include only databases tagged env=prod:
+        # ResourceFilter: "(r) => r.Tags.ContainsKey(\"env\") && r.Tags[\"env\"] == \"prod\""
     Frequency: 5m
     WhatIf: false
     Enabled: true

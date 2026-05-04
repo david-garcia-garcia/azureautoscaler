@@ -3,7 +3,9 @@ using Azure.ResourceManager;
 using Azure.ResourceManager.Sql;
 using Azure.ResourceManager.Sql.Models;
 using Microsoft.Extensions.Logging;
+using poolautoscaler.configuration;
 using poolautoscaler.resourcemanagement;
+using poolautoscaler.resourcemanagement.Dto;
 
 namespace poolautoscaler.resources.MssqlElasticPool
 {
@@ -126,16 +128,16 @@ namespace poolautoscaler.resources.MssqlElasticPool
             }
         }
 
-        /// <summary>Expands an elastic pool resource ID that may contain wildcards into concrete resource IDs.</summary>
+        /// <summary>Expands an elastic pool resource ID that may contain wildcards into concrete resource IDs with filter contexts.</summary>
         /// <param name="client">The ARM client.</param>
         /// <param name="key">The key for the resource entry.</param>
         /// <param name="resourceId">The resource ID or wildcard pattern.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="stoppingToken">Cancellation token.</param>
-        /// <returns>A dictionary of key to expanded resource IDs.</returns>
-        public static async Task<Dictionary<string, string>> ExpandElasticPoolWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
+        /// <returns>A dictionary of key to <see cref="ExpandedResource"/>.</returns>
+        public static async Task<Dictionary<string, ExpandedResource>> ExpandElasticPoolWildcard(ArmClient client, string key, string resourceId, ILogger logger, CancellationToken stoppingToken)
         {
-            var result = new Dictionary<string, string>();
+            var result = new Dictionary<string, ExpandedResource>();
             var match = ResourceStateFactory.ElasticPools.Match(resourceId);
             if (!match.Success)
             {
@@ -146,7 +148,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
             var pattern = ResourceStateFactory.GetResourcePattern(elasticPoolName);
             if (pattern == null)
             {
-                result.Add(key, resourceId);
+                result.Add(key, new ExpandedResource { ResourceId = resourceId, Context = null });
                 return result;
             }
 
@@ -159,7 +161,13 @@ namespace poolautoscaler.resources.MssqlElasticPool
                 if (pattern.IsMatch(elasticPool.Data.Name))
                 {
                     var expandedId = $"{serverId}/elasticPools/{elasticPool.Data.Name}";
-                    result.Add(key + "_" + elasticPool.Data.Name, expandedId);
+                    var context = new ResourceFilterContext
+                    {
+                        ResourceName = elasticPool.Data.Name,
+                        Tags = elasticPool.Data.Tags ?? new Dictionary<string, string>(),
+                        Resource = elasticPool,
+                    };
+                    result.Add(key + "_" + elasticPool.Data.Name, new ExpandedResource { ResourceId = expandedId, Context = context });
                     logger.LogDebug("Expanded elastic pool: {0}", expandedId);
                 }
             }
