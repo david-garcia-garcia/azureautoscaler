@@ -74,3 +74,44 @@ This section describes backward-compatible behavior if your YAML never defines a
             DimensionValueMin: "1"     # Never scale below 1 GB
 ```
 
+### Tracking per-database max eDTU as a fraction of pool capacity
+
+A common pattern is to keep `PerDatabaseMaxCapacity` at a fixed fraction of the current pool eDTU (e.g. 80%), so that no single database can monopolize the pool while still scaling proportionally when the pool itself scales.
+
+The recommended approach reads the `eDTU_limit` Azure Monitor metric — which always reflects the currently provisioned pool DTU — and computes the target from it. You can co-locate this rule with any existing `ScalingConfiguration` that already fetches `eDTU_limit` (such as a `MaxDataBytes` or `ForecastDtu` block) to avoid an extra metric round-trip.
+
+**One-cycle lag:** `eDTU_limit` reflects the Azure-side value, which means it updates on the cycle *after* a pool DTU change. On the cycle when the pool scales, the [default fallback](#default-when-you-omit-perdatabasemaxcapacity) (`MaxCapacity = pool DTU`) keeps the ARM patch valid. On the next cycle the per-DB rule brings it down to the configured fraction.
+
+```yaml
+      MaxDataBytes:  # or any ScalingConfiguration that fetches eDTU_limit
+        Metrics:
+          allocated_data_storage:
+            Name: allocated_data_storage
+            Window: 00:05
+            Aggregations: ["Maximum"]
+            ValidValueMin: 1048576
+          edtu_limit:
+            Name: eDTU_limit
+            Window: 00:10
+            Aggregations: ["Maximum"]
+        TimeWindow:
+          Days: All
+          Months: All
+          StartTime: "00:00"
+          EndTime: "23:59"
+          TimeZone: UTC
+        ScalingRules:
+          fixed:
+            ScalingStrategy: Fixed
+            Dimension: MaxDataBytes
+            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"allocated_data_storage\"].Values.First().Default.Value + (50.1*1024*1024*1024), data.Metrics[\"allocated_data_storage\"].Values.First().Default.Value * 1.2)).ToString()"
+            DimensionValueCeilingStep: "1"
+            DimensionValueMax: "1024"
+            DimensionValueMin: "1"
+          set_per_db_max:
+            ScalingStrategy: Fixed
+            Dimension: PerDatabaseMaxCapacity
+            # 80% of current pool eDTU — snapped automatically to nearest valid per-DB tier.
+            ScaleTarget: "(data) => (data.Metrics[\"edtu_limit\"].Values.First().Default.Value * 0.8).ToString()"
+```
+
