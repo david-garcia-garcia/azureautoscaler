@@ -26,6 +26,28 @@ namespace poolautoscaler.resources.MssqlElasticPool
         /// <summary>Premium tier max data sizes (GB) per DTU capacity index.</summary>
         public static readonly long[] PremiumDataMaxSize = [1204, 1024, 1024, 1024, 1536, 2048, 2560, 3072, 3584, 4096];
 
+        /// <summary>Standard tier per-database max eDTU options (filtered by pool eDTU).</summary>
+        public static readonly int[] StandardPerDbMaxCapacities = [10, 20, 50, 100, 200, 300, 400, 800, 1200, 1600, 2000, 2500, 3000];
+
+        /// <summary>Premium tier per-database max eDTU options (filtered by pool-size ceiling).</summary>
+        public static readonly int[] PremiumPerDbMaxCapacities = [25, 50, 75, 125, 250, 500, 1000, 1750, 4000];
+
+        /// <summary>Pool eDTU to effective per-database max eDTU ceiling for Premium pools.</summary>
+        public static readonly IReadOnlyDictionary<int, int> PremiumPerDbCeiling =
+            new Dictionary<int, int>
+            {
+                [125] = 125,
+                [250] = 250,
+                [500] = 500,
+                [1000] = 1000,
+                [1500] = 1000,
+                [2000] = 1750,
+                [2500] = 1750,
+                [3000] = 1750,
+                [3500] = 1750,
+                [4000] = 4000,
+            };
+
         /// <summary>Valid elastic pool storage sizes in GB.</summary>
         public static readonly long[] ValidStorageSizes =
         [
@@ -126,6 +148,54 @@ namespace poolautoscaler.resources.MssqlElasticPool
                 case "PremiumPool": return PremiumDataMaxSize;
                 default: throw new ArgumentException($"Invalid elastic pool SKU for storage capacity: Name='{sku.Name}'. Expected StandardPool or PremiumPool.");
             }
+        }
+
+        /// <summary>Gets allowed per-database max eDTU values for the pool SKU and pool eDTU.</summary>
+        /// <param name="sku">The elastic pool SQL SKU (StandardPool or PremiumPool).</param>
+        /// <param name="poolDtu">The pool&apos;s eDTU capacity.</param>
+        /// <returns>Allowed per-database max values, sorted ascending.</returns>
+        public static int[] GetPerDbMaxCapacityValues(SqlSku sku, int poolDtu)
+        {
+            switch (sku.Name)
+            {
+                case "StandardPool":
+                    return StandardPerDbMaxCapacities.Where(v => v <= poolDtu).ToArray();
+                case "PremiumPool":
+                    if (!PremiumPerDbCeiling.TryGetValue(poolDtu, out int ceiling))
+                    {
+                        ceiling = poolDtu;
+                    }
+
+                    return PremiumPerDbMaxCapacities.Where(v => v <= ceiling).ToArray();
+                default:
+                    throw new ArgumentException($"Invalid elastic pool SKU for per-database max capacity: Name='{sku.Name}'. Expected StandardPool or PremiumPool.");
+            }
+        }
+
+        /// <summary>
+        /// Snaps a per-database max eDTU request to the smallest allowed value that is &gt;= <paramref name="value"/>, or the maximum allowed if <paramref name="value"/> exceeds all tiers.
+        /// </summary>
+        /// <param name="sku">The elastic pool SQL SKU.</param>
+        /// <param name="poolDtu">The pool eDTU.</param>
+        /// <param name="value">Requested per-database max eDTU.</param>
+        /// <returns>The snapped per-database max eDTU.</returns>
+        public static int SnapToNearestPerDbMaxCapacity(SqlSku sku, int poolDtu, int value)
+        {
+            var values = GetPerDbMaxCapacityValues(sku, poolDtu);
+            if (values.Length == 0)
+            {
+                throw new ArgumentException($"No per-database max eDTU tiers for pool SKU '{sku.Name}' at {poolDtu} eDTU.");
+            }
+
+            foreach (var v in values)
+            {
+                if (v >= value)
+                {
+                    return v;
+                }
+            }
+
+            return values[values.Length - 1];
         }
 
         /// <summary>Expands an elastic pool resource ID that may contain wildcards into concrete resource IDs with filter contexts.</summary>

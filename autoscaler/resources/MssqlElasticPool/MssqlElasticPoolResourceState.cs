@@ -102,6 +102,18 @@ namespace poolautoscaler.resources.MssqlElasticPool
             this.RequestedMssqlElasticPoolState.MaxSizeBytes = maxSizeBytes;
         }
 
+        /// <summary>
+        /// Sets requested per-database max eDTU, snapped to a valid tier and effective pool ceiling.
+        /// </summary>
+        /// <param name="perDatabaseMaxCapacity">Requested per-database max eDTU.</param>
+        public void SetPerDatabaseMaxCapacity(int perDatabaseMaxCapacity)
+        {
+            var sku = this.Resource.Data.Sku;
+            var poolDtu = sku.Capacity ?? throw new InvalidOperationException("Elastic pool SKU capacity is not set.");
+            var snapped = MssqlElasticPoolResourceStateHelper.SnapToNearestPerDbMaxCapacity(sku, (int)poolDtu, perDatabaseMaxCapacity);
+            this.RequestedMssqlElasticPoolState.PerDatabaseMaxCapacity = snapped;
+        }
+
         /// <inheritdoc />
         public override ResourcePatchOperation PreparePatch()
         {
@@ -126,8 +138,12 @@ namespace poolautoscaler.resources.MssqlElasticPool
             (var targetDtu, var targetMaxDataBytes) = MssqlElasticPoolResourceStateHelper.FindClosestDtuThatCanHoldStorage(patch.Sku, patch.Sku.Capacity.Value, (long)patch.MaxSizeBytes);
             patch.Sku.Capacity = (int)targetDtu;
 
+            patch.PerDatabaseMaxCapacity = this.RequestedMssqlElasticPoolState.PerDatabaseMaxCapacity;
+
             bool hasChanges = (patch.Sku != null && patch.Sku.Capacity != this.ExistingMssqlElasticPoolState.Sku.Capacity)
-                              || (patch.MaxSizeBytes != null && patch.MaxSizeBytes != this.ExistingMssqlElasticPoolState.MaxSizeBytes);
+                              || (patch.MaxSizeBytes != null && patch.MaxSizeBytes != this.ExistingMssqlElasticPoolState.MaxSizeBytes)
+                              || (patch.PerDatabaseMaxCapacity != null
+                                  && patch.PerDatabaseMaxCapacity != this.ExistingMssqlElasticPoolState.PerDatabaseMaxCapacity);
 
             result.PatchData = patch;
             result.HasChanges = hasChanges;
@@ -150,7 +166,8 @@ namespace poolautoscaler.resources.MssqlElasticPool
             patch.MaxSizeBytes = internalPatch.MaxSizeBytes;
 
             patch.PerDatabaseSettings = new ElasticPoolPerDatabaseSettings();
-            patch.PerDatabaseSettings.MaxCapacity = patch.Sku.Capacity;
+            int? maxPerDb = internalPatch.PerDatabaseMaxCapacity ?? patch.Sku.Capacity;
+            patch.PerDatabaseSettings.MaxCapacity = maxPerDb.HasValue ? maxPerDb.Value : null;
 
             var result = await this.Resource.UpdateAsync(Azure.WaitUntil.Completed, patch, cancellationToken);
             this.ValidateArmResult(result);
@@ -172,11 +189,14 @@ namespace poolautoscaler.resources.MssqlElasticPool
 
             this.ResourceTagsPopulate(this.Resource.Data.Tags);
 
-            this.ExistingMssqlElasticPoolState = new MssqlElasticPoolState()
+            this.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
             {
                 MaxSizeBytes = this.Resource.Data.MaxSizeBytes,
                 Sku = this.Resource.Data.Sku,
-                CurrentUsedStorage = (long?)storage_used
+                CurrentUsedStorage = (long?)storage_used,
+                PerDatabaseMaxCapacity = this.Resource.Data.PerDatabaseSettings?.MaxCapacity is double liveMaxCap
+                    ? (int)liveMaxCap
+                    : null,
             };
 
             this.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();

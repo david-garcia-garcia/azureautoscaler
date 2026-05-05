@@ -21,5 +21,10 @@ namespace poolautoscaler.resources.MssqlElasticPool.Dto
         /// Gets or sets the current used storage.
         /// </summary>
         public long? CurrentUsedStorage { get; set; }
+
+        /// <summary>
+        /// Gets or sets the per-database max eDTU cap (elastic pool per-database settings max capacity). When null at apply time, pool SKU capacity is used.
+        /// </summary>
+        public int? PerDatabaseMaxCapacity { get; set; }
     }
 }

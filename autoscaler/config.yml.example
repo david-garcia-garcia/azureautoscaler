@@ -88,6 +88,9 @@ Resources:
             ScaleDownCooldownSeconds: 1200
   ############################
   # SQL Elastic Pool Example
+  # PerDatabaseMaxCapacity: optional dimension; if you have no rule for it, each pool
+  # patch still sets ARM PerDatabaseSettings.MaxCapacity = pool Sku.Capacity (legacy
+  # behaviour). Add a ScalingRule with Dimension: PerDatabaseMaxCapacity to control it.
   ############################
   - Resources:
       example_sql_dev_pools:
