@@ -259,6 +259,7 @@ namespace AzureSqlElasticPoolAutoscaler
             {
                 List<IDimension> dimensions = new List<IDimension>();
                 dimensions.Add(new DimensionAzureSqlElasticPoolDtu());
+                dimensions.Add(new DimensionAzureSqlElasticPoolPerDatabaseMaxCapacity());
                 dimensions.Add(new DimensionAzureSqlElasticPoolMaxDataBytes());
                 dimensions.Add(new DimensionAzureSqlDatabaseDtu());
                 dimensions.Add(new DimensionAzureSqlDatabaseMaxDataBytes());

@@ -95,7 +95,7 @@ Azure Autoscaler fills these gaps by providing intelligent, metric-based autosca
 | Resource Type | Supported Dimensions | Custom Metrics | Notes |
 |--------------|---------------------|----------------|-------|
 | AKS Node Pools | MinNodeCount | Custom metrics via `CustomMetrics` (e.g. total cores / memory) | MaxNodeCount is preserved as a constraint but not scaled |
-| Azure SQL Elastic Pools | Dtu, MaxDataBytes | |  |
+| Azure SQL Elastic Pools | Dtu, PerDatabaseMaxCapacity, MaxDataBytes | | Per-database max defaults to pool DTU when no `PerDatabaseMaxCapacity` rule exists; see [SQL Elastic Pool](#sql-elastic-pool). |
 | Azure SQL Databases | Dtu, MaxDataBytes | | MaxDataBytes supports DTU and VCore models (see notes below) |
 | Azure MySQL Flexible Server | Sku, Iops, CoreCount | Custom metrics via `CustomMetrics` |  |
 | Azure PostgreSQL Flexible Server | Sku, Iops, CoreCount | Custom metrics via `CustomMetrics` |  |
@@ -939,7 +939,7 @@ Some resource types do not expose a native absolute metric. In those cases, gene
 
 ### Scaling Rules
 
-A scaling rule determines a target value for one of the resources dimensions. A dimension is an attribute on the target resources (i.e. DTU for elastic pools, IOPS or MaxSizeBytes for FileShares), consider that:
+A scaling rule determines a target value for one of the resources dimensions. A dimension is an attribute on the target resources (i.e. Dtu, PerDatabaseMaxCapacity, and MaxDataBytes for elastic pools, IOPS or MaxSizeBytes for FileShares), consider that:
 
 * A resource can have more than one Dimension and these dimensions might have dependencies (i.e. the provisioned storage in an Azure Sql Elastic Pool is dependant on the provisioned DTU's). You do not have to worry about this. Create a scaling rule that actuates on the dimension that you are interested in and the system will automatically determine the smallest compatible value for the other dimensions if needed.
 * The Autoscaler dimensions **do not always match** one to one the dimensions of the real Azure Resource. I.e. the MySqlFlexible server exposes SKU and CoreCount dimensions, but the Azure resource only know about SKU. The autoscaler will automatically translate these virtual dimensions into what the target resource is expecting (i.e. if you specify a CoreCount,  it will find the nearest SKU that complies with your request). The purpose of this is to facilitate making decisions on resource metrics that will not reflect directly SKU definitions.
@@ -1093,6 +1093,22 @@ The autoadjust is designed to react based on metrics:
 ```
 
 ## SQL Elastic Pool
+
+### Per-database max eDTU (`PerDatabaseMaxCapacity`)
+
+Dimension **`PerDatabaseMaxCapacity`** maps to ARM `PerDatabaseSettings.MaxCapacity`: the cap on how many eDTUs any one database in the pool may use when the pool has spare capacity. It can be scaled **independently** of pool DTU (`Dimension: Dtu`) and max data size (`Dimension: MaxDataBytes`).
+
+Allowed targets follow Azure’s documented ladders (not the same steps as pool-level DTU tiers): **Standard** pools use one value list filtered by current pool eDTU; **Premium** pools use another list plus a **pool-size ceiling** (for example, a 1500 eDTU Premium pool cannot set per-database max above 1000).
+
+### Default when you omit `PerDatabaseMaxCapacity`
+
+This section describes backward-compatible behavior if your YAML never defines a scaling rule for **`PerDatabaseMaxCapacity`**.
+
+- After each refresh, requested pool state is rebuilt from rules. Nothing sets `PerDatabaseMaxCapacity` unless a rule uses that dimension.
+- **Whenever the autoscaler applies a patch to the elastic pool** and no rule has set a requested per-database max for that cycle, the patch still sends `ElasticPoolPerDatabaseSettings.MaxCapacity` equal to the pool’s **`Sku.Capacity`** in that patch (the effective pool DTU after `PreparePatch` reconciles storage/DTU). This matches the old “always tie per-database max to pool DTU” behavior.
+- **If you add rules** for `PerDatabaseMaxCapacity`, the explicit requested value is written instead (snapped/clamped to Azure-valid steps and Premium ceilings).
+
+**Operator note:** If you set per-database max manually in the portal but only scale **`Dtu`** / **`MaxDataBytes`** in config, the next autoscaler patch that changes the pool can **overwrite** `MaxCapacity` with pool DTU again, unless you also control it via **`PerDatabaseMaxCapacity`**.
 
 ```yaml
   - Resources:
