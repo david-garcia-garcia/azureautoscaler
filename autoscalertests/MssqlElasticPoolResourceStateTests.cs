@@ -121,6 +121,37 @@ namespace poolautoscaler.tests
         }
 
         [Fact]
+        public void PreparePatch_WhenPoolDtuReducedBelowExistingPerDbMax_ShouldClampPerDbMaxToNewPoolDtu()
+        {
+            // Arrange: pool is currently 300 DTU; per-db max was set to 200 (valid under 300 DTU).
+            // Pool DTU is now being scaled down to 100 DTU.  The per-db max of 200 would exceed
+            // the new pool ceiling of 100 and cause ElasticPoolDbDtuMaxAboveLimit from Azure.
+            var state = new MssqlElasticPoolResourceState(this.resourceId, this.loggerMock.Object, this.config);
+
+            state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
+            {
+                Sku = new SqlSku("StandardPool") { Capacity = 300 },
+                MaxSizeBytes = 536870912000, // 500 GB
+                PerDatabaseMaxCapacity = 200,
+            };
+
+            state.RequestedMssqlElasticPoolState = new MssqlElasticPoolState
+            {
+                Sku = new SqlSku("StandardPool") { Capacity = 100 },
+                PerDatabaseMaxCapacity = 200, // was valid under old 300-DTU pool
+            };
+
+            // Act
+            var patch = state.PreparePatch();
+
+            // Assert: per-db max must be clamped to the largest valid Standard value <= 100 DTU.
+            Assert.True(patch.HasChanges);
+            var patchData = (MssqlElasticPoolState)patch.PatchData;
+            Assert.Equal(100, patchData.Sku.Capacity);
+            Assert.Equal(100, patchData.PerDatabaseMaxCapacity);
+        }
+
+        [Fact]
         public void PreparePatch_WithCurrentStorageUsage_ShouldNormalizeToValidSize()
         {
             // Arrange

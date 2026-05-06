@@ -140,6 +140,15 @@ namespace poolautoscaler.resources.MssqlElasticPool
 
             patch.PerDatabaseMaxCapacity = this.RequestedMssqlElasticPoolState.PerDatabaseMaxCapacity;
 
+            // Re-clamp per-DB max against the *target* pool DTU.  If both dimensions are
+            // scaled down simultaneously the value was snapped against the old pool DTU and
+            // may now exceed the new ceiling, causing Azure to reject the combined patch.
+            if (patch.PerDatabaseMaxCapacity != null && patch.Sku?.Capacity != null)
+            {
+                patch.PerDatabaseMaxCapacity = MssqlElasticPoolResourceStateHelper.SnapToNearestPerDbMaxCapacity(
+                    patch.Sku, (int)patch.Sku.Capacity.Value, (int)patch.PerDatabaseMaxCapacity.Value);
+            }
+
             bool hasChanges = (patch.Sku != null && patch.Sku.Capacity != this.ExistingMssqlElasticPoolState.Sku.Capacity)
                               || (patch.MaxSizeBytes != null && patch.MaxSizeBytes != this.ExistingMssqlElasticPoolState.MaxSizeBytes)
                               || (patch.PerDatabaseMaxCapacity != null

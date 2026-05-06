@@ -210,7 +210,7 @@ namespace poolautoscaler.tests
 
             state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
             {
-                Sku = new SqlSku("StandardPool") { Capacity = 50 },
+                Sku = new SqlSku("StandardPool") { Capacity = 200 },
                 MaxSizeBytes = 107374182400,
                 PerDatabaseMaxCapacity = 100,
             };
@@ -231,7 +231,7 @@ namespace poolautoscaler.tests
 
             state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
             {
-                Sku = new SqlSku("StandardPool") { Capacity = 50 },
+                Sku = new SqlSku("StandardPool") { Capacity = 200 },
                 MaxSizeBytes = 107374182400,
                 PerDatabaseMaxCapacity = 100,
             };
