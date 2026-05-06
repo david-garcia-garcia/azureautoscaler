@@ -86,6 +86,20 @@ The wildcard matches any expanded resource name, so `aks_dev_nodepools_*` will m
 
 ### Scaling configurations
 
+The **`TimeWindow`** block is optional. When omitted, the autoscaler treats the scaling configuration as active **all day, every day, in UTC** (equivalent to `Days: All`, `Months: All`, `StartTime: "00:00"`, `EndTime: "23:59"`, `TimeZone: UTC`).
+
+Minimal example with no `TimeWindow` (always evaluated whenever the resource runs):
+
+```yaml
+    ScalingConfigurations:
+      AlwaysScale:
+        ScalingRules:
+          fixed:
+            ScalingStrategy: Fixed
+            Dimension: Dtu
+            ScaleTarget: "(data) => (100).ToString()"
+```
+
 In this simple example, we will be scaling two Azure Sql Elastic Pools so that they will have 50 DTU during working hours, 20 DTU during the night, and 10 DTU during weekends.
 
 ```yaml
