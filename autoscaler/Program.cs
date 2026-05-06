@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
+using System.Text;
 using Azure.Core;
 using Azure.Identity;
 using Azure.ResourceManager;
@@ -29,14 +30,14 @@ namespace AzureSqlElasticPoolAutoscaler
             return builder
                 .ConfigureAppConfiguration((hostingContext, config) =>
                 {
-                    string file = Environment.GetEnvironmentVariable("CONFIG_FILE", EnvironmentVariableTarget.Process);
+                    string? file = Environment.GetEnvironmentVariable("CONFIG_FILE", EnvironmentVariableTarget.Process);
 
-                    if (!File.Exists(file))
+                    if (string.IsNullOrEmpty(file) || !File.Exists(file))
                     {
                         file = "/app/config.yml";
                     }
 
-                    if (!File.Exists(file))
+                    if (string.IsNullOrEmpty(file) || !File.Exists(file))
                     {
                         // Find the configuration file recursively upwards from the current bin directory
                         var currentDirectory = Directory.GetCurrentDirectory();
@@ -56,7 +57,27 @@ namespace AzureSqlElasticPoolAutoscaler
                         }
                     }
 
-                    config.AddYamlFile(file, optional: false, reloadOnChange: true);
+                    if (string.IsNullOrEmpty(file) || !File.Exists(file))
+                    {
+                        throw new FileNotFoundException(
+                            "Configuration file not found. Set CONFIG_FILE to a valid path, ensure /app/config.yml exists in the container, or place config.yml in a parent directory of the working directory.");
+                    }
+
+                    using var loggerFactory = LoggerFactory.Create(loggingBuilder =>
+                    {
+                        loggingBuilder.SetMinimumLevel(LogLevel.Debug);
+                        loggingBuilder.AddSimpleConsole(options =>
+                        {
+                            options.SingleLine = true;
+                            options.TimestampFormat = "HH:mm:ss ";
+                        });
+                    });
+                    var includeLogger = loggerFactory.CreateLogger("ConfigurationIncludes");
+
+                    var mergedYaml = poolautoscaler.configuration.YamlConfigIncludePreprocessor.LoadConfigWithIncludes(file, includeLogger);
+                    var yamlBytes = Encoding.UTF8.GetBytes(mergedYaml);
+                    using var mergedStream = new MemoryStream(yamlBytes, writable: false);
+                    config.AddYamlStream(mergedStream);
                 })
                 .ConfigureServices((hostContext, services) =>
                 {

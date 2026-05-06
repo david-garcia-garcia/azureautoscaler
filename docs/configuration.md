@@ -2,7 +2,7 @@
 
 ### Configuration lifecycle
 
-The application will parse, validate and load the configuration once during container startup. Any modifications to the configuration require a container restart.
+The application parses, validates, and loads the configuration once during process startup. Any change to `config.yml` or to files referenced via `$include` requires a process restart (YAML is loaded through an in-memory stream, so there is no file-watcher–based reload).
 
 ## Global structure
 
@@ -28,6 +28,42 @@ Resources:
   - R1
   - R2
 ```
+
+### Composing `Resources` with `$include`
+
+You can split a large configuration into smaller YAML files and pull their resource entries into the main `Resources` list. Add list items of the form `- $include: <relative-path>` anywhere in the top-level `Resources` sequence. Paths are resolved relative to the directory that contains the main `config.yml`, not the process working directory. Inline resource entries and `$include` entries can be mixed; each `$include` is expanded in order, so the final list matches declaration order.
+
+**Main `config.yml` example**
+
+```yaml
+Resources:
+  - $include: resources/aks.yaml
+  - $include: resources/sql.yaml
+  - Resources:
+      my_inline_resource:
+        ResourceId: "/subscriptions/.../resourceGroups/.../providers/..."
+    Frequency: 5m
+```
+
+**Included file format**
+
+Each included file must be a YAML **sequence at the root** (a list), with one element per resource entry—the same shape as each item you would put directly under `Resources` in the main file:
+
+```yaml
+# resources/aks.yaml
+- Resources:
+    aks_dev:
+      ResourceId: "/subscriptions/.../providers/Microsoft.ContainerService/managedClusters/..."
+  Frequency: 5m
+  Enabled: true
+```
+
+**Limitations**
+
+- **Only the main config is scanned** for `$include`. The loader does not expand `$include` inside included files; if an included file contains a `$include` entry, it is treated as a normal nested object and will typically fail validation or binding.
+- **No `reloadOnChange` for included files**: configuration is read through an in-memory YAML stream. Editing an included file does not trigger a reload; restart the process (or rely on your platform’s restart policy) after changes.
+
+At startup, each successfully loaded include path is written at **Information** log level (category `ConfigurationIncludes`) so you can trace which files were merged.
 
 ### Resource-Specific Logging
 
