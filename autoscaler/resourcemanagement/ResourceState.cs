@@ -222,9 +222,6 @@ namespace poolautoscaler.resourcemanagement
         }
 
         /// <summary>
-        /// Last time this resources was scaled.
-        /// </summary>
-        /// <summary>
         /// Gets or sets the last time this resource was scaled.
         /// </summary>
         public DateTime? LastScale { get; set; }
@@ -517,7 +514,6 @@ namespace poolautoscaler.resourcemanagement
 
             var intervalEnd = DateTimeOffset.UtcNow;
 
-            // We recently scaled internally, do not update.
             if ((intervalEnd - intervalStart).TotalSeconds < 60)
             {
                 return;

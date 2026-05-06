@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Core;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,9 @@ namespace poolautoscaler.tests
     /// </summary>
     internal sealed class TestDimension : IDimension
     {
+        /// <summary>When set, <see cref="SetDimensionValue"/> throws this instead of updating capacity (for transient Azure error tests).</summary>
+        public RequestFailedException? ExceptionToThrowOnSet { get; set; }
+
         /// <inheritdoc/>
         public bool CanApplyDimension(ResourceState resource, ScalingRule rule, ILogger logger)
         {
@@ -71,6 +75,11 @@ namespace poolautoscaler.tests
             TokenCredential credential,
             string value)
         {
+            if (this.ExceptionToThrowOnSet != null)
+            {
+                throw this.ExceptionToThrowOnSet;
+            }
+
             ((TestResourceState)resource).RequestedCapacity = int.Parse(value);
             return Task.CompletedTask;
         }
