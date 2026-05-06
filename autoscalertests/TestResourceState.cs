@@ -34,6 +34,9 @@ namespace poolautoscaler.tests
         /// </summary>
         public Dictionary<string, double> CustomMetricValues { get; set; } = new Dictionary<string, double>();
 
+        /// <summary>When set, <see cref="ApplyChanges"/> throws this (for background scale task error tests).</summary>
+        public Exception? ApplyChangesException { get; set; }
+
         public override Task<MetricEvalDtoResult> CustomMetric(
             ArmClient client,
             TokenCredential credential,
@@ -79,6 +82,11 @@ namespace poolautoscaler.tests
 
         public override Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
+            if (this.ApplyChangesException != null)
+            {
+                throw this.ApplyChangesException;
+            }
+
             return Task.CompletedTask;
         }
 

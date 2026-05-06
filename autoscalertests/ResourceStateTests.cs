@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using poolautoscaler.configuration;
+using poolautoscaler.resourcemanagement;
 using poolautoscaler.resources.MsSqlDatabase;
 
 namespace poolautoscaler.tests

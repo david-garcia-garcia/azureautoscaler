@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Core;
 using Azure.ResourceManager;
 using Microsoft.Extensions.Logging;
@@ -373,137 +374,193 @@ namespace poolautoscaler.tests
             Assert.Equal(20, state.RequestedCapacity);
         }
 
-        [Fact]
-        public async Task ProcessOneAsync_WhenScaleDownBeforeLockWindow_AllowsScaleDown()
+        [Theory]
+        [InlineData(0, false)]
+        [InlineData(49, false)]
+        [InlineData(50, true)]
+        [InlineData(59, true)]
+        public async Task ScaleDownLockWindowMinutes_BlocksFirstNMinutesOfHour(int minuteOfHour, bool expectScaleDownApplied)
         {
-            // Arrange: ScaleDownLockWindowMinutes = 50 means scale down is LOCKED from minute 50-59.
-            // Current time: 12:30 (minute 30) -> outside lock window, scale down allowed.
+            var utcNow = new DateTime(2025, 6, 16, 12, minuteOfHour, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
+                scaleDownLockWindowMinutes: 50);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+                LastScale = utcNow.AddMinutes(-10),
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientWrapper,
+                this.licenseInfo,
+                this.resourceLocationResolver,
+                () => utcNow);
+
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            if (expectScaleDownApplied)
+            {
+                Assert.Equal(5, state.RequestedCapacity);
+            }
+            else
+            {
+                Assert.Null(state.RequestedCapacity);
+            }
+        }
+
+        [Theory]
+        [InlineData(0, true)]
+        [InlineData(57, true)]
+        [InlineData(58, false)]
+        [InlineData(59, false)]
+        public async Task ScaleUpAllowWindowMinutes_BlocksFromMinuteNOnward(int minuteOfHour, bool expectScaleUpApplied)
+        {
+            var utcNow = new DateTime(2025, 6, 16, 12, minuteOfHour, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")",
+                scaleUpAllowWindowMinutes: 58);
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                LastScale = utcNow.AddMinutes(-10),
+            };
+
+            var dimensions = new List<IDimension> { new TestDimension() };
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                dimensions,
+                this.credentialMock.Object,
+                this.armClientWrapper,
+                this.licenseInfo,
+                this.resourceLocationResolver,
+                () => utcNow);
+
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            if (expectScaleUpApplied)
+            {
+                Assert.Equal(20, state.RequestedCapacity);
+            }
+            else
+            {
+                Assert.Null(state.RequestedCapacity);
+            }
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenRequestFailedExceptionDuringEval_DisablesForOneHour()
+        {
             var utcNow = new DateTime(2025, 6, 16, 12, 30, 0, DateTimeKind.Utc);
             var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
-                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
-                scaleDownLockWindowMinutes: 50);
-            var config = CreateResourceConfiguration(scalingConfig);
-            var state = new TestResourceState("test://test", this.logger, config)
-            {
-                CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 15 },
-            };
-
-            var dimensions = new List<IDimension> { new TestDimension() };
-            var processor = new ResourceProcessor(
-                this.logFactoryMock.Object,
-                dimensions,
-                this.credentialMock.Object,
-                this.armClientWrapper,
-                this.licenseInfo,
-                this.resourceLocationResolver,
-                () => utcNow);
-
-            // Act
-            await processor.ProcessOneAsync(state, CancellationToken.None);
-
-            // Assert: Scale down allowed (minute 30 < 50, outside lock window); target 5 applied.
-            Assert.Equal(5, state.RequestedCapacity);
-        }
-
-        [Fact]
-        public async Task ProcessOneAsync_WhenScaleDownAtOrAfterLockWindow_SkipsScaleDown()
-        {
-            // Arrange: ScaleDownLockWindowMinutes = 50 means scale down is LOCKED from minute 50-59.
-            // Current time: 12:55 (minute 55) -> inside lock window, scale down blocked.
-            var utcNow = new DateTime(2025, 6, 16, 12, 55, 0, DateTimeKind.Utc);
-            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
-                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default < 20 ? \"5\" : \"10\")",
-                scaleDownLockWindowMinutes: 50);
-            var config = CreateResourceConfiguration(scalingConfig);
-            var state = new TestResourceState("test://test", this.logger, config)
-            {
-                CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 15 },
-            };
-
-            var dimensions = new List<IDimension> { new TestDimension() };
-            var processor = new ResourceProcessor(
-                this.logFactoryMock.Object,
-                dimensions,
-                this.credentialMock.Object,
-                this.armClientWrapper,
-                this.licenseInfo,
-                this.resourceLocationResolver,
-                () => utcNow);
-
-            // Act
-            await processor.ProcessOneAsync(state, CancellationToken.None);
-
-            // Assert: Scale down skipped (minute 55 >= 50, inside lock window); RequestedCapacity remains null.
-            Assert.Null(state.RequestedCapacity);
-        }
-
-        [Fact]
-        public async Task ProcessOneAsync_WhenScaleUpAfterAllowWindow_SkipsScaleUp()
-        {
-            // Arrange: ScaleUpAllowWindowMinutes = 58: scale up only allowed when minute <= 58.
-            // Current time: 12:59 -> scale up blocked.
-            var utcNow = new DateTime(2025, 6, 16, 12, 59, 0, DateTimeKind.Utc);
-            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
-                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")",
-                scaleDownLockWindowMinutes: 50,
-                scaleUpAllowWindowMinutes: 58);
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")");
             var config = CreateResourceConfiguration(scalingConfig);
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
                 CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                LastScale = utcNow.AddMinutes(-10),
             };
 
-            var dimensions = new List<IDimension> { new TestDimension() };
+            var dimension = new TestDimension
+            {
+                ExceptionToThrowOnSet = new RequestFailedException(400, "pool busy", "ElasticPoolBusy", null),
+            };
             var processor = new ResourceProcessor(
                 this.logFactoryMock.Object,
-                dimensions,
+                new List<IDimension> { dimension },
                 this.credentialMock.Object,
                 this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
 
-            // Act
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
-            // Assert: Scale up skipped (minute 59 > 58); RequestedCapacity remains null.
-            Assert.Null(state.RequestedCapacity);
+            // Transient Azure error codes are only handled inside MssqlElasticPoolResourceState.ApplyChanges.
+            // A RequestFailedException thrown during the evaluation phase (e.g. from a dimension) is not
+            // an elastic pool resource, so it falls through to the generic 1-hour disable.
+            var key = state.DisabledUntil.Keys.Single(k => k.StartsWith(ResourceState.UnhandledExceptionPrefix, StringComparison.Ordinal));
+            var until = state.DisabledUntil[key];
+            Assert.InRange((until - DateTime.UtcNow).TotalHours, 0.95, 1.05);
         }
 
         [Fact]
-        public async Task ProcessOneAsync_WhenScaleUpWithinAllowWindow_AllowsScaleUp()
+        public async Task ProcessOneAsync_WhenRequestFailedException_UnknownCode_DisablesForOneHour()
         {
-            // Arrange: ScaleUpAllowWindowMinutes = 58. Current time: 12:50 -> scale up allowed (50 <= 58).
-            var utcNow = new DateTime(2025, 6, 16, 12, 50, 0, DateTimeKind.Utc);
+            var utcNow = new DateTime(2025, 6, 16, 12, 30, 0, DateTimeKind.Utc);
             var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
-                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")",
-                scaleDownLockWindowMinutes: 50,
-                scaleUpAllowWindowMinutes: 58);
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")");
             var config = CreateResourceConfiguration(scalingConfig);
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
                 CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                LastScale = utcNow.AddMinutes(-10),
             };
 
-            var dimensions = new List<IDimension> { new TestDimension() };
+            var dimension = new TestDimension
+            {
+                ExceptionToThrowOnSet = new RequestFailedException(500, "nope", "TotallyUnknownCode", null),
+            };
             var processor = new ResourceProcessor(
                 this.logFactoryMock.Object,
-                dimensions,
+                new List<IDimension> { dimension },
                 this.credentialMock.Object,
                 this.armClientWrapper,
                 this.licenseInfo,
                 this.resourceLocationResolver,
                 () => utcNow);
 
-            // Act
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
-            // Assert: Scale up allowed (minute 50 <= 58); target 20 applied.
-            Assert.Equal(20, state.RequestedCapacity);
+            var key = state.DisabledUntil.Keys.Single(k => k.StartsWith(ResourceState.UnhandledExceptionPrefix, StringComparison.Ordinal));
+            var until = state.DisabledUntil[key];
+            Assert.InRange((until - DateTime.UtcNow).TotalHours, 0.95, 1.05);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenBackgroundApplyThrows_WithoutTransientDisable_DisablesForOneHour()
+        {
+            // Transient error handling lives in MssqlElasticPoolResourceState.ApplyChanges.
+            // TestResourceState.ApplyChanges does not handle transient codes, so the processor
+            // falls through to the generic 1-hour disable.
+            var utcNow = new DateTime(2025, 6, 16, 12, 30, 0, DateTimeKind.Utc);
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")");
+            var config = CreateResourceConfiguration(scalingConfig);
+            var state = new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                LastScale = utcNow.AddMinutes(-10),
+                ApplyChangesException = new RequestFailedException(400, "catchup", "ElasticPoolUpdateLinksNotInCatchup", null),
+            };
+
+            var processor = new ResourceProcessor(
+                this.logFactoryMock.Object,
+                new List<IDimension> { new TestDimension() },
+                this.credentialMock.Object,
+                this.armClientWrapper,
+                this.licenseInfo,
+                this.resourceLocationResolver,
+                () => utcNow);
+
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            await Task.Delay(500);
+
+            var key = state.DisabledUntil.Keys.Single(k => k.StartsWith(ResourceState.UnhandledExceptionPrefix, StringComparison.Ordinal));
+            var until = state.DisabledUntil[key];
+            Assert.InRange((until - DateTime.UtcNow).TotalHours, 0.95, 1.05);
         }
 
         [Fact]

@@ -161,6 +161,13 @@ namespace poolautoscaler.resources.MssqlElasticPool
         }
 
         /// <inheritdoc />
+        private static readonly Dictionary<string, int> TransientErrorDisableMinutes = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["ElasticPoolUpdateLinksNotInCatchup"] = 10,
+            ["ElasticPoolBusy"] = 10,
+        };
+
+        /// <inheritdoc/>
         public override async Task ApplyChanges(ResourcePatchOperation operation, CancellationToken cancellationToken)
         {
             if (!(operation.PatchData is MssqlElasticPoolState internalPatch))
@@ -178,8 +185,16 @@ namespace poolautoscaler.resources.MssqlElasticPool
             int? maxPerDb = internalPatch.PerDatabaseMaxCapacity ?? patch.Sku.Capacity;
             patch.PerDatabaseSettings.MaxCapacity = maxPerDb.HasValue ? maxPerDb.Value : null;
 
-            var result = await this.Resource.UpdateAsync(Azure.WaitUntil.Completed, patch, cancellationToken);
-            this.ValidateArmResult(result);
+            try
+            {
+                var result = await this.Resource.UpdateAsync(Azure.WaitUntil.Completed, patch, cancellationToken);
+                this.ValidateArmResult(result);
+            }
+            catch (Azure.RequestFailedException rfex)
+                when (!string.IsNullOrEmpty(rfex.ErrorCode) && TransientErrorDisableMinutes.TryGetValue(rfex.ErrorCode, out _))
+            {
+                throw new TransientAzureOperationException(rfex.ErrorCode, TransientErrorDisableMinutes[rfex.ErrorCode], rfex);
+            }
         }
 
         /// <inheritdoc />

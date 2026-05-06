@@ -165,7 +165,7 @@ namespace poolautoscaler.resourcemanagement
             Dictionary<string, MetricEvalDtoResult> metrics,
             ILogger logger)
         {
-            // We know this is non-null from the RunLoop guard.
+            // We know LastScale is non-null from the RunLoop guard.
             var candidate = state.LastScale!.Value;
 
             // 1) Metric-based candidate: last time the tracked metric changed.
@@ -398,14 +398,14 @@ namespace poolautoscaler.resourcemanagement
                             continue;
                         }
 
-                        if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute >= setting.ScaleDownLockWindowMinutes)
+                        if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute < setting.ScaleDownLockWindowMinutes)
                         {
                             capturingLogger.LogTrace(
-                                "{ruleId} Skipping scale down from {Current} to {Target} not allowed from minute {Minute} onward (lock window) of a billable hour.",
+                                "{ruleId} Skipping scale down from {Current} to {Target} not allowed during minutes 0 to {LastBlockedMinute} (lock window, first N minutes) of a billable hour.",
                                 rule.Id,
                                 currentDimensionValue,
                                 targetDimensionValue,
-                                setting.ScaleDownLockWindowMinutes);
+                                setting.ScaleDownLockWindowMinutes.Value - 1);
                             continue;
                         }
                     }
@@ -423,10 +423,10 @@ namespace poolautoscaler.resourcemanagement
                             continue;
                         }
 
-                        if (setting.ScaleDownLockWindowMinutes.HasValue && utcNow.Minute > setting.ScaleUpAllowWindowMinutes)
+                        if (setting.ScaleUpAllowWindowMinutes.HasValue && utcNow.Minute >= setting.ScaleUpAllowWindowMinutes)
                         {
                             capturingLogger.LogTrace(
-                                "{ruleId} Skipping scale up from {Current} to {Target} not allowed after minute {Minute} of a billable hour.",
+                                "{ruleId} Skipping scale up from {Current} to {Target} not allowed from minute {Minute} onward of a billable hour.",
                                 rule.Id,
                                 currentDimensionValue,
                                 targetDimensionValue,
@@ -508,7 +508,8 @@ namespace poolautoscaler.resourcemanagement
                                     var scaleStopwatch = Stopwatch.StartNew();
                                     await resState.ApplyChanges(patchOp, stoppingToken);
                                     scaleStopwatch.Stop();
-                                    resState.LastScale = getUtcNow();
+                                    var completedAt = getUtcNow();
+                                    resState.LastScale = completedAt;
                                     resLogger.LogInformation(
                                         "Scale operation completed successfully after {Elapsed}",
                                         scaleStopwatch.Elapsed.ToString(@"hh\:mm\:ss"));
@@ -516,6 +517,16 @@ namespace poolautoscaler.resourcemanagement
                                 catch (OperationCanceledException)
                                 {
                                     resLogger.LogInformation("Scale operation was cancelled");
+                                }
+                                catch (TransientAzureOperationException tex)
+                                {
+                                    var until = DateTime.UtcNow.AddMinutes(tex.DisableMinutes);
+                                    resState.DisabledUntil[$"Transient Azure error: {tex.ErrorCode}"] = until;
+                                    resLogger.LogInformation(
+                                        "Scale operation rejected with transient error {ErrorCode}. Resource disabled for {Minutes} minute(s) until {Until} (will resume automatically).",
+                                        tex.ErrorCode,
+                                        tex.DisableMinutes,
+                                        until);
                                 }
                                 catch (Exception ex)
                                 {
@@ -538,5 +549,6 @@ namespace poolautoscaler.resourcemanagement
 
             capturingLogger.Clear();
         }
+
     }
 }
