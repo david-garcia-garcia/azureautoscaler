@@ -14,7 +14,7 @@ namespace poolautoscaler.configuration
         /// <summary>
         /// When should this scaling configuration be applied.
         /// </summary>
-        public TimeWindow TimeWindow { get; set; }
+        public TimeWindow TimeWindow { get; set; } = new TimeWindow();
 
         /// <summary>
         /// When set to N, scale-down is blocked during UTC minutes 0 through N−1 of each clock hour (first N minutes of the hour).
