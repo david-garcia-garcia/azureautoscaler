@@ -1,10 +1,12 @@
-## SQL Elastic Pool
+﻿## SQL Elastic Pool
 
 ### Per-database max eDTU (`PerDatabaseMaxCapacity`)
 
 Dimension **`PerDatabaseMaxCapacity`** maps to ARM `PerDatabaseSettings.MaxCapacity`: the cap on how many eDTUs any one database in the pool may use when the pool has spare capacity. It can be scaled **independently** of pool DTU (`Dimension: Dtu`) and max data size (`Dimension: MaxDataBytes`).
 
 Allowed targets follow Azure’s documented ladders (not the same steps as pool-level DTU tiers): **Standard** pools use one value list filtered by current pool eDTU; **Premium** pools use another list plus a **pool-size ceiling** (for example, a 1500 eDTU Premium pool cannot set per-database max above 1000).
+
+> **Important — always bounded by pool DTU:** Even though `PerDatabaseMaxCapacity` is an independent scaling dimension, the autoscaler always re-clamps it against the **target** pool DTU during patch preparation before sending the ARM patch. If a `Dtu` rule and a `PerDatabaseMaxCapacity` rule both fire in the same cycle and the pool is being scaled down, the per-database max will be silently reduced to the nearest valid tier at or below the new pool DTU ceiling. This is required because Azure rejects any patch where `PerDatabaseSettings.MaxCapacity` exceeds the pool's new eDTU capacity. Design your `PerDatabaseMaxCapacity` rules with this in mind: the effective value applied may be lower than the rule's target whenever a simultaneous pool DTU downscale occurs.
 
 ### Default when you omit `PerDatabaseMaxCapacity`
 
