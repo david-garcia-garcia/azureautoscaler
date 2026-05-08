@@ -472,26 +472,10 @@ Invalid values are prefixed with `!` to make them easy to spot. This makes it ea
 
 Forecasting is configured at the metric level and works in two phases:
 
-1. **Baseline forecast**: with `ForecastEnable: true`, the autoscaler uses historical data (`ForecastTimeRange`) and slot granularity (`ForecastSlotMinutes`) to produce a projected value per day-of-week and time slot.
-2. **Optional snap transform**: `ForecastMode` can transform the baseline projection before it is used by scaling rules.
+1. **Baseline grid**: with `ForecastEnable: true`, the autoscaler selects compatible historical days, corrects capped points, and aggregates them into a projected value per weekday × time-slot. All parameters that control this pipeline are documented in **[Forecast baseline parameters](forecast-baseline-parameters.md)**.
+2. **Snap transform**: `ForecastMode` then transforms the baseline before it is used by scaling rules (see below).
 
-#### Baseline forecast details (affinity + capped-point handling)
-
-Baseline projection uses compatible historical days and these affinity parameters:
-
-- `ForecastAffinitySameDayFactor` (default `1.0`): weight when sample day equals target day.
-- `ForecastAffinityWeekdayFactor` (default `0.3`): weight for weekday-to-weekday (different day).
-- `ForecastAffinityWeekendFactor` (default `0.3`): weight for weekend-to-weekend (different day).
-
-The service also supports capped-point compensation using `ForecastMetricMax`:
-
-- `ForecastCappedCorrectionThreshold` (default `0.95`): if observed usage is above this fraction of available capacity, point is considered likely capped.
-- `ForecastCappedCorrectionFactor` (default `1.2`): multiplier applied to capped points before baseline aggregation (for example, `1.20` increases capped points by 20%).
-
-This helps differentiate cases like:
-
-- `50 / 50` capacity (likely capped, should be treated as potentially higher), versus
-- `50 / 100` capacity (not capped, keep value unchanged).
+Use the generated forecast metric (`<metricId>_forecast`) in scaling rules when you want decisions driven by projected demand instead of only recent observations.
 
 If `ForecastMode` is unset or `Raw`, the baseline is used as-is. The supported values are:
 
@@ -499,10 +483,6 @@ If `ForecastMode` is unset or `Raw`, the baseline is used as-is. The supported v
 - `Anchors`: fixed interval boundaries (`ForecastSnapAnchorHours`)
 - `AnchorWindow`: configured windows (`ForecastAnchorWindows`) with optimized change moment
 - `Snap`: rolling window percentile using `ForecastSnapStepWindows`
-
-Use the generated forecast metric (`<metricId>_forecast`) in scaling rules when you want decisions driven by projected demand instead of only recent observations.
-
-For the optional parameters that control how the baseline grid itself is built (aggregation mode, recency decay, temporal smoothing, and boost factor) see **[Forecast baseline parameters](forecast-baseline-parameters.md)**.
 
 #### Detailed ForecastMode behavior (Anchors, AnchorWindow, Snap)
 
