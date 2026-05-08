@@ -115,6 +115,50 @@ namespace poolautoscaler.configuration
         public double? ForecastAffinityWeekendFactor { get; set; }
 
         /// <summary>
+        /// How to combine historical same-weekday slot values into one baseline cell: <c>Max</c>, <c>Mean</c>, or <c>WeightedMean</c>.
+        /// When null or unset, behaves as <c>Max</c> (backward compatible).
+        /// </summary>
+        /// <remarks>
+        /// Together with baseline tuning: see <see cref="ForecastBaselineDecayDays"/>,
+        /// <see cref="ForecastBaselineSmoothingNeighbourWeight"/>, <see cref="ForecastBaselineBoostFactor"/>.
+        /// Order of application: aggregation → temporal smoothing → boost → snap/anchor (see project docs).
+        /// </remarks>
+        public string? ForecastBaselineAggregation { get; set; }
+
+        /// <summary>
+        /// Exponential decay time constant τ (days) for <c>WeightedMean</c>: contributor weight ∝ exp(−daysAgo / τ).
+        /// At age τ the relative factor is exp(−1) (~37%); the age where relative weight is halved is about τ × ln(2).
+        /// When null or unset, defaults to 14.0 days. Values less than or equal to zero are treated as 14.0.
+        /// </summary>
+        /// <remarks>
+        /// Ignored unless aggregation is <c>WeightedMean</c>. See <c>docs/forecast-baseline-parameters.md</c>.
+        /// See also <see cref="ForecastBaselineAggregation"/>,
+        /// <see cref="ForecastBaselineSmoothingNeighbourWeight"/>, <see cref="ForecastBaselineBoostFactor"/>.
+        /// </remarks>
+        public double? ForecastBaselineDecayDays { get; set; }
+
+        /// <summary>
+        /// Weight (0–0.49) for each <em>existing</em> time-adjacent slot when blending the cross-day aggregate for the same weekday.
+        /// Upward-only: a slot is replaced only if the blend is higher than the raw aggregate. Values null, ≤ 0, or NaN disable smoothing.
+        /// Values ≥ 0.5 are clamped to 0.49. Runs after aggregation and before <see cref="ForecastBaselineBoostFactor"/>.
+        /// </summary>
+        /// <remarks>
+        /// See <see cref="ForecastBaselineAggregation"/>, <see cref="ForecastBaselineDecayDays"/>, <see cref="ForecastBaselineBoostFactor"/>
+        /// and <c>docs/forecast-baseline-parameters.md</c>.
+        /// </remarks>
+        public double? ForecastBaselineSmoothingNeighbourWeight { get; set; }
+
+        /// <summary>
+        /// Multiplier applied to each baseline cell <em>after</em> cross-day aggregation and temporal smoothing (before snap/anchor modes).
+        /// Example: 1.20 increases the aggregate by 20%. When null, unset, NaN, infinity, or ≤ 0, defaults to 1.0 (no change).
+        /// </summary>
+        /// <remarks>
+        /// See <see cref="ForecastBaselineAggregation"/>, <see cref="ForecastBaselineDecayDays"/>,
+        /// <see cref="ForecastBaselineSmoothingNeighbourWeight"/>.
+        /// </remarks>
+        public double? ForecastBaselineBoostFactor { get; set; }
+
+        /// <summary>
         /// Threshold ratio (0-1) to consider a point potentially capped when comparing main usage to ForecastMetricMax.
         /// Example: 0.95 means usage >= 95% of available capacity is considered capped. Defaults to 0.95.
         /// </summary>
