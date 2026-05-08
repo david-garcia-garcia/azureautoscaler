@@ -502,6 +502,8 @@ If `ForecastMode` is unset or `Raw`, the baseline is used as-is. The supported v
 
 Use the generated forecast metric (`<metricId>_forecast`) in scaling rules when you want decisions driven by projected demand instead of only recent observations.
 
+For the optional parameters that control how the baseline grid itself is built (aggregation mode, recency decay, temporal smoothing, and boost factor) see **[Forecast baseline parameters](forecast-baseline-parameters.md)**.
+
 #### Detailed ForecastMode behavior (Anchors, AnchorWindow, Snap)
 
 `Raw` needs no extra settings; when omitted or set to `Raw`, the baseline forecast is used directly.

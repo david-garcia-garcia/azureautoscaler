@@ -1,3 +1,4 @@
+using System.Globalization;
 using Azure.Monitor.Query;
 using Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
@@ -23,6 +24,7 @@ namespace poolautoscaler.metrics
         private const int MinSlotMinutes = 15;
         private const int MaxSlotMinutes = 60;
         private const int MaxColumnsPerTable = 20;
+        private const int MaxBaselineContributorSamplesLogged = 16;
 
         private readonly ILogger logger;
         private readonly IReadOnlyList<IForecastModeStrategy> forecastModeStrategies;
@@ -170,7 +172,11 @@ namespace poolautoscaler.metrics
                 weekend,
                 slotMinutes,
                 capDetectThreshold,
-                capCorrectionFactor);
+                capCorrectionFactor,
+                metric.ForecastBaselineAggregation,
+                metric.ForecastBaselineDecayDays,
+                metric.ForecastBaselineSmoothingNeighbourWeight,
+                metric.ForecastBaselineBoostFactor);
             if (fullForecast != null)
             {
                 this.ApplySnap(fullForecast, metric);
@@ -331,7 +337,11 @@ namespace poolautoscaler.metrics
                 weekend,
                 slotMinutes,
                 capDetectThreshold,
-                capCorrectionFactor);
+                capCorrectionFactor,
+                metric.ForecastBaselineAggregation,
+                metric.ForecastBaselineDecayDays,
+                metric.ForecastBaselineSmoothingNeighbourWeight,
+                metric.ForecastBaselineBoostFactor);
             if (fullForecast == null)
             {
                 return null;
@@ -417,9 +427,12 @@ namespace poolautoscaler.metrics
                 Valid = true,
                 InvalidReason = null
             };
-            if (fullForecast.DiagnosticLines != null && fullForecast.DiagnosticLines.Count > 0)
+            if ((fullForecast.DiagnosticLines?.Count ?? 0) > 0
+                || (fullForecast.DiagnosticTraceLines?.Count ?? 0) > 0)
             {
-                ok.Diagnostics = new MetricEvaluationDiagnostics(fullForecast.DiagnosticLines);
+                ok.Diagnostics = new MetricEvaluationDiagnostics(
+                    fullForecast.DiagnosticLines,
+                    fullForecast.DiagnosticTraceLines);
             }
 
             return ok;
@@ -428,7 +441,7 @@ namespace poolautoscaler.metrics
         /// <summary>
         /// Computes the full baseline forecast (all days of week) from pre-fetched history.
         /// The baseline is built per slot: for each target day, compatible historical windows are selected via affinity factors,
-        /// and the projected slot value is the maximum observed slot value among compatible windows.
+        /// and the projected slot value aggregates compatible windows using <paramref name="baselineAggregation"/> (default: maximum).
         /// Expensive; result is cacheable. Use <see cref="GetCurrentForecastValue"/> to get the value to apply for a given time.
         /// </summary>
         /// <param name="mainValues">Main metric time series.</param>
@@ -443,6 +456,10 @@ namespace poolautoscaler.metrics
         /// <param name="slotMinutes">Slot interval in minutes (15, 30, or 60). Default 60.</param>
         /// <param name="capDetectThreshold">Ratio threshold (0-1) to classify points as capped against maxSeries. Default 0.95.</param>
         /// <param name="capCorrectionFactor">Multiplier applied to capped points before baseline aggregation. Default 1.0 (disabled).</param>
+        /// <param name="baselineAggregation">Cross-day baseline aggregation mode: Max, Mean, or WeightedMean; null/unset behaves as Max.</param>
+        /// <param name="baselineDecayDays">Recency decay time constant τ (days) for WeightedMean; weight ∝ exp(−daysAgo/τ). Null uses defaults; values ≤ 0 use 14.</param>
+        /// <param name="baselineSmoothingNeighbourWeight">Optional weight for time-adjacent slot smoothing; null/disabled treated as no smoothing.</param>
+        /// <param name="baselineBoostFactor">Multiplier after aggregation and smoothing; null/invalid → 1.0.</param>
         /// <returns>Cacheable full forecast, or null if no daily windows.</returns>
         internal MetricForecastResult? ComputeFullForecastFromHistory(
             List<MetricEvalDtoResultValue> mainValues,
@@ -456,7 +473,11 @@ namespace poolautoscaler.metrics
             double weekendFactor = 0.3,
             int slotMinutes = 60,
             double capDetectThreshold = CapThreshold,
-            double capCorrectionFactor = DefaultCappedCorrectionFactor)
+            double capCorrectionFactor = DefaultCappedCorrectionFactor,
+            string? baselineAggregation = null,
+            double? baselineDecayDays = null,
+            double? baselineSmoothingNeighbourWeight = null,
+            double? baselineBoostFactor = null)
         {
             slotMinutes = ResolveSlotMinutes(slotMinutes);
             capDetectThreshold = ResolveCappedCorrectionThreshold(capDetectThreshold);
@@ -469,8 +490,14 @@ namespace poolautoscaler.metrics
                 return null;
             }
 
+            var baselineModeEffective = NormalizeBaselineAggregationMode(baselineAggregation);
+            var baselineBoostApplied = ResolveForecastBaselineBoostFactor(baselineBoostFactor);
+            var smoothingNeighbourApplied = ResolveSmoothingNeighbourWeight(baselineSmoothingNeighbourWeight);
+
             var valueByDayAndHour = new Dictionary<DayOfWeek, Dictionary<int, double>>();
             var cappedByDayAndHour = new Dictionary<DayOfWeek, Dictionary<int, bool>>();
+            var baselineContributorsByDayAndSlot = new Dictionary<DayOfWeek, Dictionary<int, List<ForecastBaselineContributor>>>();
+            var pipelineByDayAndSlot = new Dictionary<DayOfWeek, Dictionary<int, ForecastBaselineCellDiagnostics>>();
             foreach (DayOfWeek dayOfWeek in Enum.GetValues(typeof(DayOfWeek)))
             {
                 var compatible = dailyWindows.Where(w => CalculateAffinity(dayOfWeek, w.DayOfWeek, sameDayFactor, weekdayFactor, weekendFactor) > 0.5).ToList();
@@ -478,47 +505,122 @@ namespace poolautoscaler.metrics
                 {
                     var bySlot = new Dictionary<int, double>();
                     var cappedBySlot = new Dictionary<int, bool>();
+                    var contributorsBySlot = new Dictionary<int, List<ForecastBaselineContributor>>();
+                    var pipelineBySlot = new Dictionary<int, ForecastBaselineCellDiagnostics>();
                     for (int s = 0; s < slotsPerDay; s++)
                     {
-                        var valuesAtSlot = compatible
+                        var contributors = compatible
                             .Where(w => w.ValueByHour != null && w.ValueByHour.ContainsKey(s))
-                            .Select(w => w.ValueByHour[s])
+                            .OrderBy(w => w.WindowDateUtc)
+                            .Select(w => new ForecastBaselineContributor
+                            {
+                                SampleDateUtc = w.WindowDateUtc,
+                                Value = w.ValueByHour[s],
+                                RawSlotMaxUncorrected =
+                                    w.RawUncorrectedByHour != null && w.RawUncorrectedByHour.TryGetValue(s, out var rawSlot)
+                                        ? rawSlot
+                                        : w.ValueByHour[s],
+                                Capped = w.CappedByHour != null && w.CappedByHour.TryGetValue(s, out var cap) && cap,
+                            })
                             .ToList();
-                        if (valuesAtSlot.Any())
+                        if (contributors.Count > 0)
                         {
-                            bySlot[s] = valuesAtSlot.Max();
-                            var anyCappedAtSlot = compatible
-                                .Where(w => w.CappedByHour != null && w.CappedByHour.ContainsKey(s) && w.CappedByHour[s])
-                                .Any();
-                            cappedBySlot[s] = anyCappedAtSlot;
+                            var aggregate = AggregateContributors(contributors, baselineModeEffective, baselineDecayDays, endDate);
+                            bySlot[s] = aggregate;
+                            cappedBySlot[s] = contributors.Any(c => c.Capped);
+                            contributorsBySlot[s] = contributors;
+                            pipelineBySlot[s] = new ForecastBaselineCellDiagnostics
+                            {
+                                CrossDayAggregate = aggregate,
+                                AfterSmoothBeforeBoost = aggregate,
+                            };
+                        }
+                    }
+
+                    if (bySlot.Any() && smoothingNeighbourApplied > 0)
+                    {
+                        var dense = Enumerable.Repeat(double.NaN, slotsPerDay).ToArray();
+                        foreach (var kv in bySlot)
+                        {
+                            dense[kv.Key] = kv.Value;
+                        }
+
+                        var smoothed = ApplyTemporalSmoothing(dense, smoothingNeighbourApplied);
+                        foreach (var idx in bySlot.Keys.ToList())
+                        {
+                            var vsmooth = smoothed[idx];
+                            bySlot[idx] = vsmooth;
+                            if (pipelineBySlot.TryGetValue(idx, out var pipeCell))
+                            {
+                                pipeCell.AfterSmoothBeforeBoost = vsmooth;
+                                pipeCell.SmoothNeighbourLeft = idx > 0 && !double.IsNaN(dense[idx - 1])
+                                    ? dense[idx - 1]
+                                    : null;
+                                pipeCell.SmoothNeighbourRight = idx < slotsPerDay - 1 && !double.IsNaN(dense[idx + 1])
+                                    ? dense[idx + 1]
+                                    : null;
+                            }
+                        }
+                    }
+
+                    if (bySlot.Any() && baselineBoostApplied != 1.0)
+                    {
+                        foreach (var idx in bySlot.Keys.ToList())
+                        {
+                            bySlot[idx] *= baselineBoostApplied;
                         }
                     }
 
                     if (bySlot.Any())
                     {
+                        foreach (var idx in pipelineBySlot.Keys)
+                        {
+                            if (bySlot.TryGetValue(idx, out var finalSlotV) &&
+                                pipelineBySlot.TryGetValue(idx, out var pipeCellFinal))
+                            {
+                                pipeCellFinal.FinalAfterBoost = finalSlotV;
+                            }
+                        }
+
                         valueByDayAndHour[dayOfWeek] = bySlot;
                         cappedByDayAndHour[dayOfWeek] = cappedBySlot;
+                        baselineContributorsByDayAndSlot[dayOfWeek] = contributorsBySlot;
+                        pipelineByDayAndSlot[dayOfWeek] = pipelineBySlot;
                     }
                 }
             }
 
             var samplesPerDay = dailyWindows.GroupBy(w => w.DayOfWeek).ToDictionary(g => g.Key, g => g.Count());
             var buildInfo = new ForecastBuildInfo(startDate, endDate, dailyWindows.Count, samplesPerDay);
+            var baselineWeightedHalfLifeEffective = baselineModeEffective == "WeightedMean"
+                ? ResolveBaselineDecayDays(baselineDecayDays)
+                : (double?)null;
 
             var fullForecast = new MetricForecastResult
             {
                 SlotMinutes = slotMinutes,
                 ValueByDayAndHour = valueByDayAndHour,
                 CappedByDayAndHour = cappedByDayAndHour,
+                BaselineContributorsByDayAndSlot = baselineContributorsByDayAndSlot,
                 ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
                 MetricId = metricId,
                 ExecutedAggregations = aggregations,
                 BuildInfo = buildInfo,
+                BaselineAggregationConfigured = baselineAggregation,
+                BaselineAggregationEffective = baselineModeEffective,
+                BaselineWeightedMeanHalfLifeDays = baselineWeightedHalfLifeEffective,
+                BaselineBoostFactorApplied = baselineBoostApplied,
+                BaselineSmoothingNeighbourWeightApplied = smoothingNeighbourApplied,
+                BaselineCapCorrectionFactorApplied = capCorrectionFactor,
+                BaselineCapDetectThresholdApplied = capDetectThreshold,
+                BaselineCellDiagnosticsByDayAndSlot = pipelineByDayAndSlot.Count > 0 ? pipelineByDayAndSlot : null,
             };
 
             var baselineDiagnosticLines = new List<string>();
-            AppendFullWeeklyForecastLines(baselineDiagnosticLines, fullForecast, buildInfo);
+            var baselineTraceLines = new List<string>();
+            AppendFullWeeklyForecastLines(baselineDiagnosticLines, baselineTraceLines, fullForecast, buildInfo);
             fullForecast.DiagnosticLines = baselineDiagnosticLines;
+            fullForecast.DiagnosticTraceLines = baselineTraceLines;
             return fullForecast;
         }
 
@@ -537,6 +639,10 @@ namespace poolautoscaler.metrics
         /// <param name="weekendFactor">Affinity for weekend-to-weekend. Default 0.3.</param>
         /// <param name="capDetectThreshold">Ratio threshold (0-1) to classify points as capped against maxSeries. Default 0.95.</param>
         /// <param name="capCorrectionFactor">Multiplier applied to capped points before baseline aggregation. Default 1.0 (disabled).</param>
+        /// <param name="baselineAggregation">Cross-day baseline aggregation mode; null = Max.</param>
+        /// <param name="baselineDecayDays">Time constant τ in days for WeightedMean.</param>
+        /// <param name="baselineSmoothingNeighbourWeight">Optional temporal smoothing weight for adjacent slots.</param>
+        /// <param name="baselineBoostFactor">Multiplier applied after each baseline cell aggregate and smoothing.</param>
         /// <returns>Single-value forecast result for the reference time, or invalid result if no data.</returns>
         internal MetricEvalDtoResult? ComputeForecastFromHistory(
             List<MetricEvalDtoResultValue> mainValues,
@@ -550,7 +656,11 @@ namespace poolautoscaler.metrics
             double weekdayFactor = 0.3,
             double weekendFactor = 0.3,
             double capDetectThreshold = CapThreshold,
-            double capCorrectionFactor = DefaultCappedCorrectionFactor)
+            double capCorrectionFactor = DefaultCappedCorrectionFactor,
+            string? baselineAggregation = null,
+            double? baselineDecayDays = null,
+            double? baselineSmoothingNeighbourWeight = null,
+            double? baselineBoostFactor = null)
         {
             var fullForecast = this.ComputeFullForecastFromHistory(
                 mainValues,
@@ -564,7 +674,11 @@ namespace poolautoscaler.metrics
                 weekendFactor,
                 slotMinutes: MaxSlotMinutes,
                 capDetectThreshold: capDetectThreshold,
-                capCorrectionFactor: capCorrectionFactor);
+                capCorrectionFactor: capCorrectionFactor,
+                baselineAggregation: baselineAggregation,
+                baselineDecayDays: baselineDecayDays,
+                baselineSmoothingNeighbourWeight: baselineSmoothingNeighbourWeight,
+                baselineBoostFactor: baselineBoostFactor);
             if (fullForecast == null)
             {
                 return new MetricEvalDtoResult
@@ -624,10 +738,54 @@ namespace poolautoscaler.metrics
         }
 
         /// <summary>Appends full weekly baseline table and reliability lines (same content as former LogFullWeeklyForecast).</summary>
-        private static void AppendFullWeeklyForecastLines(List<string> lines, MetricForecastResult forecast, ForecastBuildInfo buildInfo)
+        private static string FormatBaselineAggregationModeDiagnosticLine(MetricForecastResult forecast)
         {
-            const int DayColumnWidth = 4;
-            const int CellWidth = 7;
+            var effective = string.IsNullOrEmpty(forecast.BaselineAggregationEffective)
+                ? "Max"
+                : forecast.BaselineAggregationEffective;
+            var configured = forecast.BaselineAggregationConfigured;
+
+            string line;
+            if (string.Equals(effective, "WeightedMean", StringComparison.OrdinalIgnoreCase))
+            {
+                var hl = forecast.BaselineWeightedMeanHalfLifeDays ?? 14.0;
+                line =
+                    $"Baseline aggregation mode: WeightedMean (recency decay tau_days={hl:F1}; half-weight_age_days~{hl * Math.Log(2):F1}).";
+            }
+            else if (string.Equals(effective, "Mean", StringComparison.OrdinalIgnoreCase))
+            {
+                line = "Baseline aggregation mode: Mean.";
+            }
+            else if (string.IsNullOrWhiteSpace(configured))
+            {
+                line = "Baseline aggregation mode: Max (ForecastBaselineAggregation unset; default).";
+            }
+            else
+            {
+                line = "Baseline aggregation mode: Max.";
+            }
+
+            var smooth = forecast.BaselineSmoothingNeighbourWeightApplied;
+            if (smooth > 1e-12)
+            {
+                line += $" Temporal smoothing neighbour weight: {smooth.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)} (upward-only).";
+            }
+
+            var boost = forecast.BaselineBoostFactorApplied;
+            if (Math.Abs(boost - 1.0) > 1e-9)
+            {
+                line += $" Baseline boost: x{boost.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)} (applied after aggregation and smoothing, before snap).";
+            }
+
+            return line;
+        }
+
+        private static void AppendFullWeeklyForecastLines(
+            List<string> lines,
+            List<string> traceLines,
+            MetricForecastResult forecast,
+            ForecastBuildInfo buildInfo)
+        {
             var days = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday };
             var slotMinutes = forecast.SlotMinutes;
             var slotsPerDay = (24 * 60) / slotMinutes;
@@ -662,9 +820,17 @@ namespace poolautoscaler.metrics
                 }
             }
 
+            lines.Add(FormatBaselineAggregationModeDiagnosticLine(forecast));
+            lines.Add(
+                "Baseline aggregates (UTC): fixed columns below - affinity-matched history per weekday x slot (trace: compact pipeline segments; trailing [..] pairs = corrected contributors then raw per-day slot peaks).");
+
+            var slotLabelWidth = Enumerable.Range(0, slotsPerDay).Select(s => FormatSlotLabel(s, slotMinutes).Length).Max();
+
             for (var colStart = 0; colStart < slotsPerDay; colStart += MaxColumnsPerTable)
             {
                 var colCount = Math.Min(MaxColumnsPerTable, slotsPerDay - colStart);
+                const int DayColumnWidth = 4;
+                const int CellWidth = 7;
                 var header = "Day".PadRight(DayColumnWidth) + string.Join(
                     string.Empty,
                     Enumerable.Range(0, colCount).Select(i => FormatSlotLabel(colStart + i, slotMinutes).PadLeft(CellWidth)));
@@ -676,11 +842,63 @@ namespace poolautoscaler.metrics
                     for (var i = 0; i < colCount; i++)
                     {
                         var slot = colStart + i;
-                        var val = (bySlot != null && bySlot.TryGetValue(slot, out var v)) ? v.ToString("F0") : "-";
-                        row += val.PadLeft(CellWidth);
+                        var val = (bySlot != null && bySlot.TryGetValue(slot, out var v)) ? v.ToString("F0").PadLeft(CellWidth) : "-".PadLeft(CellWidth);
+                        row += val;
                     }
 
                     lines.Add(row);
+                }
+
+                if (forecast.BaselineContributorsByDayAndSlot != null && forecast.BaselineContributorsByDayAndSlot.Count > 0)
+                {
+                    var firstLabel = FormatSlotLabel(colStart, slotMinutes);
+                    var lastSlotIndex = colStart + colCount - 1;
+                    var lastLabel = FormatSlotLabel(lastSlotIndex, slotMinutes);
+                    traceLines.Add(
+                        $"  Per-cell baseline trace (UTC {firstLabel}-{lastLabel}): final value | boost | preBoost | smooth(w,L,R) | cross | wmean/mean/max | [corrected] | cap | [raw] (left = final). ! in [corrected] = capped day.");
+                    foreach (var day in days)
+                    {
+                        forecast.BaselineContributorsByDayAndSlot.TryGetValue(day, out var contribBySlot);
+                        Dictionary<int, ForecastBaselineCellDiagnostics>? pipeBySlot = null;
+                        if (forecast.BaselineCellDiagnosticsByDayAndSlot != null)
+                        {
+                            forecast.BaselineCellDiagnosticsByDayAndSlot.TryGetValue(day, out pipeBySlot);
+                        }
+
+                        var bySlotAgg = forecast.ValueByDayAndHour.TryGetValue(day, out var agg) ? agg : null;
+                        for (var i = 0; i < colCount; i++)
+                        {
+                            var slot = colStart + i;
+                            if (bySlotAgg == null || !bySlotAgg.TryGetValue(slot, out var aggregated))
+                            {
+                                continue;
+                            }
+
+                            List<ForecastBaselineContributor>? list = null;
+                            if (contribBySlot != null)
+                            {
+                                contribBySlot.TryGetValue(slot, out list);
+                            }
+
+                            ForecastBaselineCellDiagnostics? cellPipe = null;
+                            if (pipeBySlot != null)
+                            {
+                                pipeBySlot.TryGetValue(slot, out cellPipe);
+                            }
+
+                            var rtl = FormatBaselineCellRtlDiagnosticLine(
+                                aggregated,
+                                list,
+                                cellPipe,
+                                forecast.BaselineAggregationEffective,
+                                forecast.BaselineWeightedMeanHalfLifeDays,
+                                forecast.BaselineSmoothingNeighbourWeightApplied,
+                                forecast.BaselineBoostFactorApplied,
+                                forecast.BaselineCapCorrectionFactorApplied,
+                                forecast.BaselineCapDetectThresholdApplied);
+                            traceLines.Add($"    {FormatDayOfWeekShort(day)}  {FormatSlotLabel(slot, slotMinutes).PadRight(slotLabelWidth)}  {rtl}");
+                        }
+                    }
                 }
 
                 if (colStart + colCount < slotsPerDay)
@@ -753,6 +971,180 @@ namespace poolautoscaler.metrics
             lines.Add("---------- End snapped forecast ----------");
         }
 
+        private static string FormatDayOfWeekShort(DayOfWeek day)
+        {
+            return day switch
+            {
+                DayOfWeek.Monday => "Mon",
+                DayOfWeek.Tuesday => "Tue",
+                DayOfWeek.Wednesday => "Wed",
+                DayOfWeek.Thursday => "Thu",
+                DayOfWeek.Friday => "Fri",
+                DayOfWeek.Saturday => "Sat",
+                DayOfWeek.Sunday => "Sun",
+                _ => day.ToString()[..3]
+            };
+        }
+
+        private static string FormatSlotLabel(int slotIndex, int slotMinutes)
+        {
+            var totalMinutes = slotIndex * slotMinutes;
+            var h = totalMinutes / 60;
+            var m = totalMinutes % 60;
+            return slotMinutes < 60 ? $"{h:D2}:{m:D2}" : h.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static string FormatBaselineContributorBracketContent(IReadOnlyList<ForecastBaselineContributor>? contributors)
+        {
+            if (contributors == null || contributors.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var slice = contributors.Count <= MaxBaselineContributorSamplesLogged
+                ? contributors
+                : contributors.Take(MaxBaselineContributorSamplesLogged).ToList();
+            var parts = slice.Select(c => c.Capped ? $"!{c.Value:F0}" : $"{c.Value:F0}");
+            var tail = contributors.Count > MaxBaselineContributorSamplesLogged
+                ? $", ...+{contributors.Count - MaxBaselineContributorSamplesLogged}"
+                : string.Empty;
+            return string.Join(", ", parts) + tail;
+        }
+
+        private static string FormatBaselineContributorRawBracketContent(IReadOnlyList<ForecastBaselineContributor>? contributors)
+        {
+            if (contributors == null || contributors.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var slice = contributors.Count <= MaxBaselineContributorSamplesLogged
+                ? contributors
+                : contributors.Take(MaxBaselineContributorSamplesLogged).ToList();
+            var parts = slice.Select(c => $"{c.RawSlotMaxUncorrected:F0}");
+            var tail = contributors.Count > MaxBaselineContributorSamplesLogged
+                ? $", ...+{contributors.Count - MaxBaselineContributorSamplesLogged}"
+                : string.Empty;
+            return string.Join(", ", parts) + tail;
+        }
+
+        private static string FormatCompactTraceNumber(double v)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            var r = Math.Round(v, MidpointRounding.AwayFromZero);
+            if (Math.Abs(v - r) < 0.051)
+            {
+                return ((int)r).ToString(inv);
+            }
+
+            return v.ToString("0.#", inv);
+        }
+
+        private static string FormatCompactCrossDayMode(string modeEffective, double? tauDays)
+        {
+            if (string.Equals(modeEffective, "WeightedMean", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"wmean({(tauDays ?? 14).ToString("G", CultureInfo.InvariantCulture)})";
+            }
+
+            if (string.Equals(modeEffective, "Mean", StringComparison.OrdinalIgnoreCase))
+            {
+                return "mean";
+            }
+
+            return "max";
+        }
+
+        private static string FormatCompactBoostFactor(double boostApplied)
+        {
+            var s = boostApplied.ToString("0.###", CultureInfo.InvariantCulture).TrimEnd('0').TrimEnd('.');
+            return string.IsNullOrEmpty(s) ? boostApplied.ToString(CultureInfo.InvariantCulture) : s;
+        }
+
+        /// <summary>
+        /// Compact pipeline trace: final | boost(…) | preBoost | smooth(w,L,R) | cross | wmean(tau) | [corrected] | cap(…) | [raw] (left = final, unwind right).
+        /// </summary>
+        private static string FormatBaselineCellRtlDiagnosticLine(
+            double finalAgg,
+            IReadOnlyList<ForecastBaselineContributor>? contributors,
+            ForecastBaselineCellDiagnostics? pipeline,
+            string baselineModeEffective,
+            double? tauDays,
+            double smoothingW,
+            double boostApplied,
+            double capCorrectionFactorApplied,
+            double capDetectThresholdApplied)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            if (contributors == null || contributors.Count == 0)
+            {
+                return FormatCompactTraceNumber(finalAgg);
+            }
+
+            if (pipeline == null)
+            {
+                var innerFallback = FormatBaselineContributorBracketContent(contributors);
+                if (string.IsNullOrEmpty(innerFallback))
+                {
+                    innerFallback = "-";
+                }
+
+                var rawFallback = FormatBaselineContributorRawBracketContent(contributors);
+                if (string.IsNullOrEmpty(rawFallback))
+                {
+                    rawFallback = "-";
+                }
+
+                return $"{FormatCompactTraceNumber(finalAgg)} | [{innerFallback}] | [{rawFallback}]";
+            }
+
+            var crossAgg = pipeline.CrossDayAggregate;
+            var afterSmooth = pipeline.AfterSmoothBeforeBoost;
+
+            var parts = new List<string>();
+            parts.Add(FormatCompactTraceNumber(finalAgg));
+
+            if (Math.Abs(boostApplied - 1.0) > 1e-9)
+            {
+                parts.Add($"boost({FormatCompactBoostFactor(boostApplied)})");
+                parts.Add(FormatCompactTraceNumber(afterSmooth));
+            }
+
+            if (smoothingW > 1e-12)
+            {
+                parts.Add(FormatSmoothDiagnosticSegment(smoothingW, pipeline));
+                parts.Add(FormatCompactTraceNumber(crossAgg));
+            }
+
+            parts.Add(FormatCompactCrossDayMode(baselineModeEffective, tauDays));
+
+            var corrInner = FormatBaselineContributorBracketContent(contributors);
+            parts.Add($"[{corrInner}]");
+
+            if (contributors.Any(c => c.Capped) && capCorrectionFactorApplied > 1.0 + 1e-9)
+            {
+                parts.Add($"cap({capCorrectionFactorApplied.ToString("F2", inv)})");
+            }
+
+            var rawInner = FormatBaselineContributorRawBracketContent(contributors);
+            parts.Add($"[{rawInner}]");
+
+            return string.Join(" | ", parts);
+        }
+
+        /// <summary>Neighbour slot cross-day values before smoothing: earlier slot, later slot (<c>-</c> if none).</summary>
+        private static string FormatSmoothDiagnosticSegment(double smoothingW, ForecastBaselineCellDiagnostics pipeline)
+        {
+            var wStr = FormatCompactBoostFactor(smoothingW);
+            var left = pipeline.SmoothNeighbourLeft.HasValue
+                ? FormatCompactTraceNumber(pipeline.SmoothNeighbourLeft.Value)
+                : "-";
+            var right = pipeline.SmoothNeighbourRight.HasValue
+                ? FormatCompactTraceNumber(pipeline.SmoothNeighbourRight.Value)
+                : "-";
+            return $"smooth({wStr}, {left}, {right})";
+        }
+
         /// <summary>Fills SnappedValueByDayAndHour from baseline (ValueByDayAndHour) using metric's snap config. Does not modify baseline.</summary>
         private void ApplySnap(MetricForecastResult result, Metric metric)
         {
@@ -779,29 +1171,6 @@ namespace poolautoscaler.metrics
             {
                 this.logger.LogDebug("ForecastMode={Mode} but config invalid or missing; skipping snap.", mode);
             }
-        }
-
-        private static string FormatDayOfWeekShort(DayOfWeek day)
-        {
-            return day switch
-            {
-                DayOfWeek.Monday => "Mon",
-                DayOfWeek.Tuesday => "Tue",
-                DayOfWeek.Wednesday => "Wed",
-                DayOfWeek.Thursday => "Thu",
-                DayOfWeek.Friday => "Fri",
-                DayOfWeek.Saturday => "Sat",
-                DayOfWeek.Sunday => "Sun",
-                _ => day.ToString()[..3]
-            };
-        }
-
-        private static string FormatSlotLabel(int slotIndex, int slotMinutes)
-        {
-            var totalMinutes = slotIndex * slotMinutes;
-            var h = totalMinutes / 60;
-            var m = totalMinutes % 60;
-            return slotMinutes < 60 ? $"{h:D2}:{m:D2}" : h.ToString("D2", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         /// <summary>Builds daily windows: for each day in range, uses all points in that calendar day (full 24h) and computes per-slot max and capped flag.</summary>
@@ -832,6 +1201,7 @@ namespace poolautoscaler.metrics
                 double? windowMax = null;
                 var windowCapped = false;
                 var valueBySlot = new Dictionary<int, double>();
+                var rawUncorrectedBySlot = new Dictionary<int, double>();
                 var cappedBySlot = new Dictionary<int, bool>();
                 foreach (var v in pointsInWindow)
                 {
@@ -874,6 +1244,7 @@ namespace poolautoscaler.metrics
                     if (!valueBySlot.TryGetValue(slotIndex, out var existing) || correctedValue > existing)
                     {
                         valueBySlot[slotIndex] = correctedValue;
+                        rawUncorrectedBySlot[slotIndex] = primary!.Value;
                     }
 
                     if (pointCapped)
@@ -887,9 +1258,11 @@ namespace poolautoscaler.metrics
                     results.Add(new DailyWindowResult
                     {
                         DayOfWeek = date.DayOfWeek,
+                        WindowDateUtc = date.UtcDateTime.Date,
                         WindowMax = windowMax.Value,
                         AnyCapped = windowCapped,
                         ValueByHour = valueBySlot,
+                        RawUncorrectedByHour = rawUncorrectedBySlot,
                         CappedByHour = cappedBySlot
                     });
                 }
@@ -944,6 +1317,159 @@ namespace poolautoscaler.metrics
             return Math.Max(value ?? DefaultCappedCorrectionFactor, 1);
         }
 
+        /// <summary>Canonical cross-day baseline mode for aggregation and diagnostics: Max, Mean, or WeightedMean (unrecognized → Max).</summary>
+        private static string NormalizeBaselineAggregationMode(string? mode)
+        {
+            if (string.IsNullOrWhiteSpace(mode))
+            {
+                return "Max";
+            }
+
+            var t = mode.Trim();
+            if (t.Equals("Mean", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Mean";
+            }
+
+            if (t.Equals("WeightedMean", StringComparison.OrdinalIgnoreCase))
+            {
+                return "WeightedMean";
+            }
+
+            if (t.Equals("Max", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Max";
+            }
+
+            return "Max";
+        }
+
+        /// <summary>Resolves τ for WeightedMean; null or non-positive values use 14-day default.</summary>
+        private static double ResolveBaselineDecayDays(double? value)
+        {
+            if (!value.HasValue || value.Value <= 0)
+            {
+                return 14.0;
+            }
+
+            return value.Value;
+        }
+
+        /// <summary>Valid boost factor for baseline cells; null/NaN/≤0 → 1.0 (no uplift).</summary>
+        private static double ResolveForecastBaselineBoostFactor(double? value)
+        {
+            if (!value.HasValue || double.IsNaN(value.Value) || double.IsInfinity(value.Value) || value.Value <= 0)
+            {
+                return 1.0;
+            }
+
+            return value.Value;
+        }
+
+        /// <summary>Neighbour weight for temporal smoothing; null/NaN/≤0 → 0 (off); ≥0.5 → 0.49.</summary>
+        private static double ResolveSmoothingNeighbourWeight(double? value)
+        {
+            if (!value.HasValue || double.IsNaN(value.Value) || value.Value <= 0)
+            {
+                return 0;
+            }
+
+            return value.Value >= 0.5 ? 0.49 : value.Value;
+        }
+
+        /// <summary>
+        /// Per slot: <c>max(raw, blended)</c> with <c>blended = (1 − n·w)·raw + w·Σneighbours</c> for existing same-day time-adjacent slots (n = 1 or 2); <paramref name="slotValues"/>[i] = <see cref="double.NaN"/> when that slot has no aggregate.
+        /// </summary>
+        private static double[] ApplyTemporalSmoothing(double[] slotValues, double neighbourWeight)
+        {
+            if (slotValues == null)
+            {
+                throw new ArgumentNullException(nameof(slotValues));
+            }
+
+            if (neighbourWeight <= 0)
+            {
+                return (double[])slotValues.Clone();
+            }
+
+            var len = slotValues.Length;
+            var result = new double[len];
+            for (var s = 0; s < len; s++)
+            {
+                if (double.IsNaN(slotValues[s]))
+                {
+                    result[s] = double.NaN;
+                    continue;
+                }
+
+                var r = slotValues[s];
+                var sumNeigh = 0.0;
+                var n = 0;
+                if (s > 0 && !double.IsNaN(slotValues[s - 1]))
+                {
+                    sumNeigh += slotValues[s - 1];
+                    n++;
+                }
+
+                if (s < len - 1 && !double.IsNaN(slotValues[s + 1]))
+                {
+                    sumNeigh += slotValues[s + 1];
+                    n++;
+                }
+
+                if (n == 0)
+                {
+                    result[s] = r;
+                }
+                else
+                {
+                    var blended = (1.0 - (n * neighbourWeight)) * r + (neighbourWeight * sumNeigh);
+                    result[s] = Math.Max(r, blended);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>Combines baseline contributors according to canonical mode (<c>Max</c>, <c>Mean</c>, <c>WeightedMean</c>).</summary>
+        private static double AggregateContributors(
+            IList<ForecastBaselineContributor> contributors,
+            string baselineModeEffective,
+            double? decayDays,
+            DateTimeOffset endDate)
+        {
+            if (contributors.Count == 0)
+            {
+                throw new ArgumentException("At least one contributor is required.", nameof(contributors));
+            }
+
+            switch (baselineModeEffective)
+            {
+                case "Mean":
+                    return contributors.Average(c => c.Value);
+                case "WeightedMean":
+                {
+                    var halfLife = ResolveBaselineDecayDays(decayDays);
+                    double sumW = 0;
+                    double sumWV = 0;
+                    foreach (var c in contributors)
+                    {
+                        var sampleUtc = DateTime.SpecifyKind(c.SampleDateUtc, DateTimeKind.Utc);
+                        var sampleOffset = new DateTimeOffset(sampleUtc);
+                        var daysAgo = (endDate - sampleOffset).TotalDays;
+                        var w = Math.Exp(-daysAgo / halfLife);
+                        sumW += w;
+                        sumWV += w * c.Value;
+                    }
+
+                    return sumWV / sumW;
+                }
+
+                default:
+                    return contributors.Max(c => c.Value);
+            }
+        }
+
         private static string ResolveMaxMetricName(Metric metric, ScalingConfiguration setting)
         {
             if (string.IsNullOrEmpty(metric.ForecastMetricMax))
@@ -963,14 +1489,19 @@ namespace poolautoscaler.metrics
         {
             public DayOfWeek DayOfWeek { get; set; }
 
+            /// <summary>UTC calendar date for this window.</summary>
+            public DateTime WindowDateUtc { get; set; }
+
             public double WindowMax { get; set; }
 
             public bool AnyCapped { get; set; }
 
             public Dictionary<int, double> ValueByHour { get; set; } = new Dictionary<int, double>();
 
+            /// <summary>Per slot, raw metric maxima before capped correction multiplier (paired with ValueByHour slot keys).</summary>
+            public Dictionary<int, double> RawUncorrectedByHour { get; set; } = new Dictionary<int, double>();
+
             public Dictionary<int, bool> CappedByHour { get; set; } = new Dictionary<int, bool>();
         }
-
     }
 }
