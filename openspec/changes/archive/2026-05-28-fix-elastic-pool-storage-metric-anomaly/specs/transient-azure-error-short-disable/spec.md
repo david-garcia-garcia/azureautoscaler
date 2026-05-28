@@ -1,4 +1,4 @@
-# Transient Azure error short disable
+## MODIFIED Requirements
 
 ### Requirement: Transient Azure errors use a short disable window
 When a scale operation fails with a known transient Azure API error code, the resource SHALL be disabled for a short built-in duration rather than the generic unhandled-exception disable duration (1 hour). This applies to failures caught in the background scale task. The error-to-duration map is a hardcoded implementation detail of each resource type and is not user-configurable via YAML.

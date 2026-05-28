@@ -1,3 +1,4 @@
+using System.Reflection;
 using Azure.ResourceManager.Sql.Models;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -177,6 +178,146 @@ namespace poolautoscaler.tests
             // The actual value will be normalized to a valid storage size
             Assert.NotEqual(160000000000, patchData.MaxSizeBytes);
             Assert.True(patchData.MaxSizeBytes >= state.ExistingMssqlElasticPoolState.CurrentUsedStorage);
+        }
+
+        // Guard 1: CurrentUsedStorage = 0 suppression
+        [Fact]
+        public void PreparePatch_WhenCurrentUsedStorageIsZeroAndExistingMaxSizeBytesIsSet_ShouldSuppressStorageReduction()
+        {
+            // Arrange: pool reports CurrentUsedStorage=0 (broken metric) while having a 300 GB MaxSizeBytes.
+            // A rule targets 100 GB — Guard 1 should clamp the patch back to 300 GB.
+            var state = new MssqlElasticPoolResourceState(this.resourceId, this.loggerMock.Object, this.config);
+
+            const long existingMax = 322122547200L; // 300 GB
+
+            state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
+            {
+                Sku = new SqlSku("StandardPool") { Capacity = 100 },
+                MaxSizeBytes = existingMax,
+                CurrentUsedStorage = 0,
+            };
+
+            state.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();
+            state.SetMaxSizeBytes(107374182400L); // rule targets 100 GB — a reduction
+
+            // Act
+            var patch = state.PreparePatch();
+
+            // Assert: reduction suppressed; patch stays at existing max (or above via tier snap)
+            var patchData = (MssqlElasticPoolState)patch.PatchData;
+            Assert.True(
+                patchData.MaxSizeBytes >= existingMax,
+                $"Expected MaxSizeBytes >= {existingMax} (existing) but got {patchData.MaxSizeBytes}");
+        }
+
+        [Fact]
+        public void PreparePatch_WhenCurrentUsedStorageIsZeroAndRuleRequestsScaleUp_ShouldAllowIncrease()
+        {
+            // Arrange: same broken-metric scenario but the rule targets a size above the existing max.
+            // Guard 1 must NOT block increases.
+            var state = new MssqlElasticPoolResourceState(this.resourceId, this.loggerMock.Object, this.config);
+
+            const long existingMax = 107374182400L; // 100 GB
+
+            state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
+            {
+                Sku = new SqlSku("StandardPool") { Capacity = 100 },
+                MaxSizeBytes = existingMax,
+                CurrentUsedStorage = 0,
+            };
+
+            state.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();
+            state.SetMaxSizeBytes(214748364800L); // rule targets 200 GB — an increase
+
+            // Act
+            var patch = state.PreparePatch();
+
+            // Assert: increase is allowed
+            var patchData = (MssqlElasticPoolState)patch.PatchData;
+            Assert.True(
+                patchData.MaxSizeBytes >= 214748364800L,
+                $"Expected MaxSizeBytes >= 200 GB but got {patchData.MaxSizeBytes}");
+        }
+
+        // Recovery bump applied by PreparePatch
+        [Fact]
+        public void PreparePatch_WhenRecoveryBumpIsSet_ShouldAddBumpToComputedMaxSizeBytes()
+        {
+            // Arrange: simulate a stuck pool where ApplyChanges has already incremented the bump
+            // by one step (50 GB). PreparePatch should add the bump to the formula result.
+            var state = new MssqlElasticPoolResourceState(this.resourceId, this.loggerMock.Object, this.config);
+
+            const long existingMax = 107374182400L; // 100 GB
+            const long bumpBytes = 50L * 1024L * 1024L * 1024L; // 50 GB
+
+            state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
+            {
+                Sku = new SqlSku("StandardPool") { Capacity = 100 },
+                MaxSizeBytes = existingMax,
+                CurrentUsedStorage = existingMax, // pool is at 100% (stuck state)
+            };
+
+            state.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();
+            state.SetMaxSizeBytes(existingMax); // rule also targets existing max (no change from formula)
+
+            // Use reflection to simulate the bump that ApplyChanges would have accumulated.
+            SetBumpBytesViaReflection(state, bumpBytes);
+
+            // Act
+            var patch = state.PreparePatch();
+
+            // Assert: patch.MaxSizeBytes must be at least existingMax + bump (after tier snap)
+            var patchData = (MssqlElasticPoolState)patch.PatchData;
+            Assert.True(
+                patchData.MaxSizeBytes >= existingMax + bumpBytes,
+                $"Expected MaxSizeBytes >= {existingMax + bumpBytes} but got {patchData.MaxSizeBytes}");
+        }
+
+        [Fact]
+        public void PreparePatch_WhenBumpIsSet_ShouldRetainBumpRegardlessOfCapacityLevel()
+        {
+            // Arrange: bump is retained by PreparePatch regardless of current usage.
+            // It is only cleared by a successful ApplyChanges, not by a metric heuristic.
+            var state = new MssqlElasticPoolResourceState(this.resourceId, this.loggerMock.Object, this.config);
+
+            const long existingMax = 322122547200L; // 300 GB
+            const long usedStorage = 214748364800L; // 200 GB (~66% — well under 95%)
+            const long bumpBytes = 50L * 1024L * 1024L * 1024L;
+
+            state.ExistingMssqlElasticPoolState = new MssqlElasticPoolState
+            {
+                Sku = new SqlSku("StandardPool") { Capacity = 100 },
+                MaxSizeBytes = existingMax,
+                CurrentUsedStorage = usedStorage,
+            };
+
+            state.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();
+            state.SetMaxSizeBytes(existingMax);
+
+            SetBumpBytesViaReflection(state, bumpBytes);
+
+            // Act
+            state.PreparePatch();
+
+            // Assert: bump is retained; PreparePatch does not reset it
+            Assert.Equal(bumpBytes, GetBumpBytesViaReflection(state));
+        }
+
+        // Helpers
+        private static void SetBumpBytesViaReflection(MssqlElasticPoolResourceState state, long value)
+        {
+            var field = typeof(MssqlElasticPoolResourceState)
+                .GetField("storageRecoveryBumpBytes", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(field);
+            field!.SetValue(state, value);
+        }
+
+        private static long GetBumpBytesViaReflection(MssqlElasticPoolResourceState state)
+        {
+            var field = typeof(MssqlElasticPoolResourceState)
+                .GetField("storageRecoveryBumpBytes", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(field);
+            return (long)field!.GetValue(state)!;
         }
     }
 }

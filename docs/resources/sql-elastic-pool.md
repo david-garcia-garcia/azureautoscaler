@@ -4,16 +4,16 @@
 
 Dimension **`PerDatabaseMaxCapacity`** maps to ARM `PerDatabaseSettings.MaxCapacity`: the cap on how many eDTUs any one database in the pool may use when the pool has spare capacity. It can be scaled **independently** of pool DTU (`Dimension: Dtu`) and max data size (`Dimension: MaxDataBytes`).
 
-Allowed targets follow Azure’s documented ladders (not the same steps as pool-level DTU tiers): **Standard** pools use one value list filtered by current pool eDTU; **Premium** pools use another list plus a **pool-size ceiling** (for example, a 1500 eDTU Premium pool cannot set per-database max above 1000).
+Allowed targets follow Azures documented ladders (not the same steps as pool-level DTU tiers): **Standard** pools use one value list filtered by current pool eDTU; **Premium** pools use another list plus a **pool-size ceiling** (for example, a 1500 eDTU Premium pool cannot set per-database max above 1000).
 
-> **Important — always bounded by pool DTU:** Even though `PerDatabaseMaxCapacity` is an independent scaling dimension, the autoscaler always re-clamps it against the **target** pool DTU during patch preparation before sending the ARM patch. If a `Dtu` rule and a `PerDatabaseMaxCapacity` rule both fire in the same cycle and the pool is being scaled down, the per-database max will be silently reduced to the nearest valid tier at or below the new pool DTU ceiling. This is required because Azure rejects any patch where `PerDatabaseSettings.MaxCapacity` exceeds the pool's new eDTU capacity. Design your `PerDatabaseMaxCapacity` rules with this in mind: the effective value applied may be lower than the rule's target whenever a simultaneous pool DTU downscale occurs.
+> **Important  always bounded by pool DTU:** Even though `PerDatabaseMaxCapacity` is an independent scaling dimension, the autoscaler always re-clamps it against the **target** pool DTU during patch preparation before sending the ARM patch. If a `Dtu` rule and a `PerDatabaseMaxCapacity` rule both fire in the same cycle and the pool is being scaled down, the per-database max will be silently reduced to the nearest valid tier at or below the new pool DTU ceiling. This is required because Azure rejects any patch where `PerDatabaseSettings.MaxCapacity` exceeds the pool's new eDTU capacity. Design your `PerDatabaseMaxCapacity` rules with this in mind: the effective value applied may be lower than the rule's target whenever a simultaneous pool DTU downscale occurs.
 
 ### Default when you omit `PerDatabaseMaxCapacity`
 
 This section describes backward-compatible behavior if your YAML never defines a scaling rule for **`PerDatabaseMaxCapacity`**.
 
 - After each refresh, requested pool state is rebuilt from rules. Nothing sets `PerDatabaseMaxCapacity` unless a rule uses that dimension.
-- **Whenever the autoscaler applies a patch to the elastic pool** and no rule has set a requested per-database max for that cycle, the patch still sends `ElasticPoolPerDatabaseSettings.MaxCapacity` equal to the pool’s **`Sku.Capacity`** in that patch (the effective pool DTU after `PreparePatch` reconciles storage/DTU). This matches the old “always tie per-database max to pool DTU” behavior.
+- **Whenever the autoscaler applies a patch to the elastic pool** and no rule has set a requested per-database max for that cycle, the patch still sends `ElasticPoolPerDatabaseSettings.MaxCapacity` equal to the pools **`Sku.Capacity`** in that patch (the effective pool DTU after `PreparePatch` reconciles storage/DTU). This matches the old always tie per-database max to pool DTU behavior.
 - **If you add rules** for `PerDatabaseMaxCapacity`, the explicit requested value is written instead (snapped/clamped to Azure-valid steps and Premium ceilings).
 
 **Operator note:** If you set per-database max manually in the portal but only scale **`Dtu`** / **`MaxDataBytes`** in config, the next autoscaler patch that changes the pool can **overwrite** `MaxCapacity` with pool DTU again, unless you also control it via **`PerDatabaseMaxCapacity`**.
@@ -57,7 +57,7 @@ This section describes backward-compatible behavior if your YAML never defines a
           storage_used:
             Name: storage_used
             Window: 00:05
-            ValidValueMin: 1048576  # Reject values below 1MB - protects against broken Azure metrics returning zero
+            ValidValueMin: 1073741824  # Reject values below 1 GB - protects against broken Azure metrics returning zero or near-zero
         TimeWindow:
           Days: All
           Months: All
@@ -69,8 +69,8 @@ This section describes backward-compatible behavior if your YAML never defines a
             ScalingStrategy: Fixed
             Dimension: MaxDataBytes
             # Fix target of extra 50GB or 20% additional of current storage, whatever is greater.
-            # Use .Default.Value to access the primary aggregation (works regardless of aggregation type)
-            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"storage_used\"].Values.First().Default.Value + (50.1*1024*1024*1024), data.Metrics[\"storage_used\"].Values.First().Default.Value * 1.2)).ToString()"
+            # .Max() over the window prevents a single anomalous bucket from driving a scale-down.
+            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"storage_used\"].Values.Select(v => v.Default.Value).Max() + (50.1*1024*1024*1024), data.Metrics[\"storage_used\"].Values.Select(v => v.Default.Value).Max() * 1.2)).ToString()"
             DimensionValueCeilingStep: "1"  # Round up to nearest GB
             DimensionValueMax: "1024"  # Never scale above 1024 GB
             DimensionValueMin: "1"     # Never scale below 1 GB
@@ -106,7 +106,7 @@ The example below adds a `current_usage_floor` rule beside a hypothetical `Forec
           TimeZone: UTC
         ScalingRules:
           forecast_rule:
-            ScalingStrategy: Fixed        # placeholder — use your real ForecastDtu / Autoadjust rule IDs here
+            ScalingStrategy: Fixed        # placeholder  use your real ForecastDtu / Autoadjust rule IDs here
             Dimension: Dtu
             ScaleTarget: "(data) => \"100\""   # replace with your forecast-driven expression
             DimensionValueMin: "50"
@@ -127,17 +127,75 @@ These settings gate scale actions by the **UTC minute** within each clock hour (
 
 - **`ScaleDownLockWindowMinutes` = N**  
   Scale-**down** is **not run** while the current UTC minute is **0 through N-1** (the **first N minutes** of the hour). Scale-down is **allowed** from minute **N** through **59**.  
-  *Example:* N = **50** — scale-down is locked during minutes **0–49** and allowed during **50–59**.
+  *Example:* N = **50**  scale-down is locked during minutes **049** and allowed during **5059**.
 
 - **`ScaleUpAllowWindowMinutes` = N**  
   Scale-**up** is **not run** while the current UTC minute is **N through 59**. Scale-up is **allowed** from minute **0** through **N-1**.  
-  *Example:* N = **58** — scale-up is allowed during **0–57** and blocked at **58–59**.
+  *Example:* N = **58**  scale-up is allowed during **057** and blocked at **5859**.
+
+### Resilience to Azure Monitor metric anomalies
+
+Azure Monitor occasionally returns anomalously low or zero values for storage metrics (`allocated_data_storage`, `storage_used`). If your `MaxDataBytes` scaling rule uses the **most-recent metric bucket only** (`.Values.First()`), a single bad reading can cause the autoscaler to compute a storage target far below the pool's actual data size. Azure will silently accept the reduced `MaxSizeBytes` even if it is below actual database data  a known Azure API behavior  leaving the pool in a state where any subsequent patch that does not clear the actual data threshold will be rejected with `ElasticPoolDecreaseStorageLimitBelowUsage`.
+
+> **Warning  safe formula pattern for `MaxDataBytes` rules**
+>
+> Always use `.Values.Select(v => v.Default.Value).Max()` instead of `.Values.First().Default.Value` in the `ScaleTarget` expression for storage rules. This takes the **maximum across all buckets** in the metric window rather than reading only the most-recent bucket, so one transient low reading cannot drive a scale-down decision.
+
+**Recommended configuration for production pools:**
+
+| Setting | Minimum recommended value | Why |
+| :--- | :--- | :--- |
+| `Window` | `00:15` (15 minutes) | Provides enough buckets for `.Max()` to cover a transient anomaly without it being the sole input |
+| `ValidValueMin` | `1073741824` (1 GB) | Sub-gigabyte readings indicate a broken metric; this threshold discards them before they reach the formula |
+
+Example  hardened `MaxDataBytes` configuration:
+
+```yaml
+    MaxDataBytes:
+      Metrics:
+        allocated_data_storage:
+          Name: allocated_data_storage
+          Window: 00:15
+          Aggregations: ["Maximum"]
+          ValidValueMin: 1073741824  # Reject values below 1 GB
+      TimeWindow:
+        Days: All
+        Months: All
+        StartTime: "00:00"
+        EndTime: "23:59"
+        TimeZone: UTC
+      ScalingRules:
+        fixed:
+          ScalingStrategy: Fixed
+          Dimension: MaxDataBytes
+          # .Max() over the window prevents a single anomalous bucket from driving a scale-down.
+          ScaleTarget: "(data) => (Math.Max(data.Metrics[\"allocated_data_storage\"].Values.Select(v => v.Default.Value).Max() + (50.1*1024*1024*1024), data.Metrics[\"allocated_data_storage\"].Values.Select(v => v.Default.Value).Max() * 1.2)).ToString()"
+          DimensionValueCeilingStep: "1"
+```
+
+**Automatic stuck-pool recovery**
+
+If a pool does end up with `MaxSizeBytes` below its actual data size (detectable when `CurrentUsedStorage ? MaxSizeBytes`), the autoscaler will attempt automatic recovery:
+
+1. When `CurrentUsedStorage` is reported as zero (broken metric), the autoscaler **suppresses any storage reduction** and retains the existing `MaxSizeBytes`. A `Warning` log entry is emitted.
+2. When `ElasticPoolDecreaseStorageLimitBelowUsage` is received during a **scale-up** attempt, the autoscaler adds 50 GB to an internal recovery counter and retries in 5 minutes. Each retry increases the target by another 50 GB until the patch clears the actual data threshold and Azure accepts it. A `Critical` log entry is emitted on each stuck-state detection.
+3. Once the pool is no longer at capacity (reported `CurrentUsedStorage < 95%` of `MaxSizeBytes`), the recovery counter resets automatically.
+
+**What to watch for in logs**
+
+| Log level | Message pattern | Meaning |
+| :--- | :--- | :--- |
+| `Warning` | `CurrentUsedStorage=0 with existing MaxSizeBytes=` | Storage metric returned zero; reduction suppressed |
+| `Critical` | `Pool stuck: ElasticPoolDecreaseStorageLimitBelowUsage on scale-up  Recovery bump is now N GB` | Pool is stuck below actual data size; autoscaler is converging toward recovery |
+| `Information` | `Storage recovery bump reset: pool capacity is %` | Recovery succeeded; normal autoscaling resumed |
+
+If the `Critical` entries continue beyond ~30 minutes without a `bump reset` message, the pool requires manual intervention: verify the actual data size in the Azure Portal and set `MaxSizeBytes` manually to a value above the reported `allocated_data_storage`.
 
 ### Tracking per-database max eDTU as a fraction of pool capacity
 
 A common pattern is to keep `PerDatabaseMaxCapacity` at a fixed fraction of the current pool eDTU (e.g. 80%), so that no single database can monopolize the pool while still scaling proportionally when the pool itself scales.
 
-The recommended approach reads the `eDTU_limit` Azure Monitor metric — which always reflects the currently provisioned pool DTU — and computes the target from it. You can co-locate this rule with any existing `ScalingConfiguration` that already fetches `eDTU_limit` (such as a `MaxDataBytes` or `ForecastDtu` block) to avoid an extra metric round-trip.
+The recommended approach reads the `eDTU_limit` Azure Monitor metric  which always reflects the currently provisioned pool DTU  and computes the target from it. You can co-locate this rule with any existing `ScalingConfiguration` that already fetches `eDTU_limit` (such as a `MaxDataBytes` or `ForecastDtu` block) to avoid an extra metric round-trip.
 
 **One-cycle lag:** `eDTU_limit` reflects the Azure-side value, which means it updates on the cycle *after* a pool DTU change. On the cycle when the pool scales, the [default fallback](#default-when-you-omit-perdatabasemaxcapacity) (`MaxCapacity = pool DTU`) keeps the ARM patch valid. On the next cycle the per-DB rule brings it down to the configured fraction.
 
@@ -163,14 +221,15 @@ The recommended approach reads the `eDTU_limit` Azure Monitor metric — which alw
           fixed:
             ScalingStrategy: Fixed
             Dimension: MaxDataBytes
-            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"allocated_data_storage\"].Values.First().Default.Value + (50.1*1024*1024*1024), data.Metrics[\"allocated_data_storage\"].Values.First().Default.Value * 1.2)).ToString()"
+            # .Max() over the window prevents a single anomalous bucket from driving a scale-down.
+            ScaleTarget: "(data) => (Math.Max(data.Metrics[\"allocated_data_storage\"].Values.Select(v => v.Default.Value).Max() + (50.1*1024*1024*1024), data.Metrics[\"allocated_data_storage\"].Values.Select(v => v.Default.Value).Max() * 1.2)).ToString()"
             DimensionValueCeilingStep: "1"
             DimensionValueMax: "1024"
             DimensionValueMin: "1"
           set_per_db_max:
             ScalingStrategy: Fixed
             Dimension: PerDatabaseMaxCapacity
-            # 80% of current pool eDTU — snapped automatically to nearest valid per-DB tier.
+            # 80% of current pool eDTU  snapped automatically to nearest valid per-DB tier.
             ScaleTarget: "(data) => (data.Metrics[\"edtu_limit\"].Values.First().Default.Value * 0.8).ToString()"
 ```
 

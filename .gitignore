@@ -5,6 +5,9 @@
 config.yml
 **/config.yml
 !**/config.yml.example
+autoscaler/config/resources/
+*.resources.yml
+!**/*.resources.yml.example
 *.config.local
 *.settings.local
 
