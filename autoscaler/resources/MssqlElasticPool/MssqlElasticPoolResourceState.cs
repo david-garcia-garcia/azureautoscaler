@@ -18,6 +18,13 @@ namespace poolautoscaler.resources.MssqlElasticPool
     /// </summary>
     public class MssqlElasticPoolResourceState : ResourceState
     {
+        /// <summary>
+        /// Accumulated storage bump applied to recovery patches when the pool is stuck below actual data size.
+        /// Incremented by 50 GB each time <c>ElasticPoolDecreaseStorageLimitBelowUsage</c> is received on a
+        /// scale-up. Reset automatically in <see cref="PreparePatch"/> once the pool is no longer at capacity.
+        /// </summary>
+        private long storageRecoveryBumpBytes = 0L;
+
         /// <inheritdoc />
         public override object ExistingStateRaw => this.ExistingMssqlElasticPoolState;
 
@@ -122,6 +129,7 @@ namespace poolautoscaler.resources.MssqlElasticPool
             var patch = new MssqlElasticPoolState();
 
             long currentStorage = (long)(this.ExistingMssqlElasticPoolState.CurrentUsedStorage ?? 0);
+            long existingMaxSizeBytes = (long)(this.ExistingMssqlElasticPoolState.MaxSizeBytes ?? 0);
 
             patch.Sku = this.RequestedMssqlElasticPoolState.Sku.DeepCopy() ?? this.ExistingMssqlElasticPoolState.Sku.DeepCopy();
 
@@ -131,6 +139,27 @@ namespace poolautoscaler.resources.MssqlElasticPool
             if (minValidCapacityForCurrentUsage > patch.MaxSizeBytes)
             {
                 patch.MaxSizeBytes = minValidCapacityForCurrentUsage;
+            }
+
+            // Guard 1: CurrentUsedStorage = 0 signals a broken storage_used metric reading.
+            // A pool with any databases will never have zero bytes in use, so zero means the
+            // metric failed. Suppress any storage reduction to avoid setting MaxSizeBytes below
+            // actual data while the metric is unavailable.
+            if (currentStorage == 0 && existingMaxSizeBytes > 0 && patch.MaxSizeBytes < existingMaxSizeBytes)
+            {
+                this.Logger.LogWarning(
+                    "CurrentUsedStorage=0 with existing MaxSizeBytes={ExistingMax}. Suppressing storage reduction from {Proposed} to prevent data loss from a broken metric.",
+                    existingMaxSizeBytes,
+                    patch.MaxSizeBytes);
+                patch.MaxSizeBytes = existingMaxSizeBytes;
+            }
+
+            // Recovery bump: added when the pool is stuck (MaxSizeBytes < actual data).
+            // Each ElasticPoolDecreaseStorageLimitBelowUsage on a scale-up increments this by 50 GB
+            // until the patch target clears the actual data size and Azure accepts it.
+            if (this.storageRecoveryBumpBytes > 0)
+            {
+                patch.MaxSizeBytes = (long)patch.MaxSizeBytes + this.storageRecoveryBumpBytes;
             }
 
             patch.MaxSizeBytes = MssqlElasticPoolResourceStateHelper.FindClosesValidStorageSize((long)patch.MaxSizeBytes);
@@ -189,6 +218,28 @@ namespace poolautoscaler.resources.MssqlElasticPool
             {
                 var result = await this.Resource.UpdateAsync(Azure.WaitUntil.Completed, patch, cancellationToken);
                 this.ValidateArmResult(result);
+                if (this.storageRecoveryBumpBytes > 0)
+                {
+                    this.Logger.LogInformation(
+                        "Storage recovery bump reset after successful apply. Normal autoscaling resumes.");
+                    this.storageRecoveryBumpBytes = 0;
+                }
+            }
+            catch (Azure.RequestFailedException rfex)
+                when (rfex.ErrorCode == "ElasticPoolDecreaseStorageLimitBelowUsage"
+                      && internalPatch.MaxSizeBytes > this.ExistingMssqlElasticPoolState.MaxSizeBytes)
+            {
+                // Pool is stuck: MaxSizeBytes is below actual data. Our scale-up target was still
+                // not enough. Accumulate 50 GB and retry in 5 minutes so the next patch overshoots
+                // the actual data usage without needing a priori knowledge of it.
+                this.storageRecoveryBumpBytes += 50L * 1024L * 1024L * 1024L;
+                this.Logger.LogCritical(
+                    "Pool stuck: ElasticPoolDecreaseStorageLimitBelowUsage on scale-up (target={Target}, existing={Existing}). "
+                    + "Recovery bump is now {Bump} GB. Retrying in 5 minutes.",
+                    internalPatch.MaxSizeBytes,
+                    this.ExistingMssqlElasticPoolState.MaxSizeBytes,
+                    this.storageRecoveryBumpBytes / (1024L * 1024L * 1024L));
+                throw new TransientAzureOperationException("ElasticPoolDecreaseStorageLimitBelowUsage", 5, rfex);
             }
             catch (Azure.RequestFailedException rfex)
                 when (!string.IsNullOrEmpty(rfex.ErrorCode) && TransientErrorDisableMinutes.TryGetValue(rfex.ErrorCode, out _))
