@@ -1,5 +1,30 @@
 ## SQL Database
 
+### Query custom metrics
+
+`CustomMetrics` may use `Query` instead of `DataExpression`. The session catalog is the database name in the ARM ResourceId (not `master`). Host comes from the logical server FQDN after Refresh. Auth is the process TokenCredential; connections use `ApplicationIntent=ReadOnly`. ARM `Monitoring Metrics Publisher` does not grant SQL access — create the identity in the database:
+
+```sql
+CREATE USER [appName] FROM EXTERNAL PROVIDER;
+GRANT VIEW DATABASE STATE TO [appName];
+```
+
+The following example is operator SQL (not a product default). It zeros published columns when `replica_role <> 1` and computes DTU as max(cpu, data_io) without log I/O:
+
+```yaml
+    CustomMetrics:
+      - Query: |
+          SELECT
+            CASE WHEN replica_role = 1 THEN avg_cpu_percent ELSE 0 END AS cpu_percent,
+            CASE WHEN replica_role = 1 THEN avg_data_io_percent ELSE 0 END AS data_io_percent,
+            CASE WHEN replica_role = 1 THEN avg_memory_usage_percent ELSE 0 END AS memory_percent,
+            CASE WHEN replica_role = 1 THEN (
+              SELECT MAX(v) FROM (VALUES (avg_cpu_percent), (avg_data_io_percent)) AS value(v)
+            ) ELSE 0 END AS dtu_percent
+          FROM sys.dm_db_resource_stats
+        Frequency: 5m
+```
+
 ### DTU Scaling Example
 
 ```yaml

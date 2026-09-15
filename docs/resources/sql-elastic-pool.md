@@ -1,5 +1,35 @@
 ## SQL Elastic Pool
 
+### Query custom metrics
+
+`CustomMetrics` may use `Query` instead of `DataExpression`. The session catalog is **`master` on the logical server** (the pool ARM id is not a database). Host comes from the logical server FQDN after Refresh. Auth is the process TokenCredential; connections use `ApplicationIntent=ReadOnly`.
+
+**`sys.dm_db_resource_stats` on that `master` session measures `master`, not the pool.** Use `sys.elastic_pool_resource_stats` (or other SQL valid on `master`) for pool-level CPU, I/O, and DTU-style series.
+
+ARM `Monitoring Metrics Publisher` does not grant SQL access:
+
+```sql
+CREATE USER [appName] FROM EXTERNAL PROVIDER;
+GRANT VIEW DATABASE STATE TO [appName];
+```
+
+Example (operator SQL, not a product default) — pool stats from `master`. Zero numeric columns when you only want HA-secondary samples if your view exposes an equivalent of `replica_role`:
+
+```yaml
+    CustomMetrics:
+      - Query: |
+          SELECT TOP (1)
+            avg_cpu_percent AS cpu_percent,
+            avg_data_io_percent AS data_io_percent,
+            (
+              SELECT MAX(v) FROM (VALUES (avg_cpu_percent), (avg_data_io_percent)) AS value(v)
+            ) AS dtu_percent
+          FROM sys.elastic_pool_resource_stats
+          WHERE elastic_pool_name = '${elasticPoolName}'
+          ORDER BY end_time DESC
+        Frequency: 5m
+```
+
 ### Per-database max eDTU (`PerDatabaseMaxCapacity`)
 
 Dimension **`PerDatabaseMaxCapacity`** maps to ARM `PerDatabaseSettings.MaxCapacity`: the cap on how many eDTUs any one database in the pool may use when the pool has spare capacity. It can be scaled **independently** of pool DTU (`Dimension: Dtu`) and max data size (`Dimension: MaxDataBytes`).
