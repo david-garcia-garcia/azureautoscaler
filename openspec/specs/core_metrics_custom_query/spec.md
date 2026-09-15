@@ -57,11 +57,26 @@ The QUERY session catalog SHALL be implied by resource type and SHALL NOT be ope
 - **THEN** the session catalog SHALL be `mysql`
 
 ### Requirement: One Query run publishes numeric columns from the first row
-When a Query entry is due, the app SHALL execute that Query text once. It SHALL read only the first result row. Each numeric column SHALL be published as one Azure Monitor custom metric whose name is that column name. Non-numeric columns SHALL be ignored and SHALL NOT be used as Azure Monitor timestamps. An empty result, or a first row with no numeric columns, SHALL skip publication for that entry without treating it as a process failure.
+When a Query entry is due, the app SHALL execute that Query text once. It SHALL read only the first result row. Each numeric column SHALL become part of an Azure Monitor custom metric as specified here and in **Query series suffixes fill Azure Monitor min max sum count**. A numeric column that does not use a reserved series suffix SHALL be published as one metric whose name is that column name, with `min` = `max` = `sum` = the value and `count` = 1. Non-numeric columns SHALL be ignored and SHALL NOT be used as Azure Monitor timestamps. An empty result, or a first row with no numeric columns, SHALL skip publication for that entry without treating it as a process failure.
 
 #### Scenario: Several numeric columns become several metrics
 - **WHEN** a due Query returns a first row with numeric columns `cpu_percent` and `data_io_percent` and a non-numeric column `from_time`
 - **THEN** the app SHALL publish `cpu_percent` and `data_io_percent` and SHALL ignore `from_time`
+
+### Requirement: Query series suffixes fill Azure Monitor min max sum count
+When first-row numeric columns use the reserved suffixes `_min`, `_max`, `_sum`, and `_count` on the same stem, the app SHALL publish one Azure Monitor custom metric named after that stem and SHALL set the POST series `min`, `max`, `sum`, and `count` from those columns. All four suffixes SHALL be present for that stem. An incomplete group, a duplicate field, or a `count` below 1 SHALL skip that stem. A bare column whose name equals a suffix stem SHALL NOT be published as a one-sample metric.
+
+#### Scenario: Complete suffix group becomes one series
+- **WHEN** a due Query returns numeric columns `cpu_percent_min`, `cpu_percent_max`, `cpu_percent_sum`, and `cpu_percent_count`
+- **THEN** the app SHALL POST one metric `cpu_percent` whose series fields are those four values
+
+#### Scenario: Bare column stays one sample
+- **WHEN** a due Query returns only a numeric column `cpu_percent`
+- **THEN** the app SHALL POST `cpu_percent` with `min` = `max` = `sum` = that value and `count` = 1
+
+#### Scenario: Incomplete suffix group is skipped
+- **WHEN** a due Query returns `cpu_percent_min` and `cpu_percent_max` and does not return `_sum` and `_count` for that stem
+- **THEN** the app SHALL NOT publish `cpu_percent`
 
 #### Scenario: Empty or non-numeric result skips push
 - **WHEN** a due Query returns no rows, or a first row with only non-numeric columns
@@ -83,11 +98,19 @@ QUERY results SHALL be published only through the existing CustomMetrics push pa
 - **THEN** those values SHALL be POSTed as Azure Monitor custom metrics on the configured publish ResourceId (or the resource’s own id when omitted)
 
 ### Requirement: Read-only TokenCredential SQL session
-The app SHALL open the QUERY session with the same process TokenCredential used for ARM and Azure Monitor. Azure SQL Database and Azure SQL Elastic Pool connection strings SHALL include `ApplicationIntent=ReadOnly`. The app SHALL NOT parse or rewrite operator SQL. A failed QUERY SHALL skip that push group and SHALL NOT stop other CustomMetrics on the same resource. Command timeout SHALL default to 30 seconds.
+The app SHALL open the QUERY session with the same process TokenCredential used for ARM and Azure Monitor. Azure SQL Database and Azure SQL Elastic Pool Query rows SHALL require `QueryConnection.ApplicationIntent` set to `ReadOnly` or `ReadWrite`. The app SHALL NOT inject `ApplicationIntent` when the key is omitted. Operators MAY set other `QueryConnection` extras that the app merges onto the implied session. `QueryConnection` SHALL NOT accept keys that replace host, catalog, or credentials (`Server`, `Database`, `Password`, `User ID`, and the same reserved set). The app SHALL NOT parse or rewrite operator SQL. A failed QUERY SHALL skip that push group and SHALL NOT stop other CustomMetrics on the same resource. Command timeout SHALL default to 30 seconds.
 
-#### Scenario: Azure SQL connection is ReadOnly
-- **WHEN** QUERY opens an Azure SQL Database or Elastic Pool session
-- **THEN** the connection string SHALL contain `ApplicationIntent=ReadOnly`
+#### Scenario: Azure SQL Query requires ApplicationIntent
+- **WHEN** QUERY is configured on an Azure SQL Database or Elastic Pool and `QueryConnection.ApplicationIntent` is missing or not `ReadOnly`/`ReadWrite`
+- **THEN** startup validation SHALL fail
+
+#### Scenario: QueryConnection ReadOnly routes to a readable secondary
+- **WHEN** a Query entry sets `QueryConnection.ApplicationIntent` to `ReadOnly`
+- **THEN** the Azure SQL connection string SHALL contain `ReadOnly`
+
+#### Scenario: QueryConnection can target the primary
+- **WHEN** a Query entry sets `QueryConnection.ApplicationIntent` to `ReadWrite`
+- **THEN** the Azure SQL connection string SHALL contain `ReadWrite` and SHALL NOT contain `ReadOnly`
 
 #### Scenario: Session uses process TokenCredential
 - **WHEN** QUERY authenticates to any of the four SQL types

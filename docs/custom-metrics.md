@@ -30,15 +30,18 @@ Each entry in `CustomMetrics` supplies **exactly one** value source: `DataExpres
   - Otherwise the hardcoded default **"Custom Autoscaler"**.
 - **ResourceId** (optional): ARM resource ID that receives the metric. If omitted, the current resource’s `ResourceId` is used. You can use the same replacement tokens as in [normal metric definitions](../configuration.md#metrics) (e.g. `${virtualMachineScaleSetId}`).
 - **DataExpression**: C# expression that computes one metric value from the data context (see below). Must return a numeric value (typically `double`). Exclusive with `Query`.
-- **Query**: SQL text executed once per due cycle on Azure SQL Database, Azure SQL Elastic Pool, PostgreSQL Flexible Server, or MySQL Flexible Server. Exclusive with `DataExpression`. The first result row is read; each **numeric** column is published as its own Azure Monitor metric named after that column. Non-numeric columns (timestamps, strings, bools) are ignored. An empty result, or a first row with no numeric columns, skips publication for that entry.
+- **Query**: SQL text executed once per due cycle on Azure SQL Database, Azure SQL Elastic Pool, PostgreSQL Flexible Server, or MySQL Flexible Server. Exclusive with `DataExpression`. The first result row is read. Each **numeric** column is published as an Azure Monitor custom metric. Non-numeric columns (timestamps, strings, bools) are ignored. An empty result, or a first row with no numeric columns, skips publication for that entry.
+  - A bare column (`cpu_percent`) is one sample: `min` = `max` = `sum` = value, `count` = 1.
+  - Columns `stem_min`, `stem_max`, `stem_sum`, and `stem_count` become **one** metric named `stem` whose POST series uses those four fields. Azure Monitor Average is then `sum/count`. All four suffixes are required; an incomplete group is skipped. Do not also return a bare `stem` column.
 - **QueryTimeout** (optional): SQL command timeout (e.g. `30s`). Defaults to **30 seconds**.
+- **QueryConnection**: Extra SQL driver attributes merged onto the app-built session. Host, catalog, Encrypt/TLS, and credentials stay implied (no `Server`, `Database`, `Password`, or `User ID`). On Azure SQL Database and Elastic Pool, **`ApplicationIntent` is required**: `ReadOnly` or `ReadWrite`. PostgreSQL and MySQL do not use that key.
 - **Frequency** (optional): How often to evaluate and push this custom metric. If omitted, the default is `5m`.
 
 `Query` is rejected at startup on any non-SQL resource.
 
 ### Query sessions (SQL resources)
 
-The app builds the session from the refreshed ARM host and an implied catalog. It authenticates with the same process TokenCredential used for ARM and Azure Monitor. Azure SQL Database and Elastic Pool connections always include `ApplicationIntent=ReadOnly`. The app does not parse or rewrite your SQL.
+The app builds the session from the refreshed ARM host and an implied catalog. It authenticates with the same process TokenCredential used for ARM and Azure Monitor. On Azure SQL Database and Elastic Pool you must set `QueryConnection.ApplicationIntent` (`ReadOnly` or `ReadWrite`); the app does not inject it. There is no full connection-string field. The app does not parse or rewrite your SQL.
 
 Implied catalogs:
 
@@ -60,24 +63,9 @@ GRANT VIEW DATABASE STATE TO [appName];
 
 Use the Microsoft Entra display name of the managed identity or service principal. Official equivalent: `CREATE USER FROM EXTERNAL PROVIDER` as documented for contained Entra users.
 
-`ApplicationIntent=ReadOnly` routes to a readable secondary when the tier has one. It does not guarantee a replica (Basic / Standard / General Purpose have none). If you target a replica, your SQL should return zero for every published numeric column when `replica_role <> 1`. The app does not inject that filter.
+`ApplicationIntent: ReadOnly` routes to a readable secondary when the tier has one. It does not guarantee a replica (Basic / Standard / General Purpose have none). `ApplicationIntent: ReadWrite` hits the primary. If you target a replica, your SQL should return zero for every published numeric column when `replica_role <> 1`. The app does not inject that filter.
 
-Example Azure SQL Database Query (operator-owned; not a product default). DTU is max(cpu, data_io) and omits log I/O; numeric columns are zeroed when the session is not an HA secondary:
-
-```yaml
-    CustomMetrics:
-      - Query: |
-          SELECT
-            CASE WHEN replica_role = 1 THEN avg_cpu_percent ELSE 0 END AS cpu_percent,
-            CASE WHEN replica_role = 1 THEN avg_data_io_percent ELSE 0 END AS data_io_percent,
-            CASE WHEN replica_role = 1 THEN avg_memory_usage_percent ELSE 0 END AS memory_percent,
-            CASE WHEN replica_role = 1 THEN (
-              SELECT MAX(v) FROM (VALUES (avg_cpu_percent), (avg_data_io_percent)) AS value(v)
-            ) ELSE 0 END AS dtu_percent
-          FROM sys.dm_db_resource_stats
-        Frequency: 5m
-        QueryTimeout: 30s
-```
+Full standalone-database replica example (ResourceFilter, windowed min/max/sum/count, `replica_*` names, `replica_dtu_used`): [SQL Database — replica series](resources/sql-database.md#example-replica-series-on-standalone-databases).
 
 ### DataExpression – available data in `data`
 

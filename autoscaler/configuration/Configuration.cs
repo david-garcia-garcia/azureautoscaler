@@ -1,5 +1,6 @@
 using Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
+using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
 using poolautoscaler.resourcemanagement;
 using poolautoscaler.strategies.Dto;
@@ -243,9 +244,20 @@ namespace poolautoscaler.configuration
             if (hasQuery)
             {
                 this.RejectQueryUnlessAllInstanceIdsAreSql(resource);
+                SqlQueryConnectionAttributes.RejectReserved(customMetric.QueryConnection);
+                if (this.ResourceHasAzureSqlQueryInstance(resource))
+                {
+                    SqlQueryConnectionAttributes.RequireAzureSqlApplicationIntent(customMetric.QueryConnection);
+                }
+
                 customMetric.QueryTimeoutParsed = DurationParser.ParseDuration(
                     string.IsNullOrWhiteSpace(customMetric.QueryTimeout) ? "30s" : customMetric.QueryTimeout);
                 return;
+            }
+
+            if (customMetric.QueryConnection != null && customMetric.QueryConnection.Count > 0)
+            {
+                throw new Exception("QueryConnection is only valid on Query CustomMetrics rows.");
             }
 
             if (string.IsNullOrWhiteSpace(customMetric.Name))
@@ -260,6 +272,27 @@ namespace poolautoscaler.configuration
                     typeof(CustomMetricDataContext),
                     typeof(double),
                     1);
+        }
+
+        /// <summary>True when any instance ResourceId is Azure SQL Database or Elastic Pool.</summary>
+        /// <param name="resource">The resource whose instance IDs are checked.</param>
+        /// <returns>True when ApplicationIntent must be set on QueryConnection.</returns>
+        private bool ResourceHasAzureSqlQueryInstance(Resource resource)
+        {
+            if (resource.Resources == null)
+            {
+                return false;
+            }
+
+            foreach (var instance in resource.Resources.Values)
+            {
+                if (ResourceStateFactory.IsAzureSqlQueryResourceId(instance.ResourceId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

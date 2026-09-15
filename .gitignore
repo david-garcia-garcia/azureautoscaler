@@ -242,3 +242,7 @@ FakesAssemblies/
 
 # IDEs and editors
 /.idea
+
+
+# APM dependencies
+apm_modules/

@@ -44,7 +44,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig { Query = "SELECT 1 AS cpu_percent" });
+                metric: AzureSqlQuery("SELECT 1 AS cpu_percent"));
 
             var ex = Record.Exception(() => config.PrepareAndValidate(this.logger));
 
@@ -87,12 +87,75 @@ namespace poolautoscaler.tests
         [InlineData("/subscriptions/sub/resourceGroups/rg/providers/Microsoft.DBforMySQL/flexibleServers/my")]
         public void PrepareAndValidate_QueryOnSqlResource_Accepts(string resourceId)
         {
-            var config = this.BuildConfig(
-                resourceId: resourceId,
-                metric: new CustomMetricConfig { Query = "SELECT 1 AS cpu_percent" });
+            var needsIntent = resourceId.Contains("/Microsoft.Sql/", StringComparison.OrdinalIgnoreCase);
+            var metric = new CustomMetricConfig
+            {
+                Query = "SELECT 1 AS cpu_percent",
+                QueryConnection = needsIntent
+                    ? new Dictionary<string, string> { ["ApplicationIntent"] = "ReadOnly" }
+                    : null,
+            };
+            var config = this.BuildConfig(resourceId: resourceId, metric: metric);
 
             var ex = Record.Exception(() => config.PrepareAndValidate(this.logger));
             Assert.Null(ex);
+        }
+
+        [Fact]
+        public void PrepareAndValidate_AzureSqlQueryWithoutApplicationIntent_Throws()
+        {
+            var config = this.BuildConfig(
+                resourceId: SqlDatabaseId,
+                metric: new CustomMetricConfig { Query = "SELECT 1 AS cpu_percent" });
+
+            var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
+            Assert.Contains("ApplicationIntent", ex.Message);
+        }
+
+        [Fact]
+        public void PrepareAndValidate_AzureSqlQueryWithInvalidApplicationIntent_Throws()
+        {
+            var config = this.BuildConfig(
+                resourceId: SqlDatabaseId,
+                metric: new CustomMetricConfig
+                {
+                    Query = "SELECT 1 AS cpu_percent",
+                    QueryConnection = new Dictionary<string, string> { ["ApplicationIntent"] = "Snapshot" },
+                });
+
+            var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
+            Assert.Contains("ApplicationIntent", ex.Message);
+        }
+
+        [Fact]
+        public void PrepareAndValidate_QueryConnectionPassword_Throws()
+        {
+            var config = this.BuildConfig(
+                resourceId: SqlDatabaseId,
+                metric: new CustomMetricConfig
+                {
+                    Query = "SELECT 1 AS cpu_percent",
+                    QueryConnection = new Dictionary<string, string> { ["Password"] = "secret" },
+                });
+
+            var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
+            Assert.Contains("reserved", ex.Message);
+        }
+
+        [Fact]
+        public void PrepareAndValidate_QueryConnectionOnDataExpression_Throws()
+        {
+            var config = this.BuildConfig(
+                resourceId: SqlDatabaseId,
+                metric: new CustomMetricConfig
+                {
+                    Name = "core_count",
+                    DataExpression = "(data) => Convert.ToDouble(1)",
+                    QueryConnection = new Dictionary<string, string> { ["ApplicationIntent"] = "ReadWrite" },
+                });
+
+            var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
+            Assert.Contains("QueryConnection", ex.Message);
         }
 
         [Fact]
@@ -104,6 +167,15 @@ namespace poolautoscaler.tests
 
             var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
             Assert.Contains("not allowed", ex.Message);
+        }
+
+        private static CustomMetricConfig AzureSqlQuery(string query)
+        {
+            return new CustomMetricConfig
+            {
+                Query = query,
+                QueryConnection = new Dictionary<string, string> { ["ApplicationIntent"] = "ReadOnly" },
+            };
         }
 
         private Configuration BuildConfig(string resourceId, CustomMetricConfig metric)

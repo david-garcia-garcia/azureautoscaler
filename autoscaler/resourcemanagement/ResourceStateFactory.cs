@@ -95,6 +95,19 @@ namespace poolautoscaler.resourcemanagement
                 || MySqlFlexibleServer.IsMatch(resourceId);
         }
 
+        /// <summary>True when the resource ID is Azure SQL Database or Elastic Pool (ApplicationIntent applies).</summary>
+        /// <param name="resourceId">The Azure resource ID to test.</param>
+        /// <returns>True for Azure SQL Database and Elastic Pool.</returns>
+        public static bool IsAzureSqlQueryResourceId(string resourceId)
+        {
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return false;
+            }
+
+            return SqlDatabase.IsMatch(resourceId) || ElasticPools.IsMatch(resourceId);
+        }
+
         private static readonly Regex RegexPattern = new Regex(@"\{(.*?)\}", RegexOptions.Compiled);
 
         /// <summary>

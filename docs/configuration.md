@@ -257,34 +257,39 @@ Access resource-type-specific properties directly via `r.Resource` — the same 
 
 #### Azure SQL Database SKU reference
 
-When filtering SQL databases expanded from a `databases/*` wildcard, the `Sku.Name` value identifies the database model:
+When filtering SQL databases expanded from a `databases/*` wildcard, **pool membership is `ElasticPoolId`**, not `Sku.Name`. The server list often sets `Sku.Name` to the service objective (`P1`, `S2`) for both standalone and pooled databases, with `Sku.Family` null on both. Do not use `Sku.Name == "Basic"|"Standard"|"Premium"` or `Sku.Name != "ElasticPool"` to exclude pool members.
 
-| `Sku.Name` | Model | `Sku.Family` | Notes |
+| Signal | Standalone | Elastic-pool member | Notes |
 |---|---|---|---|
-| `Basic` | DTU | `null` | 5 DTU fixed |
-| `Standard` | DTU | `null` | S0–S9 |
-| `Premium` | DTU | `null` | P1–P15 |
-| `ElasticPool` | DTU (pooled) | `null` | Member of an elastic pool — uses pool-level metrics, not per-database DTU |
-| `GeneralPurpose` | vCore | non-null (e.g. `Gen5`) | GP_Gen5_2, GP_Fsv2_8, GP_DC_2, … |
-| `BusinessCritical` | vCore | non-null | BC_Gen5_4, … |
-| `Hyperscale` | vCore | non-null | HS_Gen5_4, … |
+| `ElasticPoolId` | `null` | pool resource id | Use this to select non-pooled databases |
+| `Sku.Name` | `Basic` / `Standard` / `Premium` **or** `P1` / `S2` / … | often the same objective (`P1`, `S2`); sometimes `ElasticPool` on a GET | Not reliable for pool vs standalone |
+| `Sku.Family` | `null` on DTU | `null` on DTU pools | Non-null (e.g. `Gen5`) means vCore |
 
-**Example — standalone DTU SQL databases only** (`Basic`, `Standard`, `Premium`; excludes elastic-pool members and vCore):
+**Example — non-pooled databases only** (DTU or vCore):
+
+```yaml
+  - Resources:
+      sql_standalone_databases:
+        ResourceId: "/subscriptions/.../servers/mysqlserver/databases/*"
+        ResourceFilter: "(r) => r.Resource.Data.ElasticPoolId == null"
+```
+
+**Example — standalone DTU only** (non-pooled, and not vCore):
 
 ```yaml
   - Resources:
       sql_dtu_databases:
         ResourceId: "/subscriptions/.../servers/mysqlserver/databases/*"
-        ResourceFilter: "(r) => r.Resource.Data.Sku.Name == \"Basic\" || r.Resource.Data.Sku.Name == \"Standard\" || r.Resource.Data.Sku.Name == \"Premium\""
+        ResourceFilter: "(r) => r.Resource.Data.ElasticPoolId == null && r.Resource.Data.Sku.Family == null"
 ```
 
-**Example — vCore databases only** (excludes all DTU tiers and elastic-pool members):
+**Example — standalone vCore only**:
 
 ```yaml
   - Resources:
       sql_vcore_databases:
         ResourceId: "/subscriptions/.../servers/mysqlserver/databases/*"
-        ResourceFilter: "(r) => r.Resource.Data.Sku.Family != null"
+        ResourceFilter: "(r) => r.Resource.Data.ElasticPoolId == null && r.Resource.Data.Sku.Family != null"
 ```
 
 **Example — tag-based filtering** (only databases tagged `env=prod`):

@@ -2,7 +2,7 @@
 
 ### Query custom metrics
 
-`CustomMetrics` may use `Query` instead of `DataExpression`. The session catalog is **`master` on the logical server** (the pool ARM id is not a database). Host comes from the logical server FQDN after Refresh. Auth is the process TokenCredential; connections use `ApplicationIntent=ReadOnly`.
+`CustomMetrics` may use `Query` instead of `DataExpression`. The session catalog is **`master` on the logical server** (the pool ARM id is not a database). Host comes from the logical server FQDN after Refresh. Auth is the process TokenCredential. Set `QueryConnection.ApplicationIntent` to `ReadOnly` or `ReadWrite`; the app does not inject a default.
 
 **`sys.dm_db_resource_stats` on that `master` session measures `master`, not the pool.** Use `sys.elastic_pool_resource_stats` (or other SQL valid on `master`) for pool-level CPU, I/O, and DTU-style series.
 
@@ -13,7 +13,9 @@ CREATE USER [appName] FROM EXTERNAL PROVIDER;
 GRANT VIEW DATABASE STATE TO [appName];
 ```
 
-Example (operator SQL, not a product default) ó pool stats from `master`. Zero numeric columns when you only want HA-secondary samples if your view exposes an equivalent of `replica_role`:
+Bare numeric columns POST as one sample (`min` = `max` = `sum` = value, `count` = 1). Use `_min`/`_max`/`_sum`/`_count` suffixes on the same stem to fill the Azure Monitor series bag; see [Custom metrics](../custom-metrics.md).
+
+Example (operator SQL, not a product default) ù pool stats from `master`. Zero numeric columns when you only want HA-secondary samples if your view exposes an equivalent of `replica_role`:
 
 ```yaml
     CustomMetrics:

@@ -44,15 +44,17 @@ namespace poolautoscaler.metrics
         /// <param name="query">Operator SQL, executed as configured.</param>
         /// <param name="commandTimeout">Command timeout; 30 seconds when default or zero.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
+        /// <param name="connectionAttributes">Optional QueryConnection extras merged onto the session string.</param>
         /// <returns>First-row columns, or empty when the Query returns no rows.</returns>
         public async Task<IReadOnlyList<SqlQueryColumn>> ReadFirstRowAsync(
             ResourceState state,
             TokenCredential credential,
             string query,
             TimeSpan commandTimeout,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            IReadOnlyDictionary<string, string>? connectionAttributes = null)
         {
-            var plan = this.CreateConnectionPlan(state, commandTimeout);
+            var plan = this.CreateConnectionPlan(state, commandTimeout, connectionAttributes);
             var token = await credential.GetTokenAsync(new TokenRequestContext(new[] { plan.TokenScope }), cancellationToken);
             var entraUserName = NeedsEntraUserName(plan.Engine) ? EntraTokenUserName.TryRead(token.Token) : null;
             if (NeedsEntraUserName(plan.Engine) && string.IsNullOrWhiteSpace(entraUserName))
@@ -69,8 +71,12 @@ namespace poolautoscaler.metrics
         /// </summary>
         /// <param name="state">Resource state after Refresh, with FQDN populated for SQL types.</param>
         /// <param name="commandTimeout">Command timeout; 30 seconds when default or zero.</param>
+        /// <param name="connectionAttributes">QueryConnection extras. Azure SQL validation requires ApplicationIntent.</param>
         /// <returns>Connection plan for the Query session.</returns>
-        public SqlQueryConnectionPlan CreateConnectionPlan(ResourceState state, TimeSpan commandTimeout)
+        public SqlQueryConnectionPlan CreateConnectionPlan(
+            ResourceState state,
+            TimeSpan commandTimeout,
+            IReadOnlyDictionary<string, string>? connectionAttributes = null)
         {
             var timeout = commandTimeout <= TimeSpan.Zero ? DefaultCommandTimeout : commandTimeout;
             var resourceId = state.AzureResourceId;
@@ -87,22 +93,22 @@ namespace poolautoscaler.metrics
                     throw new InvalidOperationException($"Query skipped: Azure SQL Database catalog is missing from ResourceId {resourceId}.");
                 }
 
-                return this.CreateAzureSqlPlan(host, databaseName, timeout);
+                return this.CreateAzureSqlPlan(host, databaseName, timeout, connectionAttributes);
             }
 
             if (ResourceStateFactory.ElasticPools.IsMatch(resourceId))
             {
-                return this.CreateAzureSqlPlan(host, "master", timeout);
+                return this.CreateAzureSqlPlan(host, "master", timeout, connectionAttributes);
             }
 
             if (ResourceStateFactory.PostgreSqlFlexibleServer.IsMatch(resourceId))
             {
-                return this.CreateOssPlan(SqlQueryEngine.PostgreSql, host, "postgres", timeout);
+                return this.CreateOssPlan(SqlQueryEngine.PostgreSql, host, "postgres", timeout, connectionAttributes);
             }
 
             if (ResourceStateFactory.MySqlFlexibleServer.IsMatch(resourceId))
             {
-                return this.CreateOssPlan(SqlQueryEngine.MySql, host, "mysql", timeout);
+                return this.CreateOssPlan(SqlQueryEngine.MySql, host, "mysql", timeout, connectionAttributes);
             }
 
             throw new InvalidOperationException($"Query skipped: resource {resourceId} is not a supported SQL type.");
@@ -131,31 +137,40 @@ namespace poolautoscaler.metrics
             };
         }
 
-        /// <summary>Builds an Azure SQL plan with ApplicationIntent=ReadOnly and the database.windows.net token scope.</summary>
+        /// <summary>Builds an Azure SQL plan. ApplicationIntent is taken only from QueryConnection.</summary>
         /// <param name="host">Logical-server FQDN.</param>
         /// <param name="catalog">Database name or master.</param>
         /// <param name="timeout">Command timeout.</param>
+        /// <param name="connectionAttributes">Operator QueryConnection extras.</param>
         /// <returns>Azure SQL connection plan.</returns>
-        private SqlQueryConnectionPlan CreateAzureSqlPlan(string host, string catalog, TimeSpan timeout)
+        private SqlQueryConnectionPlan CreateAzureSqlPlan(
+            string host,
+            string catalog,
+            TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? connectionAttributes)
         {
-            var connectionString =
-                $"Server=tcp:{host},1433;Initial Catalog={catalog};Encrypt=True;TrustServerCertificate=False;ApplicationIntent=ReadOnly";
             return new SqlQueryConnectionPlan(
                 SqlQueryEngine.AzureSql,
                 host,
                 catalog,
-                connectionString,
+                SqlQueryConnectionAttributes.BuildAzureSql(host, catalog, connectionAttributes),
                 AzureSqlTokenScope,
                 timeout);
         }
 
-        /// <summary>Builds a PostgreSQL or MySQL plan with the OSS RDBMS token scope and no ApplicationIntent keyword.</summary>
+        /// <summary>Builds a PostgreSQL or MySQL plan with the OSS RDBMS token scope and optional extras.</summary>
         /// <param name="engine">PostgreSQL or MySQL.</param>
         /// <param name="host">Flexible-server FQDN.</param>
         /// <param name="catalog">Implied engine catalog.</param>
         /// <param name="timeout">Command timeout.</param>
+        /// <param name="connectionAttributes">Operator QueryConnection extras.</param>
         /// <returns>OSS connection plan.</returns>
-        private SqlQueryConnectionPlan CreateOssPlan(SqlQueryEngine engine, string host, string catalog, TimeSpan timeout)
+        private SqlQueryConnectionPlan CreateOssPlan(
+            SqlQueryEngine engine,
+            string host,
+            string catalog,
+            TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? connectionAttributes)
         {
             var connectionString = engine == SqlQueryEngine.PostgreSql
                 ? $"Host={host};Database={catalog};SSL Mode=VerifyFull"
@@ -164,7 +179,7 @@ namespace poolautoscaler.metrics
                 engine,
                 host,
                 catalog,
-                connectionString,
+                SqlQueryConnectionAttributes.MergeOss(connectionString, connectionAttributes),
                 OssRdbmsTokenScope,
                 timeout);
         }

@@ -120,7 +120,7 @@ namespace poolautoscaler.metrics
                     }
 
                     var numericValue = ConvertToDouble(value);
-                    await this.PushNamedMetricAsync(state, metric, metric.Name, numericValue, cancellationToken);
+                    await this.PushNamedMetricAsync(state, metric, CustomMetricSeries.FromScalar(metric.Name, numericValue), cancellationToken);
                     this.lastPushTimes[key] = DateTime.UtcNow;
                 }
                 catch (Exception ex)
@@ -137,7 +137,7 @@ namespace poolautoscaler.metrics
         }
 
         /// <summary>
-        /// Runs one Query, then POSTs each numeric first-row column. Empty or all-non-numeric results skip publication.
+        /// Runs one Query, then POSTs each mapped series. Empty or all-non-numeric results skip publication.
         /// </summary>
         /// <param name="state">Refreshed resource state.</param>
         /// <param name="metric">Query CustomMetrics row.</param>
@@ -155,35 +155,46 @@ namespace poolautoscaler.metrics
                 this.credential,
                 metric.Query!,
                 metric.QueryTimeoutParsed,
-                cancellationToken);
-            var published = SqlQueryNumericColumns.SelectPublished(columns);
-            if (published.Count == 0)
+                cancellationToken,
+                metric.QueryConnection);
+            var mapped = SqlQueryMetricSeriesMapper.Map(columns);
+            if (mapped.SkippedMetricNames.Count > 0)
+            {
+                state.Logger.LogDebug(
+                    "Skipping Query series on {ResourceId}: {Skipped}",
+                    state.AzureResourceId,
+                    string.Join(", ", mapped.SkippedMetricNames));
+            }
+
+            if (mapped.Series.Count == 0)
             {
                 this.lastPushTimes[dueKey] = DateTime.UtcNow;
-                state.Logger.LogDebug("Skipping Query custom metric on {ResourceId}: empty or non-numeric first row", state.AzureResourceId);
+                if (mapped.SkippedMetricNames.Count == 0)
+                {
+                    state.Logger.LogDebug("Skipping Query custom metric on {ResourceId}: empty or non-numeric first row", state.AzureResourceId);
+                }
+
                 return;
             }
 
-            foreach (var (columnName, numericValue) in published)
+            foreach (var series in mapped.Series)
             {
-                await this.PushNamedMetricAsync(state, metric, columnName, numericValue, cancellationToken);
+                await this.PushNamedMetricAsync(state, metric, series, cancellationToken);
             }
 
             this.lastPushTimes[dueKey] = DateTime.UtcNow;
         }
 
-        /// <summary>Resolves publish ResourceId, region, and namespace, then POSTs one custom metric.</summary>
+        /// <summary>Resolves publish ResourceId, region, and namespace, then POSTs one custom metric series.</summary>
         /// <param name="state">Resource state used for placeholder replacement.</param>
         /// <param name="metric">CustomMetrics row (namespace and ResourceId).</param>
-        /// <param name="metricName">Azure Monitor metric name.</param>
-        /// <param name="numericValue">Metric value.</param>
+        /// <param name="series">Azure Monitor series bag (name, min, max, sum, count).</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task that completes when the POST succeeds.</returns>
         private async Task PushNamedMetricAsync(
             ResourceState state,
             CustomMetricConfig metric,
-            string metricName,
-            double numericValue,
+            CustomMetricSeries series,
             CancellationToken cancellationToken)
         {
             var resourceId = state.ReplaceResourceParts(metric.ResourceId);
@@ -196,7 +207,7 @@ namespace poolautoscaler.metrics
             var region = await this.resourceLocationResolver.GetRegionAsync(this.armClient, resourceId, cancellationToken);
             if (string.IsNullOrEmpty(region))
             {
-                state.Logger.LogError("Skipping custom metric {Name}: could not resolve region for resource {ResourceId}", metricName, resourceId);
+                state.Logger.LogError("Skipping custom metric {Name}: could not resolve region for resource {ResourceId}", series.Name, resourceId);
                 return;
             }
 
@@ -205,11 +216,14 @@ namespace poolautoscaler.metrics
                 !string.IsNullOrWhiteSpace(this.defaultCustomMetricsNamespace) ? this.defaultCustomMetricsNamespace :
                 DefaultMetricNamespace;
 
-            await this.PushMetricAsync(resourceId, metricName, metricNamespace, numericValue, region, cancellationToken);
+            await this.PushMetricAsync(resourceId, series, metricNamespace, region, cancellationToken);
             state.Logger.LogDebug(
-                "Pushed custom metric {Name}={Value} in namespace {metricNamespace} to {ResourceId}",
-                metricName,
-                numericValue,
+                "Pushed custom metric {Name} min={Min} max={Max} sum={Sum} count={Count} in namespace {metricNamespace} to {ResourceId}",
+                series.Name,
+                series.Min,
+                series.Max,
+                series.Sum,
+                series.Count,
                 metricNamespace,
                 resourceId);
         }
@@ -240,9 +254,8 @@ namespace poolautoscaler.metrics
 
         private async Task PushMetricAsync(
             string resourceId,
-            string metricName,
+            CustomMetricSeries series,
             string metricNamespace,
-            double value,
             string region,
             CancellationToken cancellationToken)
         {
@@ -251,7 +264,7 @@ namespace poolautoscaler.metrics
                 cancellationToken);
 
             var url = this.BuildMetricsUrl(resourceId, region);
-            var body = this.BuildMetricsBody(metricName, metricNamespace, value);
+            var body = this.BuildMetricsBody(series, metricNamespace);
 
             var json = JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             using var request = new HttpRequestMessage(HttpMethod.Post, url);
@@ -275,7 +288,7 @@ namespace poolautoscaler.metrics
             return $"https://{region}.monitoring.azure.com/{normalized}/metrics";
         }
 
-        private object BuildMetricsBody(string metricName, string metricNamespace, double value)
+        private object BuildMetricsBody(CustomMetricSeries series, string metricNamespace)
         {
             var time = DateTime.UtcNow.ToString("o");
 
@@ -287,7 +300,7 @@ namespace poolautoscaler.metrics
                 {
                     baseData = new
                     {
-                        metric = metricName,
+                        metric = series.Name,
                         @namespace = metricNamespace,
                         dimNames = Array.Empty<string>(),
                         series = new[]
@@ -295,10 +308,10 @@ namespace poolautoscaler.metrics
                             new
                             {
                                 dimValues = Array.Empty<string>(),
-                                min = value,
-                                max = value,
-                                sum = value,
-                                count = 1
+                                min = series.Min,
+                                max = series.Max,
+                                sum = series.Sum,
+                                count = series.Count
                             }
                         }
                     }

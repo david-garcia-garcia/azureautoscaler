@@ -22,9 +22,9 @@ namespace poolautoscaler.configuration
         /// When set, only wildcard-expanded resources for which the expression returns <c>true</c> are included
         /// in the discovered resource set. Non-wildcard (literal) resource IDs are always included.
         ///
-        /// Example — standalone DTU SQL databases only:
+        /// Example — non-pooled SQL databases (pool membership is ElasticPoolId, not Sku.Name):
         /// <code>
-        /// ResourceFilter: "(r) => r.Resource.Data.Sku.Family == null &amp;&amp; r.Resource.Data.Sku.Name != \"ElasticPool\""
+        /// ResourceFilter: "(r) => r.Resource.Data.ElasticPoolId == null"
         /// </code>
         /// Access resource-type-specific properties via <c>r.Resource</c> (Dynamic LINQ resolves members
         /// against the actual runtime type). Use <c>r.Tags</c> for tag-based filtering.

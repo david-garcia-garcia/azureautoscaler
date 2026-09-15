@@ -36,6 +36,12 @@ namespace poolautoscaler.configuration
         /// </summary>
         public string? Query { get; set; }
 
+        /// <summary>
+        /// Extra SQL driver attributes merged onto the app-built session (e.g. ApplicationIntent=ReadWrite).
+        /// Host, catalog, Encrypt, and credentials stay implied. Azure SQL Query requires ApplicationIntent (ReadOnly or ReadWrite).
+        /// </summary>
+        public Dictionary<string, string>? QueryConnection { get; set; }
+
         /// <summary>SQL command timeout (e.g. "30s"). Defaults to 30 seconds when omitted.</summary>
         public string? QueryTimeout { get; set; }
 

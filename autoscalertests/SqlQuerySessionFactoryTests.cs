@@ -17,7 +17,7 @@ namespace poolautoscaler.tests
         private readonly ILogger logger = new Mock<ILogger>().Object;
 
         [Fact]
-        public void CreateConnectionPlan_SqlDatabase_UsesResourceIdCatalogAndReadOnly()
+        public void CreateConnectionPlan_SqlDatabase_UsesResourceIdCatalogWithoutInjectedIntent()
         {
             var state = this.CreateSqlDatabaseState();
             state.FullyQualifiedDomainName = "sqlsrv.database.windows.net";
@@ -29,7 +29,7 @@ namespace poolautoscaler.tests
             Assert.Equal(SqlQueryEngine.AzureSql, plan.Engine);
             Assert.Equal("appdb", plan.Catalog);
             Assert.Equal("sqlsrv.database.windows.net", plan.Host);
-            Assert.Contains("ApplicationIntent=ReadOnly", plan.ConnectionString);
+            Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(SqlQuerySessionFactory.AzureSqlTokenScope, plan.TokenScope);
             Assert.Equal(TimeSpan.FromSeconds(30), plan.CommandTimeout);
         }
@@ -44,7 +44,7 @@ namespace poolautoscaler.tests
             var plan = factory.CreateConnectionPlan(state, TimeSpan.FromSeconds(45));
 
             Assert.Equal("master", plan.Catalog);
-            Assert.Contains("ApplicationIntent=ReadOnly", plan.ConnectionString);
+            Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString, StringComparison.OrdinalIgnoreCase);
             Assert.Equal(TimeSpan.FromSeconds(45), plan.CommandTimeout);
         }
 
@@ -59,7 +59,7 @@ namespace poolautoscaler.tests
 
             Assert.Equal("postgres", plan.Catalog);
             Assert.Equal(SqlQueryEngine.PostgreSql, plan.Engine);
-            Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString);
+            Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("SSL Mode=VerifyFull", plan.ConnectionString);
             Assert.Equal(SqlQuerySessionFactory.OssRdbmsTokenScope, plan.TokenScope);
         }
@@ -75,7 +75,7 @@ namespace poolautoscaler.tests
 
             Assert.Equal("mysql", plan.Catalog);
             Assert.Equal(SqlQueryEngine.MySql, plan.Engine);
-            Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString);
+            Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("SslMode=VerifyFull", plan.ConnectionString);
         }
 
@@ -141,6 +141,55 @@ namespace poolautoscaler.tests
             Assert.Equal(1, rowReader.ReadCount);
             Assert.Equal("SELECT 1 AS cpu_percent", rowReader.LastQuery);
             Assert.Single(columns);
+        }
+
+        [Fact]
+        public void CreateConnectionPlan_SqlDatabase_QueryConnectionSetsReadOnly()
+        {
+            var state = this.CreateSqlDatabaseState();
+            state.FullyQualifiedDomainName = "sqlsrv.database.windows.net";
+            state.ResourceParts["databaseName"] = "appdb";
+            var factory = new SqlQuerySessionFactory();
+
+            var plan = factory.CreateConnectionPlan(
+                state,
+                TimeSpan.FromSeconds(30),
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["ApplicationIntent"] = "ReadOnly" });
+
+            Assert.Contains("ReadOnly", plan.ConnectionString);
+        }
+
+        [Fact]
+        public void CreateConnectionPlan_SqlDatabase_QueryConnectionCanSetReadWrite()
+        {
+            var state = this.CreateSqlDatabaseState();
+            state.FullyQualifiedDomainName = "sqlsrv.database.windows.net";
+            state.ResourceParts["databaseName"] = "appdb";
+            var factory = new SqlQuerySessionFactory();
+
+            var plan = factory.CreateConnectionPlan(
+                state,
+                TimeSpan.FromSeconds(30),
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["ApplicationIntent"] = "ReadWrite" });
+
+            Assert.Contains("ReadWrite", plan.ConnectionString);
+            Assert.DoesNotContain("ReadOnly", plan.ConnectionString, StringComparison.OrdinalIgnoreCase);
+        }
+
+        [Fact]
+        public void CreateConnectionPlan_SqlDatabase_RejectsReservedPasswordKey()
+        {
+            var state = this.CreateSqlDatabaseState();
+            state.FullyQualifiedDomainName = "sqlsrv.database.windows.net";
+            state.ResourceParts["databaseName"] = "appdb";
+            var factory = new SqlQuerySessionFactory();
+
+            var ex = Assert.Throws<Exception>(() => factory.CreateConnectionPlan(
+                state,
+                TimeSpan.FromSeconds(30),
+                new Dictionary<string, string> { ["Password"] = "secret" }));
+
+            Assert.Contains("reserved", ex.Message);
         }
 
         [Fact]
