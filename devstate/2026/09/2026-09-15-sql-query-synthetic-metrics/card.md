@@ -37,7 +37,7 @@ Prepare complete; explore is next. 7 workflow phases remain.
 
 Priority: P2 — operator and dashboard parity pain with partial native-metric workarounds today.
 
-Reviewed head: a3f37c5
+Reviewed head: e9a64dd
 Owner decision: None.
 
 ## Review scores
@@ -89,7 +89,7 @@ None.
 | --- | --- | --- |
 | Specs in this PR | none | No openspec change yet |
 | Open reviewer comments walked | 0 open | No PR inventory |
-| Reviewed head | a3f37c5da619e9051a7a0f939517a10abe94edb5 | Bus-only prepare |
+| Reviewed head | e9a64dd | Bus-only prepare |
 
 ### Stored data model
 None.
