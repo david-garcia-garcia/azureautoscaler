@@ -81,6 +81,14 @@ namespace poolautoscaler.resourcemanagement
                 return false;
             }
 
+            if (resourceState.IsDisabled())
+            {
+                this.LogDisabledInformationIfDue(resourceState, resourceState.Logger);
+                resourceState.ResetEvaluation();
+                resourceState.Logger.LogDebug("Next evaluation in {Interval}", TimeSpan.FromSeconds(resourceState.NextEvaluationSeconds()).ToString("g"));
+                return false;
+            }
+
             var ran = false;
             try
             {
@@ -251,19 +259,66 @@ namespace poolautoscaler.resourcemanagement
             return candidate;
         }
 
+        /// <summary>
+        /// Emits throttled Information when the resource is disabled (at most once per hour).
+        /// </summary>
+        private void LogDisabledInformationIfDue(ResourceState state, ILogger logger)
+        {
+            if ((DateTime.UtcNow - state.LastDisabledMessageLogged).TotalHours >= 1)
+            {
+                logger.LogInformation("Resource is currently disabled: {Reasons}", string.Join(", ", state.DisabledUntil.Keys));
+                state.LastDisabledMessageLogged = DateTime.UtcNow;
+            }
+        }
+
+        /// <summary>
+        /// Emits throttled Information when scaling configurations are absent (null or empty dictionary).
+        /// </summary>
+        private void LogNoScalingConfigurationsInformationIfDue(ResourceState state, ILogger logger)
+        {
+            if ((DateTime.UtcNow - state.LastNoScalingConfigurationsMessageLogged).TotalHours >= 1)
+            {
+                logger.LogInformation("Resource has no scaling configurations configured.");
+                state.LastNoScalingConfigurationsMessageLogged = DateTime.UtcNow;
+            }
+        }
+
+        private static bool HasNoScalingConfigurations(Resource configuration)
+        {
+            return configuration.ScalingConfigurations == null || configuration.ScalingConfigurations.Count == 0;
+        }
+
+        private static List<ScalingConfiguration> GetActiveScalingConfigurations(ResourceState state, DateTime utcNow)
+        {
+            var scalingConfigurations = state.Configuration.ScalingConfigurations;
+            if (scalingConfigurations == null || scalingConfigurations.Count == 0)
+            {
+                return new List<ScalingConfiguration>();
+            }
+
+            var finder = new ConfigFinder();
+            return (from p in scalingConfigurations.Values
+                    where finder.SettingIsActive(p, utcNow)
+                    select p).ToList();
+        }
+
         private async Task RunLoop(ResourceState state, CancellationToken stoppingToken)
         {
             var logger = state.Logger;
-            var finder = new ConfigFinder();
 
             var utcNow = this.utcNowProvider();
-            var scalingConfigurations = (from p in state.Configuration.ScalingConfigurations.Values
-                                         where finder.SettingIsActive(p, utcNow)
-                                         select p).ToList();
 
             await state.Refresh(this.armClientWrapper, this.credential, stoppingToken);
             logger.LogDebug("Existing object state {State}", HelperExtensions.SerializeSimple(state.ExistingStateRaw));
             await this.customMetricsPusher.PushIfDueAsync(state, stoppingToken);
+
+            if (HasNoScalingConfigurations(state.Configuration))
+            {
+                this.LogNoScalingConfigurationsInformationIfDue(state, logger);
+                return;
+            }
+
+            var scalingConfigurations = GetActiveScalingConfigurations(state, utcNow);
 
             if (!scalingConfigurations.Any())
             {
@@ -275,12 +330,7 @@ namespace poolautoscaler.resourcemanagement
 
             if (state.IsDisabled())
             {
-                if ((DateTime.UtcNow - state.LastDisabledMessageLogged).TotalHours >= 1)
-                {
-                    logger.LogInformation("Resource is currently disabled: {Reasons}", string.Join(", ", state.DisabledUntil.Keys));
-                    state.LastDisabledMessageLogged = DateTime.UtcNow;
-                }
-
+                this.LogDisabledInformationIfDue(state, logger);
                 return;
             }
 
