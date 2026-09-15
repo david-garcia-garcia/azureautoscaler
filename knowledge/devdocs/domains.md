@@ -2,3 +2,4 @@
 
 ## core
 - metrics
+- resource

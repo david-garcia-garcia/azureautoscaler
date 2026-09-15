@@ -30,6 +30,11 @@ namespace poolautoscaler.resourcemanagement
         public DateTime LastDisabledMessageLogged { get; set; } = DateTime.MinValue;
 
         /// <summary>
+        /// Gets or sets when the no scaling configurations Information message was last logged to avoid log spam.
+        /// </summary>
+        public DateTime LastNoScalingConfigurationsMessageLogged { get; set; } = DateTime.MinValue;
+
+        /// <summary>
         /// Gets the raw existing state of the resource.
         /// </summary>
         public abstract object ExistingStateRaw { get; }

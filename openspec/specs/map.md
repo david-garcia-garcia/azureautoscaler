@@ -8,3 +8,7 @@ Allowlist of root + domain: `openspec/specs/domains.md`.
 ### metrics
 
 - custom
+
+### resource
+
+- management
