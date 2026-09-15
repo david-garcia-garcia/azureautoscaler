@@ -112,9 +112,9 @@ Publication is the commissioned job. In-process `custom_*` gather is a different
 ## Catalogs
 
 - `knowledge/devdocs/index.md`: **not found** (empty catalog).
-- `knowledge/research/index.md`: write in progress this session (`ext_azure-sql_dmvs_dm-db-resource-stats`, `ext_azure-sql_connections_application-intent`).
+- `knowledge/research/index.md`: present. Domain `azure-sql` → `index_ext_azure-sql.md`.
+- Created: `knowledge/research/ext_azure-sql_dmvs_dm-db-resource-stats/`, `knowledge/research/ext_azure-sql_connections_application-intent/`, `knowledge/research/ext_azure-sql_auth_external-provider/` (commit `f7dc492`).
 - No `priority: always` packets. No Language/usage writes.
-- Official Learn consumed on this thread for `sys.dm_db_resource_stats` and ApplicationIntent (research folder delegated).
 
 ## Verdict
 
