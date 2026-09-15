@@ -76,8 +76,8 @@ Publication is the commissioned job. In-process `custom_*` gather is a different
 
 - Q: Do QUERY metrics feed scaling (`Metrics` / `custom_*`), push-only (`CustomMetrics`), or both?
   Rank: additive asked — Desired says published / portal-mirror; Out of scope says do not replace working Monitor scaling metrics
-  Decision: assumed — push-only via `CustomMetrics`. Operators who want to scale on the published series can already set `Metric.Namespace` to the custom namespace (`docs/configuration.md`). Do not wire QUERY into SQL `CustomMetric()`.
-  By: explore
+  Decision: resolved — push-only via `CustomMetrics`. Operators who want to scale on the published series can already set `Metric.Namespace` to the custom namespace (`docs/configuration.md`). Do not wire QUERY into SQL `CustomMetric()`.
+  By: propose
 
 - Q: What are the authoritative portal formulas / DMVs per engine for DTU, CPU, memory, and data I/O?
   Rank: additive incidental — Desired asks for the ability to define QUERY, not for shipped default SQL; no criterion names baked-in DMVs
