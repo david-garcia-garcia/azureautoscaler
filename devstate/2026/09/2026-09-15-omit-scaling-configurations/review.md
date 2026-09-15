@@ -21,3 +21,9 @@ phase: implement
 findings: 7/7 OpenSpec tasks; dotnet test 447 passed; CI Build and Test queued on push bbe091a
 fixed: n/a
 skipped: n/a
+
+## codereview (2026-09-15)
+phase: codereview
+findings: Standards 2 hard + 1 judgement; Spec 1 extra; Coverage 2 hard; other axes none
+fixed: helper summaries; empty-dict Information assert; two-cycle throttle assert
+skipped: duplicated null/empty guard (judgement); domains.md extra (librarian allowlist)
