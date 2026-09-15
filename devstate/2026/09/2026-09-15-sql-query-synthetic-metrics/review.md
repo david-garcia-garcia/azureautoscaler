@@ -13,3 +13,11 @@ fixed: n/a
 skipped: propose (human stop after explore)
 verdict: in progress
 ownerDecision: required
+
+## explore-reentry (2026-09-15T07:50:24.4878090Z)
+phase: explore
+findings: requester refined QUERY (multi-column, no Database, ApplicationIntent, replica_role zeros, SQL user docs)
+fixed: explore.md decisions updated
+skipped: propose
+verdict: in progress
+ownerDecision: required — confirm SQL Database catalog vs master

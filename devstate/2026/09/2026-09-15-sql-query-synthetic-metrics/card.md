@@ -1,4 +1,4 @@
-Developer review: in progress — 2026-09-15T07:34:02.0868176Z
+Developer review: in progress — 2026-09-15T07:50:24.4878090Z
 
 IssueKey: 2026-09-15-sql-query-synthetic-metrics
 JobName: 2026-09-15-sql-query-synthetic-metrics
@@ -8,14 +8,14 @@ JobName: 2026-09-15-sql-query-synthetic-metrics
 
 **Admin users.** None.
 
-**Developers.** None on `1.x` yet; explore reproduced the QUERY gap and proposed extending `CustomMetrics` / `CustomMetricConfig` instead of a new synthetic type (`devstate/2026/09/2026-09-15-sql-query-synthetic-metrics/explore.md`).
+**Developers.** None on `1.x` yet; explore refined QUERY to one statement → many numeric columns, no `Database` field, `ApplicationIntent=ReadOnly`, and operator-owned `replica_role` zeros.
 
 **End users.** None.
 
 ## Motivation
-Operators need portal-visible DTU, CPU, memory, and data I/O on SQL resources that match the primary database charts. On `1.x`, `CustomMetrics` only evaluates `DataExpression`; SQL `CustomMetric()` throws; there is no QUERY value source and no SQL driver in `autoscaler/`.
+Operators need portal-visible DTU, CPU, memory, and data I/O on SQL resources that match the primary-database charts. On `1.x`, `CustomMetrics` only evaluates `DataExpression`; SQL `CustomMetric()` throws; there is no QUERY value source and no SQL driver in `autoscaler/`.
 
-Without a query-backed push path, those portal-mirror numbers cannot be published. Log I/O on read-only replicas stays out of scope.
+Without a query-backed push path, those portal-mirror numbers cannot be published. Log I/O on read-only replicas stays out of scope. A replica session is not guaranteed by `ApplicationIntent=ReadOnly` (Basic/Standard/General Purpose have no read scale-out).
 
 ```mermaid
 flowchart LR
@@ -29,11 +29,11 @@ flowchart LR
 ```
 
 ## Merge readiness
-Explore complete; waiting on human confirmation of assumed decisions and the CustomMetrics reshape. 6 workflow phases remain.
+Explore refined after requester feedback; waiting on catalog confirm (SQL Database vs master) and the CustomMetrics reshape. 6 workflow phases remain.
 
 Priority: P2 — operator and dashboard parity pain with partial native-metric workarounds today.
 
-Reviewed head: 8df73ee
+Reviewed head: 91d4c26
 Owner decision: Required. See Explore Decisions.
 
 ## Review scores
@@ -69,18 +69,13 @@ Local ticket → branch `2026-09-15-sql-query-synthetic-metrics` from `1.x` → 
 ## Explore Decisions
 | Question | Rank | Decision | By |
 | --- | --- | --- | --- |
-| What YAML fields does QUERY take (text, database name, timeout, result column)? | additive asked | assumed — optional `Query` string XOR `DataExpression`; optional `Database` (required at runtime for Elastic Pool and when the server has more than one usable DB); optional timeout defaulting to ~30s; value = first row, first numeric column. No connection-string field. | explore |
 | Do QUERY metrics feed scaling (`Metrics` / `custom_*`), push-only (`CustomMetrics`), or both? | additive asked | assumed — push-only via `CustomMetrics`. Scale later by reading the custom namespace. Do not wire QUERY into SQL `CustomMetric()`. | explore |
-| What are the authoritative portal formulas / DMVs per engine for DTU, CPU, memory, and data I/O? | additive incidental | assumed — operators supply the SQL; docs may show placeholders only. Do not invent vendor facts. | explore |
-| Who already owns the identity used to open a SQL session? | additive asked | assumed — reuse the process `TokenCredential` from `Program`. No SQL password/secret config. | explore |
-| What host and database does Elastic Pool (and Flexible Server) QUERY connect to? | additive asked | assumed — host from refreshed ARM `ResourceId`; `Database` on the metric selects the catalog. | explore |
-| How is “not log I/O on read-only replicas” enforced? | additive asked | assumed — operators target the ResourceId and omit log I/O QUERY. No replica filter in product. | explore |
-| How is the QUERY session kept read-only? | additive asked | assumed — open the driver session read-only when the client API supports it; do not rewrite operator SQL. Failed QUERY skips that metric push. | explore |
-| Must QUERY return a single scalar, or may it return a named column / many rows? | additive asked | assumed — first row, first numeric column. Extra rows/columns ignored. Non-numeric or empty result skips the push. | explore |
+| What host and database does Elastic Pool (and Flexible Server) QUERY connect to? | additive asked | assumed — no YAML `Database`. SQL Database catalog = database name in the ARM id (not master). Elastic Pool → master. PostgreSQL → postgres. MySQL → mysql. Requester thought metrics live on master; `sys.dm_db_resource_stats` is current-database. Needs confirm. | explore |
 
 ## Before merge
 - [ ] Confirm the proposed reshape: `CustomMetrics` + `Query` (not a new `SyntheticMetrics` type)
-- [ ] Confirm the eight assumed explore decisions before propose
+- [ ] Confirm SQL Database QUERY connects to the database in ResourceId (not master)
+- [ ] Confirm remaining assumed row (push-only)
 
 ## Findings
 None.
@@ -95,24 +90,24 @@ None.
 | --- | --- | --- |
 | Specs in this PR | none | No openspec change yet |
 | Open reviewer comments walked | 0 open | No PR inventory |
-| Reviewed head | 8df73eea2e238f0cc53c3447d9945e7fa53a6c59 | Card matches measured HEAD |
+| Reviewed head | 91d4c26eb47e961c04dc2d6c430656f60133b436 | Card matches last committed HEAD before this Set |
 
 ### Stored data model
 None.
 
 ### Technical review
-Best possible solution: Extending `CustomMetricConfig` with a Query XOR `DataExpression` source, pushed by `CustomMetricsPusher`, matches the existing publication unit on `1.x`.
+Best possible solution: One Query on `CustomMetricConfig`, run once, publish each numeric column; connection string built with ApplicationIntent=ReadOnly; operator SQL zeros non-replicas via replica_role.
 
-Do we have a high-confidence way to reproduce? Yes — throwaway console against live types: SQL `CustomMetric()` throws; `CustomMetricConfig` has no `Query`; `PrepareAndValidate` requires `DataExpression`.
+Do we have a high-confidence way to reproduce? Yes — SQL `CustomMetric()` throws; `CustomMetricConfig` has no `Query`.
 
-Is this the best way to solve the issue? Yes versus `1.x`, if the requester accepts the CustomMetrics reshape; a second synthetic config tree would duplicate publication.
+Is this the best way to solve the issue? Yes versus `1.x` if the requester accepts CustomMetrics + implied catalog.
 
 ### Evidence
 What I checked:
-- `explore.md` reproduce table (throwaway console + live types)
-- `CustomMetricConfig` properties in `autoscaler/configuration/CustomMetricConfig.cs` (no Query)
-- SQL `CustomMetric()` stubs / base throw (PostgreSQL, MySQL, SQL DB, Elastic Pool)
-- DestBranch merge-base `a3f37c5`; reviewed HEAD `8df73ee`
+- Learn `sys.dm_db_resource_stats` (current database, VIEW DATABASE STATE, replica_role)
+- Learn read scale-out (ApplicationIntent=ReadOnly does not exist on Basic/Standard/GP)
+- `ResourceStateFactory.SqlDatabase` already captures databaseName
+- Requester multi-column QUERY and replica_role zeroing
 
 ### Rank-up moves
 None.
