@@ -8,7 +8,7 @@ JobName: 2026-09-15-sql-query-synthetic-metrics
 | explore | [x] | [x] | 2026-09-15T08:35:39.8141403Z |
 | propose | [x] | [x] | 2026-09-15T08:54:21.3474165Z |
 | implement | [x] | [x] | 2026-09-15T09:06:37.1870566Z |
-| codereview | [ ] | [ ] | |
-| devdocsimpact | [ ] | [ ] | |
-| archive | [ ] | [ ] | |
-| pullrequest | [ ] | [ ] | |
+| codereview | [x] | [x] | 2026-09-15T09:13:36.2505524Z |
+| devdocsimpact | [x] | [x] | 2026-09-15T09:14:53.3165619Z |
+| archive | [x] | [x] | 2026-09-15T09:14:53.3165619Z |
+| pullrequest | [x] | [x] | 2026-09-15T09:14:53.3165619Z |

@@ -43,3 +43,31 @@ findings: Query path landed; 429 tests passed
 fixed: tasks 1–5
 skipped: push (human)
 verdict: in progress
+
+## codereview (2026-09-15T09:13:36.2505524Z)
+phase: codereview
+findings: Standards 5, Nitpicks 1, Security 1, Coverage 2 hard + 2 judgement
+fixed: all hard items
+skipped: coverage judgement 3–4
+verdict: in progress
+
+## devdocsimpact (2026-09-15T09:14:53.3165619Z)
+phase: devdocsimpact
+findings: missing-packet Query CustomMetrics
+fixed: produced knowledge/devdocs/core_metrics_custom_query.md
+skipped: none
+verdict: in progress
+
+## archive (2026-09-15T09:14:53.3165619Z)
+phase: archive
+findings: synced core_metrics_custom_query; artifact-names dirty on legacy kebab specs
+fixed: archive 2026-09-15-sql-query-custom-metrics
+skipped: renaming live kebab specs
+verdict: in progress
+
+## pullrequest (2026-09-15T09:14:53.3165619Z)
+phase: pullrequest
+findings: prHost local; no remote PR
+fixed: final card
+skipped: push (human)
+verdict: ready for review
