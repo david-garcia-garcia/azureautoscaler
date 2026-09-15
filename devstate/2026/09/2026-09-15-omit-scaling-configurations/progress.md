@@ -5,7 +5,7 @@ JobName: 2026-09-15-omit-scaling-configurations
 | Phase | Work | Card | At |
 |-------|------|------|----|
 | prepare | [x] | [x] | 2026-09-15T17:53:58.089Z |
-| explore | [ ] | [ ] | |
+| explore | [x] | [x] | 2026-09-15T17:55:36.351Z |
 | propose | [ ] | [ ] | |
 | implement | [ ] | [ ] | |
 | codereview | [ ] | [ ] | |
