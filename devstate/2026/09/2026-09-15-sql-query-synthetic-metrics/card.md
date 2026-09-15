@@ -1,4 +1,4 @@
-Developer review: in progress — 2026-09-15T07:50:24.4878090Z
+Developer review: in progress — 2026-09-15T08:35:39.8141403Z
 
 IssueKey: 2026-09-15-sql-query-synthetic-metrics
 JobName: 2026-09-15-sql-query-synthetic-metrics
@@ -29,11 +29,11 @@ flowchart LR
 ```
 
 ## Merge readiness
-Explore refined after requester feedback; waiting on catalog confirm (SQL Database vs master) and the CustomMetrics reshape. 6 workflow phases remain.
+Explore catalogs confirmed (SQL Database = ResourceId database; Elastic Pool = master). Waiting on the CustomMetrics reshape. 6 workflow phases remain.
 
 Priority: P2 — operator and dashboard parity pain with partial native-metric workarounds today.
 
-Reviewed head: 91d4c26
+Reviewed head: 347ec39
 Owner decision: Required. See Explore Decisions.
 
 ## Review scores
@@ -70,11 +70,9 @@ Local ticket → branch `2026-09-15-sql-query-synthetic-metrics` from `1.x` → 
 | Question | Rank | Decision | By |
 | --- | --- | --- | --- |
 | Do QUERY metrics feed scaling (`Metrics` / `custom_*`), push-only (`CustomMetrics`), or both? | additive asked | assumed — push-only via `CustomMetrics`. Scale later by reading the custom namespace. Do not wire QUERY into SQL `CustomMetric()`. | explore |
-| What host and database does Elastic Pool (and Flexible Server) QUERY connect to? | additive asked | assumed — no YAML `Database`. SQL Database catalog = database name in the ARM id (not master). Elastic Pool → master. PostgreSQL → postgres. MySQL → mysql. Requester thought metrics live on master; `sys.dm_db_resource_stats` is current-database. Needs confirm. | explore |
 
 ## Before merge
 - [ ] Confirm the proposed reshape: `CustomMetrics` + `Query` (not a new `SyntheticMetrics` type)
-- [ ] Confirm SQL Database QUERY connects to the database in ResourceId (not master)
 - [ ] Confirm remaining assumed row (push-only)
 
 ## Findings

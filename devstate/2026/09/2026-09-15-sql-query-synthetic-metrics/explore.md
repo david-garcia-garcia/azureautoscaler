@@ -91,7 +91,7 @@ Publication is the commissioned job. In-process `custom_*` gather is a different
 
 - Q: What host and database does Elastic Pool (and Flexible Server) QUERY connect to?
   Rank: additive asked — In-scope includes Elastic Pool; a pool ResourceId is not a SQL database
-  Decision: assumed — no YAML `Database`. Host from refreshed ARM FQDN. Catalog: Azure SQL Database → database name already in the ARM id (not `master`); Elastic Pool → `master`; PostgreSQL → `postgres`; MySQL → `mysql`. Requester asked why Database if metrics live on master. Learn: `sys.dm_db_resource_stats` is current-database; `sys.resource_stats` is the master view. Connecting a SQL Database resource to `master` would measure master, not the portal series for that database. Needs requester confirm.
+  Decision: resolved — requester confirmed SQL Database catalog = database name in the ARM ResourceId (not `master`). Elastic Pool is different: the ARM id is the pool, so QUERY connects to logical `master` on that server. Pool-level series live in `sys.elastic_pool_resource_stats` (master); `sys.dm_db_resource_stats` on that session would measure `master`, not the pool. PostgreSQL → `postgres`; MySQL → `mysql`. No YAML `Database` field. Host from refreshed ARM FQDN.
   By: explore
 
 - Q: How is “not log I/O on read-only replicas” enforced?
@@ -118,4 +118,4 @@ Publication is the commissioned job. In-process `custom_*` gather is a different
 
 ## Verdict
 
-`in progress` — gap reproduced; human refined QUERY shape (multi-column, no Database field, ApplicationIntent + replica_role zeros). No `blocked` row; no `structural incidental` rank (no `explore_decide/` pass). Waiting on confirmation of the master-vs-current-database catalog for Azure SQL Database resources.
+`in progress` — gap reproduced; catalogs confirmed (SQL Database = ResourceId database; Elastic Pool = `master`). No `blocked` row. CustomMetrics reshape still proposed (requester not asked).

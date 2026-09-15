@@ -21,3 +21,11 @@ fixed: explore.md decisions updated
 skipped: propose
 verdict: in progress
 ownerDecision: required — confirm SQL Database catalog vs master
+
+## explore-catalog (2026-09-15T08:35:39.8141403Z)
+phase: explore
+findings: requester confirmed SQL Database catalog = ResourceId; Elastic Pool stays master
+fixed: explore.md host/database row resolved
+skipped: propose
+verdict: in progress
+ownerDecision: required — CustomMetrics reshape still proposed
