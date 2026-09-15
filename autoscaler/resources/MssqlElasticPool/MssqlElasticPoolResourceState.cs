@@ -41,6 +41,9 @@ namespace poolautoscaler.resources.MssqlElasticPool
         /// </summary>
         public MssqlElasticPoolState ExistingMssqlElasticPoolState { get; set; }
 
+        /// <summary>Logical-server FQDN from the last ARM refresh, used as the Query host.</summary>
+        public string? FullyQualifiedDomainName { get; set; }
+
         /// <summary>
         /// Gets the elastic pool ARM resource (strongly typed).
         /// </summary>
@@ -275,6 +278,10 @@ namespace poolautoscaler.resources.MssqlElasticPool
             };
 
             this.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();
+
+            var serverId = $"/subscriptions/{this.Resource.Id.SubscriptionId}/resourceGroups/{this.Resource.Id.ResourceGroupName}/providers/Microsoft.Sql/servers/{this.Resource.Id.Parent.Name}";
+            var server = await client.GetSqlServerResource(new ResourceIdentifier(serverId)).GetAsync(cancellationToken: cancellationToken);
+            this.FullyQualifiedDomainName = server.Value.Data.FullyQualifiedDomainName;
         }
     }
 }

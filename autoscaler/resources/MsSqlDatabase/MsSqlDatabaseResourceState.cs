@@ -34,6 +34,9 @@ namespace poolautoscaler.resources.MsSqlDatabase
         /// </summary>
         public MsSqlDatabaseState ExistingMsSqlDatabaseState { get; set; }
 
+        /// <summary>Logical-server FQDN from the last ARM refresh, used as the Query host.</summary>
+        public string? FullyQualifiedDomainName { get; set; }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="MsSqlDatabaseResourceState"/> class.
         /// </summary>
@@ -176,6 +179,10 @@ namespace poolautoscaler.resources.MsSqlDatabase
                 MaxSizeBytes = database.Data.MaxSizeBytes,
                 CurrentUsedStorage = storage_used
             };
+
+            var serverId = $"/subscriptions/{database.Id.SubscriptionId}/resourceGroups/{database.Id.ResourceGroupName}/providers/Microsoft.Sql/servers/{database.Id.Parent.Name}";
+            var server = await client.GetSqlServerResource(new ResourceIdentifier(serverId)).GetAsync(cancellationToken: cancellationToken);
+            this.FullyQualifiedDomainName = server.Value.Data.FullyQualifiedDomainName;
         }
     }
 }
