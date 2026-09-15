@@ -36,3 +36,10 @@ findings: apply-ready sql-query-custom-metrics; spec core_metrics_custom_query N
 fixed: deviation taken (CustomMetrics + Query)
 skipped: implement
 verdict: in progress
+
+## implement (2026-09-15T09:06:37.1870566Z)
+phase: implement
+findings: Query path landed; 429 tests passed
+fixed: tasks 1–5
+skipped: push (human)
+verdict: in progress
