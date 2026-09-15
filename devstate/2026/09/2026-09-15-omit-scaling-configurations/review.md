@@ -39,3 +39,9 @@ phase: archive
 findings: synced core_resource_management_omit-scaling-configurations to openspec/specs; change moved to archive/2026-09-15-omit-scaling-configurations; validate-artifact-names fail on 11 pre-existing legacy spec ids
 fixed: catalog sync and folder move; map.md regenerated
 skipped: n/a
+
+## pullrequest (2026-09-15)
+phase: pullrequest
+findings: reused PR 47; title ready; Build and Test succeeded
+fixed: n/a
+skipped: n/a
