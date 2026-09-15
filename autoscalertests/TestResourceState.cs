@@ -32,19 +32,19 @@ namespace poolautoscaler.tests
         /// <summary>
         /// Metric values keyed by metric name (e.g. "custom_test_cpu"). Used by CustomMetric to return configurable data.
         /// </summary>
-        public Dictionary<string, double> CustomMetricValues { get; set; } = new Dictionary<string, double>();
+        public Dictionary<string, double> ScalingCustomMetricValues { get; set; } = new Dictionary<string, double>();
 
         /// <summary>When set, <see cref="ApplyChanges"/> throws this (for background scale task error tests).</summary>
         public Exception? ApplyChangesException { get; set; }
 
-        public override Task<MetricEvalDtoResult> CustomMetric(
+        public override Task<MetricEvalDtoResult> GatherScalingCustomMetric(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken,
             ScalingConfiguration setting,
             string name)
         {
-            var value = this.CustomMetricValues.TryGetValue(name, out var v) ? v : 0;
+            var value = this.ScalingCustomMetricValues.TryGetValue(name, out var v) ? v : 0;
             var result = new MetricEvalDtoResult
             {
                 Values = new List<MetricEvalDtoResultValue>

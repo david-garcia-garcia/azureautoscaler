@@ -4,7 +4,7 @@ using Azure.ResourceManager;
 namespace poolautoscaler.metrics.Dto
 {
     /// <summary>Helper functions available in custom metric DataExpression.</summary>
-    public class CustomMetricHelpers
+    public class PublishedMetricHelpers
     {
         private readonly string subscriptionId;
         private readonly AzureLocation location;
@@ -12,13 +12,13 @@ namespace poolautoscaler.metrics.Dto
         private readonly ArmClient armClient;
         private readonly CancellationToken cancellationToken;
 
-        /// <summary>Initializes a new instance of the <see cref="CustomMetricHelpers"/> class with VM size resolver (lazy-loads from Azure when used).</summary>
+        /// <summary>Initializes a new instance of the <see cref="PublishedMetricHelpers"/> class with VM size resolver (lazy-loads from Azure when used).</summary>
         /// <param name="subscriptionId">The subscription ID.</param>
         /// <param name="location">The Azure location.</param>
         /// <param name="vmSizeResolver">The VM size resolver.</param>
         /// <param name="armClient">The ARM client (used by resolver to load VM sizes on first use).</param>
         /// <param name="cancellationToken">Cancellation token for load operations.</param>
-        public CustomMetricHelpers(string subscriptionId, AzureLocation location, IVmSizeResolver vmSizeResolver, ArmClient armClient, CancellationToken cancellationToken = default)
+        public PublishedMetricHelpers(string subscriptionId, AzureLocation location, IVmSizeResolver vmSizeResolver, ArmClient armClient, CancellationToken cancellationToken = default)
         {
             this.subscriptionId = subscriptionId;
             this.location = location;

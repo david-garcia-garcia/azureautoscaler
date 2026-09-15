@@ -3,7 +3,7 @@
 ## Language
 
 **Query CustomMetrics row**:
-A `CustomMetricConfig` whose value source is `Query` (exclusive with `DataExpression`).
+A `PublishedMetricConfig` whose value source is `Query` (exclusive with `DataExpression`). YAML key remains `CustomMetrics`.
 _Avoid_: synthetic metric, SyntheticMetrics
 
 **Implied catalog**:
@@ -12,7 +12,7 @@ _Avoid_: Database YAML field, connection-string catalog
 
 ## Overview
 
-Operators publish first-row numeric SQL columns through the existing CustomMetrics pusher. Implementers extend `CustomMetricConfig` and `SqlQuerySessionFactory`; they do not add a second config tree or implement SQL `CustomMetric()`.
+Operators publish first-row numeric SQL columns through `PublishedMetricsPusher`. Implementers extend `PublishedMetricConfig` and `SqlQuerySessionFactory`; they do not add a second config tree or implement SQL `GatherScalingCustomMetric()`.
 
 ## How to use
 
@@ -21,7 +21,7 @@ Operators publish first-row numeric SQL columns through the existing CustomMetri
 - Open Azure SQL with `TrustServerCertificate=False`. Require `QueryConnection.ApplicationIntent` (`ReadOnly` or `ReadWrite`); do not inject it. Open PostgreSQL/MySQL with `SSL Mode=VerifyFull` / `SslMode=VerifyFull` and an Entra user name from the access token. Merge `QueryConnection` extras; reject reserved host/catalog/credential keys.
 - Execute operator SQL once. Map the first row with `SqlQueryMetricSeriesMapper`. Bare numeric columns POST as one sample (`min` = `max` = `sum` = value, `count` = 1). Matching `_min`/`_max`/`_sum`/`_count` suffixes POST one stem with those series fields.
 - Do not rewrite SQL for `replica_role` or log I/O.
-- Do not implement `CustomMetric()` on the SQL resource states.
+- Do not implement `GatherScalingCustomMetric()` on the SQL resource states.
 
 ## Pattern snippet
 
@@ -44,12 +44,12 @@ Full replica example (standalone filter, `replica_*` names, `dtu_used`, QueryCon
 
 ## Key files
 
-- `autoscaler/configuration/CustomMetricConfig.cs`
+- `autoscaler/configuration/PublishedMetricConfig.cs`
 - `autoscaler/metrics/SqlQuerySessionFactory.cs`
 - `autoscaler/metrics/SqlQueryConnectionAttributes.cs`
-- `autoscaler/metrics/CustomMetricsPusher.cs`
+- `autoscaler/metrics/PublishedMetricsPusher.cs`
 - `autoscaler/metrics/SqlQueryMetricSeriesMapper.cs`
-- `autoscaler/metrics/CustomMetricSeries.cs`
+- `autoscaler/metrics/PublishedMetricSeries.cs`
 - `docs/custom-metrics.md`
 - `docs/resources/sql-database.md`
 

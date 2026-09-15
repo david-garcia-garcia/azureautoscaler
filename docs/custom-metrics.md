@@ -1,5 +1,7 @@
 ## Custom Metrics
 
+Implementers: YAML keys stay `CustomMetrics` / `CustomMetricsNamespace`; push code uses `PublishedMetric*` types. In-process scaling metrics named `custom_*` use `GatherScalingCustomMetric`, not the push list.
+
 Custom metrics let you push additional data points from the autoscaler into Azure Monitor, so you can build dashboards/alerts on values that are not exposed as native Azure metrics (for example, total cores across all nodes in a VMSS, or memory derived from a SKU).
 
 At the **resource configuration** level you can declare a `CustomMetrics` array:

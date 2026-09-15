@@ -4,7 +4,7 @@ namespace poolautoscaler.metrics.Dto
     /// Context passed to custom metric DataExpression.
     /// Provides Resource (the resource being scaled), ExistingState, ResourceParts, Helpers, and Extra for resource-type-specific data.
     /// </summary>
-    public class CustomMetricDataContext
+    public class PublishedMetricEvalContext
     {
         /// <summary>
         /// The resource being scaled (e.g. node pool, MySQL server). ARM resource or state DTO.
@@ -19,7 +19,7 @@ namespace poolautoscaler.metrics.Dto
         public Dictionary<string, string> ResourceParts { get; set; } = new Dictionary<string, string>();
 
         /// <summary>Helper functions (e.g. VmSizeToMemory, VmSizeToCores).</summary>
-        public CustomMetricHelpers Helpers { get; set; }
+        public PublishedMetricHelpers Helpers { get; set; }
 
         /// <summary>
         /// Extra, resource-type-specific data. For AKS node pool: key "Vmss" gives a <see cref="VmssMetricView"/> (Sku.Capacity, Sku.Name).

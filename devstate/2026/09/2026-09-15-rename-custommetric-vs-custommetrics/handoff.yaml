@@ -1,0 +1,17 @@
+issueKey: 2026-09-15-rename-custommetric-vs-custommetrics
+jobName: 2026-09-15-rename-custommetric-vs-custommetrics
+issueHost: local
+issueRef: none
+prHost: github
+repoSlug: azureautoscaler
+destBranch: 1.x
+qualify: qualified-with-gaps
+src: af9110f-local-rename-debt-v0
+localTests: passed
+requirement: requirement.md
+comments: none
+explore: explore.md
+change: rename-custommetric-stems
+pr:
+  id: 46
+  url: https://github.com/david-garcia-garcia/azureautoscaler/pull/46

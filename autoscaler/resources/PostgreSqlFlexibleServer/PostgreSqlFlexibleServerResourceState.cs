@@ -209,7 +209,7 @@ namespace poolautoscaler.resources.PostgreSqlFlexibleServer
         }
 
         /// <inheritdoc />
-        public override async Task<MetricEvalDtoResult> CustomMetric(
+        public override async Task<MetricEvalDtoResult> GatherScalingCustomMetric(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken,

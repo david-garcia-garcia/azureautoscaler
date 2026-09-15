@@ -17,7 +17,7 @@ namespace poolautoscaler.resourcemanagement
     /// <summary>
     /// Base class for resource state tracking.
     /// </summary>
-    public abstract class ResourceState : ICustomMetricDataProvider
+    public abstract class ResourceState : IPublishedMetricEvalContextBuilder
     {
         /// <summary>
         /// Gets or sets a dictionary of reasons and until when the resource is disabled.
@@ -350,23 +350,23 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="name">The metric name.</param>
         /// <returns>The metric evaluation result.</returns>
         /// <exception cref="NotImplementedException">Thrown when not overridden.</exception>
-        public virtual async Task<MetricEvalDtoResult> CustomMetric(
+        public virtual async Task<MetricEvalDtoResult> GatherScalingCustomMetric(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken,
             ScalingConfiguration setting,
             string name)
         {
-            throw new NotImplementedException("CustomMetric");
+            throw new NotImplementedException("GatherScalingCustomMetric");
         }
 
         /// <inheritdoc />
-        public virtual async Task<CustomMetricDataContext> BuildCustomMetricDataContextAsync(
+        public virtual async Task<PublishedMetricEvalContext> BuildPublishedMetricEvalContextAsync(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken)
         {
-            var extra = await this.GetCustomMetricExtraAsync(client, credential, cancellationToken);
+            var extra = await this.GetScalingCustomMetricExtraAsync(client, credential, cancellationToken);
             if (extra == null)
             {
                 return null;
@@ -377,9 +377,9 @@ namespace poolautoscaler.resourcemanagement
                 throw new InvalidOperationException("Custom metrics that use VM size helpers require SubscriptionId and Location on the resource state.");
             }
 
-            CustomMetricHelpers helpers = new CustomMetricHelpers(this.SubscriptionId, this.Location.Value, this.VmSizeResolver!, client, cancellationToken);
+            PublishedMetricHelpers helpers = new PublishedMetricHelpers(this.SubscriptionId, this.Location.Value, this.VmSizeResolver!, client, cancellationToken);
 
-            var context = new CustomMetricDataContext
+            var context = new PublishedMetricEvalContext
             {
                 Resource = this.Resource,
                 ExistingState = this.ExistingStateRaw,
@@ -453,7 +453,7 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="credential">The token credential.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>Extra dictionary; return null to abort context build.</returns>
-        protected virtual Task<IReadOnlyDictionary<string, object>?> GetCustomMetricExtraAsync(
+        protected virtual Task<IReadOnlyDictionary<string, object>?> GetScalingCustomMetricExtraAsync(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken)

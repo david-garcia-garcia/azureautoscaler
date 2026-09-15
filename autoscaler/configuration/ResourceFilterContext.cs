@@ -5,7 +5,7 @@ namespace poolautoscaler.configuration
     /// Provides the resource name, Azure tags, and the raw ARM resource object.
     ///
     /// Resource-type-specific properties are accessed directly via <see cref="Resource"/>
-    /// using the same Dynamic LINQ member-access pattern as <c>CustomMetricDataContext.Resource</c>.
+    /// using the same Dynamic LINQ member-access pattern as <c>PublishedMetricEvalContext.Resource</c>.
     ///
     /// Example filter (non-pooled SQL databases). Pool membership is ElasticPoolId, not Sku.Name:
     /// <code>

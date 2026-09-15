@@ -230,7 +230,7 @@ namespace poolautoscaler.resources.AzureDevops
         /// <param name="setting">The scaling configuration.</param>
         /// <param name="name">The custom metric name.</param>
         /// <returns>Metric result with the custom metric value.</returns>
-        public override async Task<MetricEvalDtoResult> CustomMetric(
+        public override async Task<MetricEvalDtoResult> GatherScalingCustomMetric(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken,
