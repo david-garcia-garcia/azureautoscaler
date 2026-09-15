@@ -283,11 +283,17 @@ namespace poolautoscaler.resourcemanagement
             }
         }
 
+        /// <summary>
+        /// True when the resource has no scaling dictionary (YAML omit) or an empty one.
+        /// </summary>
         private static bool HasNoScalingConfigurations(Resource configuration)
         {
             return configuration.ScalingConfigurations == null || configuration.ScalingConfigurations.Count == 0;
         }
 
+        /// <summary>
+        /// Active scaling entries for this evaluation instant; empty when none are configured or none apply now.
+        /// </summary>
         private static List<ScalingConfiguration> GetActiveScalingConfigurations(ResourceState state, DateTime utcNow)
         {
             var scalingConfigurations = state.Configuration.ScalingConfigurations;

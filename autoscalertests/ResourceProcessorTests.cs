@@ -568,7 +568,8 @@ namespace poolautoscaler.tests
         {
             // Arrange: Empty ScalingConfigurations. We always refresh and push metrics first, then exit before scaling.
             var config = CreateResourceConfiguration(Array.Empty<ScalingConfiguration>());
-            var state = new TestResourceState("test://test", this.logger, config);
+            var resourceLoggerMock = new Mock<ILogger>();
+            var state = new TestResourceState("test://test", resourceLoggerMock.Object, config);
 
             var processor = new ResourceProcessor(
                 this.logFactoryMock.Object,
@@ -584,6 +585,14 @@ namespace poolautoscaler.tests
 
             // Assert: state is refreshed (and metrics pushed if configured) before we skip scaling
             Assert.True(state.RefreshWasCalled);
+            resourceLoggerMock.Verify(
+                x => x.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("no scaling configurations configured", StringComparison.OrdinalIgnoreCase)),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+                Times.Once);
         }
 
         [Fact]
@@ -591,6 +600,7 @@ namespace poolautoscaler.tests
         {
             var config = CreateResourceConfiguration(Array.Empty<ScalingConfiguration>());
             config.ScalingConfigurations = null;
+            config.FrequencyParsed = TimeSpan.Zero;
 
             var resourceLoggerMock = new Mock<ILogger>();
             var state = new TestResourceState("test://test", resourceLoggerMock.Object, config);
@@ -604,6 +614,7 @@ namespace poolautoscaler.tests
                 this.resourceLocationResolver,
                 () => DateTime.UtcNow);
 
+            await processor.ProcessOneAsync(state, CancellationToken.None);
             await processor.ProcessOneAsync(state, CancellationToken.None);
 
             Assert.True(state.RefreshWasCalled);
