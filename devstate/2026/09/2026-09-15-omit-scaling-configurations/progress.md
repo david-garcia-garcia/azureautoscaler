@@ -7,7 +7,7 @@ JobName: 2026-09-15-omit-scaling-configurations
 | prepare | [x] | [x] | 2026-09-15T17:53:58.089Z |
 | explore | [x] | [x] | 2026-09-15T17:55:36.351Z |
 | propose | [x] | [x] | 2026-09-15T17:58:03.786Z |
-| implement | [ ] | [ ] | |
+| implement | [x] | [x] | 2026-09-15T18:00:14.706Z |
 | codereview | [ ] | [ ] | |
 | devdocsimpact | [ ] | [ ] | |
 | archive | [ ] | [ ] | |

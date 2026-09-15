@@ -7,7 +7,7 @@ repoSlug: azureautoscaler
 destBranch: 1.x
 qualify: qualified-with-gaps
 src: ca9ab728ba96c1f8029d761de45eaebcca44d626b5f888f562f13a8717675b2c
-localTests: none
+localTests: passed
 requirement: requirement.md
 comments: none
 explore: explore.md
