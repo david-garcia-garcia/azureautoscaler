@@ -1,45 +1,41 @@
-Developer review: in progress — 2026-09-15T08:35:39.8141403Z
+Developer review: in progress — 2026-09-15T08:54:21.3474165Z
 
 IssueKey: 2026-09-15-sql-query-synthetic-metrics
 JobName: 2026-09-15-sql-query-synthetic-metrics
 
 ## What this changes
-**Operators.** None.
+**Operators.** None yet on `1.x`; apply will add Query-backed CustomMetrics and SQL login docs (`VIEW DATABASE STATE`).
 
 **Admin users.** None.
 
-**Developers.** None on `1.x` yet; explore refined QUERY to one statement → many numeric columns, no `Database` field, `ApplicationIntent=ReadOnly`, and operator-owned `replica_role` zeros.
+**Developers.** OpenSpec change `sql-query-custom-metrics` is apply-ready: new spec `core_metrics_custom_query` (Query XOR DataExpression, implied catalogs, first-row numeric columns).
 
 **End users.** None.
 
 ## Motivation
-Operators need portal-visible DTU, CPU, memory, and data I/O on SQL resources that match the primary-database charts. On `1.x`, `CustomMetrics` only evaluates `DataExpression`; SQL `CustomMetric()` throws; there is no QUERY value source and no SQL driver in `autoscaler/`.
-
-Without a query-backed push path, those portal-mirror numbers cannot be published. Log I/O on read-only replicas stays out of scope. A replica session is not guaranteed by `ApplicationIntent=ReadOnly` (Basic/Standard/General Purpose have no read scale-out).
+Operators need portal-visible DTU, CPU, memory, and data I/O published from SQL. On `1.x` CustomMetrics only evaluates DataExpression and SQL CustomMetric throws. The change artifacts describe the Query path; product code has not landed yet.
 
 ```mermaid
 flowchart LR
   subgraph destBranch ["1.x today"]
-    CE[DataExpression CustomMetrics]
-    SQL[SQL CustomMetric]
-    CE --> Portal[Azure Monitor custom namespace]
-    SQL --> Throw[NotImplementedException]
+    CE[DataExpression]
+    CE --> Portal[Azure Monitor]
   end
-  Ticket[QUERY portal mirror] -.->|no Query field no SQL client| destBranch
+  Spec[core_metrics_custom_query] -.->|apply next| destBranch
 ```
 
 ## Merge readiness
-Explore catalogs confirmed (SQL Database = ResourceId database; Elastic Pool = master). Waiting on the CustomMetrics reshape. 6 workflow phases remain.
+Propose complete; implement is next. 5 workflow phases remain.
 
 Priority: P2 — operator and dashboard parity pain with partial native-metric workarounds today.
 
-Reviewed head: 347ec39
+Reviewed head: 66125b0
 Owner decision: Required. See Explore Decisions.
 
 ## Review scores
 | Measure | Result | What it means |
 | --- | --- | --- |
-| Overall readiness | N/A | No product delta on the branch yet |
+| Overall readiness | N/A | Apply not started |
 | CI proof | N/A | prHost local |
 | Local tests proof | N/A | localTests none before implement |
 | Review resolution | N/A | No OPEN PR |
@@ -48,32 +44,32 @@ Owner decision: Required. See Explore Decisions.
 | Check | Result | Evidence |
 | --- | --- | --- |
 | Branch | 2026-09-15-sql-query-synthetic-metrics not pushed | git |
-| OpenSpec | none | handoff.yaml change |
+| OpenSpec | sql-query-custom-metrics | openspec status 4/4 |
 | Pull request | none | prHost local |
 | CI | N/A | prHost local |
 | Local tests | none | handoff.yaml |
 | PR comments | no comments | comments none |
 
 ## Specs
-None.
+- [core_metrics_custom_query](openspec/changes/sql-query-custom-metrics/proposal.md) — added
 
 ## Deviations from the ask
-- proposed: ticket “synthetic metrics that use a QUERY” → extend existing `CustomMetrics` / `CustomMetricConfig` with an exclusive Query value source — `autoscaler/configuration/CustomMetricConfig.cs` — honouring “synthetic” as its own config tree would add a parallel publication unit next to `CustomMetrics`. Requester: not asked.
+- taken: ticket “synthetic metrics that use a QUERY” → extend `CustomMetrics` / `CustomMetricConfig` with exclusive Query — `autoscaler/configuration/CustomMetricConfig.cs` — avoid a parallel SyntheticMetrics tree. Requester: confirmed.
 
 ## Follow-up issues
-- [ ] [Rename `CustomMetric()` vs `CustomMetrics` stems](knowledge/debt/2026-09-15-rename-custommetric-vs-custommetrics.md) — `CustomMetric()` (in-process gather) and `CustomMetrics` (push) share a stem but are two jobs.
+- [ ] [Rename `CustomMetric()` vs `CustomMetrics` stems](knowledge/debt/2026-09-15-rename-custommetric-vs-custommetrics.md) — `CustomMetric()` and `CustomMetrics` share a stem but are two jobs.
+- [ ] [Rename live spec ids to 4-part](knowledge/debt/2026-09-15-rename-live-spec-ids-to-4-part.md) — live `openspec/specs/` ids are kebab-case, not 4-part.
 
 ## How this fits together
-Local ticket → branch `2026-09-15-sql-query-synthetic-metrics` from `1.x` → explore recorded in `explore.md` → durable card at `devstate/2026/09/2026-09-15-sql-query-synthetic-metrics/card.md`. No remote PR or CI.
+Local ticket → branch `2026-09-15-sql-query-synthetic-metrics` → change `sql-query-custom-metrics` apply-ready → no remote PR.
 
 ## Explore Decisions
 | Question | Rank | Decision | By |
 | --- | --- | --- | --- |
-| Do QUERY metrics feed scaling (`Metrics` / `custom_*`), push-only (`CustomMetrics`), or both? | additive asked | assumed — push-only via `CustomMetrics`. Scale later by reading the custom namespace. Do not wire QUERY into SQL `CustomMetric()`. | explore |
+| Do QUERY metrics feed scaling (`Metrics` / `custom_*`), push-only (`CustomMetrics`), or both? | additive asked | assumed — push-only via `CustomMetrics`. Do not wire QUERY into SQL `CustomMetric()`. | explore |
 
 ## Before merge
-- [ ] Confirm the proposed reshape: `CustomMetrics` + `Query` (not a new `SyntheticMetrics` type)
-- [ ] Confirm remaining assumed row (push-only)
+- [ ] Implement Query path and pass local tests
 
 ## Findings
 None.
@@ -86,26 +82,25 @@ None.
 ### Review metrics
 | Metric | Value | Why it matters |
 | --- | --- | --- |
-| Specs in this PR | none | No openspec change yet |
+| Specs in this PR | 1 added / 0 modified | core_metrics_custom_query |
 | Open reviewer comments walked | 0 open | No PR inventory |
-| Reviewed head | 91d4c26eb47e961c04dc2d6c430656f60133b436 | Card matches last committed HEAD before this Set |
+| Reviewed head | 66125b0 | Propose commit |
 
 ### Stored data model
 None.
 
 ### Technical review
-Best possible solution: One Query on `CustomMetricConfig`, run once, publish each numeric column; connection string built with ApplicationIntent=ReadOnly; operator SQL zeros non-replicas via replica_role.
+Best possible solution: Extend CustomMetrics with Query XOR DataExpression as specified in the change artifacts.
 
-Do we have a high-confidence way to reproduce? Yes — SQL `CustomMetric()` throws; `CustomMetricConfig` has no `Query`.
+Do we have a high-confidence way to reproduce? Yes — no Query field on 1.x.
 
-Is this the best way to solve the issue? Yes versus `1.x` if the requester accepts CustomMetrics + implied catalog.
+Is this the best way to solve the issue? Yes versus 1.x; artifacts match explore.
 
 ### Evidence
 What I checked:
-- Learn `sys.dm_db_resource_stats` (current database, VIEW DATABASE STATE, replica_role)
-- Learn read scale-out (ApplicationIntent=ReadOnly does not exist on Basic/Standard/GP)
-- `ResourceStateFactory.SqlDatabase` already captures databaseName
-- Requester multi-column QUERY and replica_role zeroing
+- openspec status 4/4 for sql-query-custom-metrics
+- proposal/design/tasks/spec on disk
+- deviation taken, requester confirmed
 
 ### Rank-up moves
 None.

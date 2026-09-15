@@ -29,3 +29,10 @@ fixed: explore.md host/database row resolved
 skipped: propose
 verdict: in progress
 ownerDecision: required — CustomMetrics reshape still proposed
+
+## propose (2026-09-15T08:54:21.3474165Z)
+phase: propose
+findings: apply-ready sql-query-custom-metrics; spec core_metrics_custom_query New
+fixed: deviation taken (CustomMetrics + Query)
+skipped: implement
+verdict: in progress
