@@ -31,6 +31,7 @@ namespace poolautoscaler.metrics
         private readonly HttpClient httpClient;
         private readonly IResourceLocationResolver resourceLocationResolver;
         private readonly string? defaultCustomMetricsNamespace;
+        private readonly SqlQuerySessionFactory sqlQuerySessionFactory;
 
         /// <summary>Per (resourceState.ResourceId, metricName) last push time.</summary>
         private readonly Dictionary<string, DateTime> lastPushTimes = new();
@@ -41,19 +42,26 @@ namespace poolautoscaler.metrics
         /// <param name="logger">The logger.</param>
         /// <param name="resourceLocationResolver">Resolves resource IDs to region for the metrics endpoint.</param>
         /// <param name="defaultCustomMetricsNamespace">Optional global default namespace for custom metrics.</param>
+        /// <param name="sqlQuerySessionFactory">SQL Query session factory. Tests inject a factory with an in-memory reader.</param>
+        /// <param name="metricsHttpHandler">Optional HTTP handler for the Azure Monitor POST. Tests capture requests here.</param>
         public CustomMetricsPusher(
             TokenCredential credential,
             ArmClient armClient,
             ILogger logger,
             IResourceLocationResolver resourceLocationResolver,
-            string? defaultCustomMetricsNamespace = null)
+            string? defaultCustomMetricsNamespace = null,
+            SqlQuerySessionFactory? sqlQuerySessionFactory = null,
+            HttpMessageHandler? metricsHttpHandler = null)
         {
             this.credential = credential;
             this.armClient = armClient;
             this.logger = logger;
-            this.httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            this.httpClient = metricsHttpHandler == null
+                ? new HttpClient { Timeout = TimeSpan.FromSeconds(30) }
+                : new HttpClient(metricsHttpHandler) { Timeout = TimeSpan.FromSeconds(30) };
             this.resourceLocationResolver = resourceLocationResolver;
             this.defaultCustomMetricsNamespace = defaultCustomMetricsNamespace;
+            this.sqlQuerySessionFactory = sqlQuerySessionFactory ?? new SqlQuerySessionFactory();
         }
 
         /// <summary>
@@ -72,19 +80,16 @@ namespace poolautoscaler.metrics
                 return;
             }
 
-            var context = await state.BuildCustomMetricDataContextAsync(
-                this.armClient,
-                this.credential,
-                cancellationToken);
-
-            if (context == null)
-            {
-                return;
-            }
-
+            CustomMetricDataContext? context = null;
+            var metricIndex = 0;
             foreach (var metric in state.Configuration.CustomMetrics)
             {
-                var key = $"{state.Resource?.Id}|{metric.Name}";
+                var hasQuery = !string.IsNullOrWhiteSpace(metric.Query);
+                var key = hasQuery
+                    ? $"{state.AzureResourceId}|query|{metricIndex}"
+                    : $"{state.Resource?.Id}|{metric.Name}";
+                metricIndex++;
+
                 if (this.lastPushTimes.TryGetValue(key, out var last) &&
                     (DateTime.UtcNow - last) < metric.FrequencyParsed)
                 {
@@ -93,6 +98,21 @@ namespace poolautoscaler.metrics
 
                 try
                 {
+                    if (hasQuery)
+                    {
+                        await this.PushQueryMetricAsync(state, metric, key, cancellationToken);
+                        continue;
+                    }
+
+                    context ??= await state.BuildCustomMetricDataContextAsync(
+                        this.armClient,
+                        this.credential,
+                        cancellationToken);
+                    if (context == null)
+                    {
+                        continue;
+                    }
+
                     var value = EvaluateExpression(metric, context);
                     if (value == null)
                     {
@@ -100,35 +120,97 @@ namespace poolautoscaler.metrics
                     }
 
                     var numericValue = ConvertToDouble(value);
-
-                    var resourceId = state.ReplaceResourceParts(metric.ResourceId);
-
-                    if (string.IsNullOrEmpty(resourceId))
-                    {
-                        resourceId = state.Resource.Id;
-                    }
-
-                    var region = await this.resourceLocationResolver.GetRegionAsync(this.armClient, resourceId, cancellationToken);
-                    if (string.IsNullOrEmpty(region))
-                    {
-                        state.Logger.LogError("Skipping custom metric {Name}: could not resolve region for resource {ResourceId}", metric.Name, resourceId);
-                        continue;
-                    }
-
-                    var metricNamespace =
-                        !string.IsNullOrWhiteSpace(metric.Namespace) ? metric.Namespace :
-                        !string.IsNullOrWhiteSpace(this.defaultCustomMetricsNamespace) ? this.defaultCustomMetricsNamespace :
-                        DefaultMetricNamespace;
-
-                    await this.PushMetricAsync(resourceId, metric.Name, metricNamespace, numericValue, region, cancellationToken);
+                    await this.PushNamedMetricAsync(state, metric, metric.Name, numericValue, cancellationToken);
                     this.lastPushTimes[key] = DateTime.UtcNow;
-                    state.Logger.LogDebug("Pushed custom metric {Name}={Value} in namespace {metricNamespace} to {ResourceId}", metric.Name, numericValue, metricNamespace, resourceId);
+                    state.Logger.LogDebug(
+                        "Pushed custom metric {Name}={Value} in namespace {metricNamespace} to {ResourceId}",
+                        metric.Name,
+                        numericValue,
+                        metric.Namespace,
+                        metric.ResourceId);
                 }
                 catch (Exception ex)
                 {
-                    state.Logger.LogError(ex, "Failed to push custom metric {Name}: {Message}", metric.Name, ex.Message);
+                    state.Logger.LogError(ex, "Failed to push custom metric {Name}: {Message}", metric.Name ?? "query", ex.Message);
                 }
             }
+        }
+
+        /// <summary>
+        /// Runs one Query, then POSTs each numeric first-row column. Empty or all-non-numeric results skip publication.
+        /// </summary>
+        /// <param name="state">Refreshed resource state.</param>
+        /// <param name="metric">Query CustomMetrics row.</param>
+        /// <param name="dueKey">Due-key for this Query row.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the Query group is published or skipped.</returns>
+        private async Task PushQueryMetricAsync(
+            ResourceState state,
+            CustomMetricConfig metric,
+            string dueKey,
+            CancellationToken cancellationToken)
+        {
+            var columns = await this.sqlQuerySessionFactory.ReadFirstRowAsync(
+                state,
+                this.credential,
+                metric.Query!,
+                metric.QueryTimeoutParsed,
+                cancellationToken);
+            var published = SqlQueryNumericColumns.SelectPublished(columns);
+            if (published.Count == 0)
+            {
+                this.lastPushTimes[dueKey] = DateTime.UtcNow;
+                state.Logger.LogDebug("Skipping Query custom metric on {ResourceId}: empty or non-numeric first row", state.AzureResourceId);
+                return;
+            }
+
+            foreach (var (columnName, numericValue) in published)
+            {
+                await this.PushNamedMetricAsync(state, metric, columnName, numericValue, cancellationToken);
+                state.Logger.LogDebug(
+                    "Pushed custom metric {Name}={Value} from Query to {ResourceId}",
+                    columnName,
+                    numericValue,
+                    metric.ResourceId);
+            }
+
+            this.lastPushTimes[dueKey] = DateTime.UtcNow;
+        }
+
+        /// <summary>Resolves publish ResourceId, region, and namespace, then POSTs one custom metric.</summary>
+        /// <param name="state">Resource state used for placeholder replacement.</param>
+        /// <param name="metric">CustomMetrics row (namespace and ResourceId).</param>
+        /// <param name="metricName">Azure Monitor metric name.</param>
+        /// <param name="numericValue">Metric value.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task that completes when the POST succeeds.</returns>
+        private async Task PushNamedMetricAsync(
+            ResourceState state,
+            CustomMetricConfig metric,
+            string metricName,
+            double numericValue,
+            CancellationToken cancellationToken)
+        {
+            var resourceId = state.ReplaceResourceParts(metric.ResourceId);
+
+            if (string.IsNullOrEmpty(resourceId))
+            {
+                resourceId = state.Resource.Id;
+            }
+
+            var region = await this.resourceLocationResolver.GetRegionAsync(this.armClient, resourceId, cancellationToken);
+            if (string.IsNullOrEmpty(region))
+            {
+                state.Logger.LogError("Skipping custom metric {Name}: could not resolve region for resource {ResourceId}", metricName, resourceId);
+                return;
+            }
+
+            var metricNamespace =
+                !string.IsNullOrWhiteSpace(metric.Namespace) ? metric.Namespace :
+                !string.IsNullOrWhiteSpace(this.defaultCustomMetricsNamespace) ? this.defaultCustomMetricsNamespace :
+                DefaultMetricNamespace;
+
+            await this.PushMetricAsync(resourceId, metricName, metricNamespace, numericValue, region, cancellationToken);
         }
 
         private static object EvaluateExpression(CustomMetricConfig metric, CustomMetricDataContext context)
