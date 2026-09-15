@@ -6,10 +6,12 @@ prHost: github
 repoSlug: azureautoscaler
 destBranch: 1.x
 qualify: qualified-with-gaps
-src: pending
-localTests: none
+src: 2026-09-15-rename-live-spec-ids-local-v1
+localTests: passed
 requirement: requirement.md
 comments: none
-explore: none
-change: none
-pr: none
+explore: explore.md
+change: rename-live-spec-ids-to-4-part
+pr:
+  id: 45
+  url: https://github.com/david-garcia-garcia/azureautoscaler/pull/45
