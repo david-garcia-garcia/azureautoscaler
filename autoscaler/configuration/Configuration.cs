@@ -1,6 +1,8 @@
 using Azure.Monitor.Query.Models;
 using Microsoft.Extensions.Logging;
+using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
+using poolautoscaler.resourcemanagement;
 using poolautoscaler.strategies.Dto;
 using poolautoscaler.utils;
 
@@ -87,26 +89,7 @@ namespace poolautoscaler.configuration
                 {
                     foreach (var customMetric in resource.CustomMetrics)
                     {
-                        if (string.IsNullOrWhiteSpace(customMetric.Name))
-                        {
-                            throw new Exception("Custom metric must have a Name.");
-                        }
-
-                        if (string.IsNullOrWhiteSpace(customMetric.DataExpression))
-                        {
-                            throw new Exception($"Custom metric '{customMetric.Name}' must have a DataExpression.");
-                        }
-
-                        customMetric.FrequencyParsed = DurationParser.ParseDuration(
-                            string.IsNullOrWhiteSpace(customMetric.Frequency) ? "5m" : customMetric.Frequency);
-
-                        customMetric.DataExpressionDelegate =
-                            (Func<CustomMetricDataContext, double>)ExpressionParserUtils.ParseExpression(
-                                customMetric.DataExpression,
-                                "data",
-                                typeof(CustomMetricDataContext),
-                                typeof(double),
-                                1);
+                        this.PrepareAndValidateCustomMetric(resource, customMetric);
                     }
                 }
 
@@ -231,6 +214,104 @@ namespace poolautoscaler.configuration
                                     1);
                         }
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Validates one CustomMetrics row: Query XOR DataExpression, Name only for DataExpression, Query only on SQL resource IDs.
+        /// </summary>
+        /// <param name="resource">The resource that owns the row.</param>
+        /// <param name="customMetric">The CustomMetrics row to validate.</param>
+        private void PrepareAndValidateCustomMetric(Resource resource, CustomMetricConfig customMetric)
+        {
+            var hasQuery = !string.IsNullOrWhiteSpace(customMetric.Query);
+            var hasDataExpression = !string.IsNullOrWhiteSpace(customMetric.DataExpression);
+
+            if (hasQuery && hasDataExpression)
+            {
+                throw new Exception("Custom metric must have exactly one of Query or DataExpression.");
+            }
+
+            if (!hasQuery && !hasDataExpression)
+            {
+                throw new Exception("Custom metric must have a Query or a DataExpression.");
+            }
+
+            customMetric.FrequencyParsed = DurationParser.ParseDuration(
+                string.IsNullOrWhiteSpace(customMetric.Frequency) ? "5m" : customMetric.Frequency);
+
+            if (hasQuery)
+            {
+                this.RejectQueryUnlessAllInstanceIdsAreSql(resource);
+                SqlQueryConnectionAttributes.RejectReserved(customMetric.QueryConnection);
+                if (this.ResourceHasAzureSqlQueryInstance(resource))
+                {
+                    SqlQueryConnectionAttributes.RequireAzureSqlApplicationIntent(customMetric.QueryConnection);
+                }
+
+                customMetric.QueryTimeoutParsed = DurationParser.ParseDuration(
+                    string.IsNullOrWhiteSpace(customMetric.QueryTimeout) ? "30s" : customMetric.QueryTimeout);
+                return;
+            }
+
+            if (customMetric.QueryConnection != null && customMetric.QueryConnection.Count > 0)
+            {
+                throw new Exception("QueryConnection is only valid on Query CustomMetrics rows.");
+            }
+
+            if (string.IsNullOrWhiteSpace(customMetric.Name))
+            {
+                throw new Exception("Custom metric must have a Name.");
+            }
+
+            customMetric.DataExpressionDelegate =
+                (Func<CustomMetricDataContext, double>)ExpressionParserUtils.ParseExpression(
+                    customMetric.DataExpression,
+                    "data",
+                    typeof(CustomMetricDataContext),
+                    typeof(double),
+                    1);
+        }
+
+        /// <summary>True when any instance ResourceId is Azure SQL Database or Elastic Pool.</summary>
+        /// <param name="resource">The resource whose instance IDs are checked.</param>
+        /// <returns>True when ApplicationIntent must be set on QueryConnection.</returns>
+        private bool ResourceHasAzureSqlQueryInstance(Resource resource)
+        {
+            if (resource.Resources == null)
+            {
+                return false;
+            }
+
+            foreach (var instance in resource.Resources.Values)
+            {
+                if (ResourceStateFactory.IsAzureSqlQueryResourceId(instance.ResourceId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Rejects Query unless every instance ResourceId on the resource matches one of the four SQL factory regexes.
+        /// </summary>
+        /// <param name="resource">The resource whose instance IDs are checked.</param>
+        private void RejectQueryUnlessAllInstanceIdsAreSql(Resource resource)
+        {
+            if (resource.Resources == null || resource.Resources.Count == 0)
+            {
+                throw new Exception("Custom metric Query is only allowed on Azure SQL Database, Azure SQL Elastic Pool, PostgreSQL Flexible Server, or MySQL Flexible Server.");
+            }
+
+            foreach (var instance in resource.Resources.Values)
+            {
+                if (!ResourceStateFactory.IsSqlQueryResourceId(instance.ResourceId))
+                {
+                    throw new Exception(
+                        $"Custom metric Query is not allowed on resource '{instance.ResourceId}'. Query is only allowed on Azure SQL Database, Azure SQL Elastic Pool, PostgreSQL Flexible Server, or MySQL Flexible Server.");
                 }
             }
         }

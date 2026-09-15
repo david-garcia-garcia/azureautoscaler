@@ -29,6 +29,9 @@ namespace poolautoscaler.resources.PostgreSqlFlexibleServer
         /// <summary>Gets or sets the current existing server state from Azure.</summary>
         public Dto.PostgreSqlFlexibleServerState ExistingPostgreSqlFlexibleServerState { get; set; }
 
+        /// <summary>Flexible-server FQDN from the last ARM refresh, used as the Query host.</summary>
+        public string? FullyQualifiedDomainName { get; set; }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="PostgreSqlFlexibleServerResourceState"/> class.
         /// </summary>
@@ -233,6 +236,7 @@ namespace poolautoscaler.resources.PostgreSqlFlexibleServer
                 Iops = this.ResourceCasted.Data.Storage?.Iops
             };
             this.RequestedPostgreSqlFlexibleServerState = new Dto.PostgreSqlFlexibleServerState();
+            this.FullyQualifiedDomainName = this.ResourceCasted.Data.FullyQualifiedDomainName;
         }
 
         private PostgreSqlFlexibleServerResource? ResourceCasted { get => this.Resource as PostgreSqlFlexibleServerResource; }

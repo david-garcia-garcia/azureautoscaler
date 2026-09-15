@@ -29,6 +29,9 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
         /// <summary>Gets or sets the current existing server state from Azure.</summary>
         public Dto.MySqlFlexibleServerState ExistingMySqlFlexibleServerState { get; set; }
 
+        /// <summary>Flexible-server FQDN from the last ARM refresh, used as the Query host.</summary>
+        public string? FullyQualifiedDomainName { get; set; }
+
         /// <summary>
         /// Initializes a new instance of the <see cref="MySqlFlexibleServerResourceState"/> class.
         /// </summary>
@@ -233,6 +236,7 @@ namespace poolautoscaler.resources.MySqlFlexibleServer
                 Iops = this.ResourceCasted.Data.Storage.Iops
             };
             this.RequestedMySqlFlexibleServerState = new Dto.MySqlFlexibleServerState();
+            this.FullyQualifiedDomainName = this.ResourceCasted.Data.FullyQualifiedDomainName;
         }
 
         private MySqlFlexibleServerResource? ResourceCasted { get => this.Resource as MySqlFlexibleServerResource; }

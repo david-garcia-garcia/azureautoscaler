@@ -7,9 +7,9 @@ namespace poolautoscaler.configuration
     /// Resource-type-specific properties are accessed directly via <see cref="Resource"/>
     /// using the same Dynamic LINQ member-access pattern as <c>CustomMetricDataContext.Resource</c>.
     ///
-    /// Example filter (standalone DTU SQL databases only):
+    /// Example filter (non-pooled SQL databases). Pool membership is ElasticPoolId, not Sku.Name:
     /// <code>
-    /// (r) => r.Resource.Data.Sku.Family == null &amp;&amp; r.Resource.Data.Sku.Name != "ElasticPool"
+    /// (r) => r.Resource.Data.ElasticPoolId == null
     /// </code>
     /// </summary>
     public class ResourceFilterContext

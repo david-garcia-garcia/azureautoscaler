@@ -77,6 +77,37 @@ namespace poolautoscaler.resourcemanagement
         /// </summary>
         public static readonly Regex AzureDevOpsParallelJobs = new Regex(@"^azuredevops://(?<organization>[^/]+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        /// <summary>
+        /// Returns whether the resource ID is one of the four SQL types that may use Query custom metrics.
+        /// </summary>
+        /// <param name="resourceId">The Azure resource ID to test.</param>
+        /// <returns>True when the ID is Azure SQL Database, Elastic Pool, PostgreSQL Flexible Server, or MySQL Flexible Server.</returns>
+        public static bool IsSqlQueryResourceId(string resourceId)
+        {
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return false;
+            }
+
+            return SqlDatabase.IsMatch(resourceId)
+                || ElasticPools.IsMatch(resourceId)
+                || PostgreSqlFlexibleServer.IsMatch(resourceId)
+                || MySqlFlexibleServer.IsMatch(resourceId);
+        }
+
+        /// <summary>True when the resource ID is Azure SQL Database or Elastic Pool (ApplicationIntent applies).</summary>
+        /// <param name="resourceId">The Azure resource ID to test.</param>
+        /// <returns>True for Azure SQL Database and Elastic Pool.</returns>
+        public static bool IsAzureSqlQueryResourceId(string resourceId)
+        {
+            if (string.IsNullOrWhiteSpace(resourceId))
+            {
+                return false;
+            }
+
+            return SqlDatabase.IsMatch(resourceId) || ElasticPools.IsMatch(resourceId);
+        }
+
         private static readonly Regex RegexPattern = new Regex(@"\{(.*?)\}", RegexOptions.Compiled);
 
         /// <summary>

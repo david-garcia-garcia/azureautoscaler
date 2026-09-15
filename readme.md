@@ -51,6 +51,7 @@ _Detailed guides live under [`docs/`](docs/). Expand a topic below._
 
 - [Custom Metrics](docs/custom-metrics.md#custom-metrics)
   - [CustomMetrics configuration options](docs/custom-metrics.md#custommetrics-configuration-options)
+  - [Query sessions (SQL resources)](docs/custom-metrics.md#query-sessions-sql-resources)
   - [DataExpression – available data in `data`](docs/custom-metrics.md#dataexpression--available-data-in-data)
 
 **Resource guides**
@@ -58,6 +59,8 @@ _Detailed guides live under [`docs/`](docs/). Expand a topic below._
 - [AKS Node Pool](docs/resources/aks-node-pool.md#aks-node-pool)
 - [SQL Elastic Pool](docs/resources/sql-elastic-pool.md#sql-elastic-pool)
 - [SQL Database](docs/resources/sql-database.md#sql-database)
+  - [Query custom metrics](docs/resources/sql-database.md#query-custom-metrics)
+  - [Example: replica series on standalone databases](docs/resources/sql-database.md#example-replica-series-on-standalone-databases)
   - [DTU Scaling Example](docs/resources/sql-database.md#dtu-scaling-example)
   - [MaxDataBytes Scaling Example](docs/resources/sql-database.md#maxdatabytes-scaling-example)
 - [PostgreSQL Flexible Server](docs/resources/postgresql-flexible-server.md#postgresql-flexible-server)
@@ -234,7 +237,7 @@ docker compose up
 | [Custom metrics](docs/custom-metrics.md) | `CustomMetrics` and `DataExpression` |
 | [AKS Node Pool](docs/resources/aks-node-pool.md) | Example: node pools and VMSS metrics |
 | [SQL Elastic Pool](docs/resources/sql-elastic-pool.md) | Example: pools, DTU, storage, **PerDatabaseMaxCapacity** |
-| [SQL Database](docs/resources/sql-database.md) | DTU and `MaxDataBytes` examples |
+| [SQL Database](docs/resources/sql-database.md) | Query replica series, DTU, and `MaxDataBytes` examples |
 | [PostgreSQL Flexible Server](docs/resources/postgresql-flexible-server.md) | Example configuration |
 | [MySQL Flexible Server](docs/resources/mysql-flexible-server.md) | Example configuration |
 | [Azure Files](docs/resources/azure-files.md) | Example configuration |

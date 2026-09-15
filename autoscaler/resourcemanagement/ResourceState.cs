@@ -147,6 +147,9 @@ namespace poolautoscaler.resourcemanagement
         /// </summary>
         protected readonly string ResourceId;
 
+        /// <summary>Gets the Azure resource ID this state tracks.</summary>
+        public string AzureResourceId => this.ResourceId;
+
         /// <summary>
         /// Populates <see cref="ResourceTags"/> from the provided tags dictionary (clears existing tags first).
         /// </summary>

@@ -23,15 +23,15 @@ The system SHALL provide a `ResourceFilterContext` class as the lambda parameter
 - `Tags` (`IDictionary<string, string>`) — the Azure resource tags at expansion time, always populated (empty dict if none)
 - `Resource` (`object`) — the raw ARM resource object (e.g. `SqlDatabaseResource`); Dynamic LINQ resolves members against the actual runtime type, consistent with the existing `CustomMetricDataContext.Resource` pattern
 
-Operators access resource-type-specific properties directly via `r.Resource` (e.g. `r.Resource.Data.Sku.Family`), the same way `DataExpression` already uses `data.Resource.Data.Sku.Name`.
+Operators access resource-type-specific properties directly via `r.Resource` (e.g. `r.Resource.Data.ElasticPoolId`), the same way `DataExpression` already uses `data.Resource.Data.Sku.Name`. SQL Database pool membership SHALL be filtered with `ElasticPoolId`, not `Sku.Name`. Server list expansion often sets `Sku.Name` to the service objective (`P1`, `S2`) for both standalone and pooled databases.
 
 #### Scenario: SQL DTU standalone database accessible via Resource
 - **WHEN** a wildcard expands to a SQL database with SKU Name `"Standard"` and no Family
 - **THEN** `r.Resource.Data.Sku.Name` evaluates to `"Standard"` and `r.Resource.Data.Sku.Family` evaluates to `null` in the filter expression
 
 #### Scenario: Filter expression accesses ARM properties at runtime
-- **WHEN** `ResourceFilter` is `"(r) => r.Resource.Data.Sku.Family == null && r.Resource.Data.Sku.Name != \"ElasticPool\""`
-- **THEN** the expression correctly identifies standalone DTU databases and excludes elastic pool and vCore databases
+- **WHEN** `ResourceFilter` is `"(r) => r.Resource.Data.ElasticPoolId == null"`
+- **THEN** the expression includes non-pooled databases and excludes elastic-pool members, including those whose `Sku.Name` is a service objective such as `P1`
 
 #### Scenario: Tags are accessible for tag-based filtering
 - **WHEN** `ResourceFilter` is `"(r) => r.Tags.ContainsKey(\"env\") && r.Tags[\"env\"] == \"prod\""`
@@ -43,8 +43,8 @@ Operators access resource-type-specific properties directly via `r.Resource` (e.
 When `ResourceFilterExpression` is set, the system SHALL evaluate it inside `ResourceManager.DiscoverCoreAsync` after expansion but before creating the resource state, using the `ResourceFilterContext` returned alongside each resource ID. Resources for which the expression returns `false` SHALL NOT be added to the discovered resource set. After processing each `ResourceInstance`, the system SHALL emit a single `Information`-level summary log reporting the counts of discovered, filtered-out, and added/kept resources.
 
 #### Scenario: DTU-only filter excludes vCore databases
-- **WHEN** `ResourceFilter` is `"(r) => r.Resource.Data.Sku.Family == null && r.Resource.Data.Sku.Name != \"ElasticPool\""` and the wildcard expands to a mix of DTU and vCore databases
-- **THEN** only DTU databases are added to the resource set; vCore databases are excluded
+- **WHEN** `ResourceFilter` is `"(r) => r.Resource.Data.ElasticPoolId == null && r.Resource.Data.Sku.Family == null"` and the wildcard expands to a mix of standalone DTU, pooled DTU, and vCore databases
+- **THEN** only standalone DTU databases are added to the resource set; pooled and vCore databases are excluded
 
 #### Scenario: Summary log is emitted per ResourceInstance
 - **WHEN** a wildcard expands to 5 databases and 3 pass the filter

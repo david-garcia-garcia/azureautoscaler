@@ -1,5 +1,7 @@
 ## MySQL Flexible Server
 
+`CustomMetrics` may use `Query` instead of `DataExpression`. The session catalog is `mysql`. Host is the flexible-server FQDN after Refresh. Auth is the process TokenCredential (scope `https://ossrdbms-aad.database.windows.net/.default`). ARM `Monitoring Metrics Publisher` does not grant SQL access — create the same identity in MySQL and grant the rights your SQL needs. For Azure SQL-style docs the equivalent grant text is `CREATE USER [appName] FROM EXTERNAL PROVIDER` and `GRANT VIEW DATABASE STATE TO [appName]`.
+
 ```yaml
   - Resources:
       mysql-dev-mysql0:
@@ -14,6 +16,11 @@
         Frequency: 5m
       - Name: total_memory_gb
         DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToMemoryGb(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+      # Query is XOR with DataExpression. Catalog is mysql. No Name required.
+      # CREATE USER FROM EXTERNAL PROVIDER + GRANT VIEW DATABASE STATE (or MySQL equivalent) on the identity.
+      - Query: |
+          SELECT 1 AS cpu_percent
         Frequency: 5m
     ScalingConfigurations:
       Baseline:

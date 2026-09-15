@@ -1,5 +1,7 @@
 ## PostgreSQL Flexible Server
 
+`CustomMetrics` may use `Query` instead of `DataExpression`. The session catalog is `postgres`. Host is the flexible-server FQDN after Refresh. Auth is the process TokenCredential (scope `https://ossrdbms-aad.database.windows.net/.default`). ARM `Monitoring Metrics Publisher` does not grant SQL access — create the same identity in PostgreSQL (`CREATE USER` / Entra) and grant the rights your SQL needs. For Azure SQL-style docs the equivalent grant text is `CREATE USER [appName] FROM EXTERNAL PROVIDER` and `GRANT VIEW DATABASE STATE TO [appName]`.
+
 ```yaml
   - Resources:
       postgresql-dev-db0:
@@ -13,6 +15,11 @@
         Frequency: 5m
       - Name: total_memory_gb
         DataExpression: "(data) => Convert.ToDouble(data.Helpers.VmSizeToMemoryGb(Convert.ToString(data.Resource.Data.Sku.Name)))"
+        Frequency: 5m
+      # Query is XOR with DataExpression. Catalog is postgres. No Name required.
+      # CREATE USER FROM EXTERNAL PROVIDER + GRANT VIEW DATABASE STATE (or PG equivalent) on the identity.
+      - Query: |
+          SELECT 1::float AS cpu_percent
         Frequency: 5m
     ScalingConfigurations:
       Baseline:

@@ -5,8 +5,8 @@ namespace poolautoscaler.configuration
     /// <summary>Configuration for a single custom metric to push to Azure Monitor.</summary>
     public class CustomMetricConfig
     {
-        /// <summary>Metric name (e.g. node_count, core_count).</summary>
-        public string Name { get; set; }
+        /// <summary>Metric name (e.g. node_count, core_count). Required for DataExpression rows; unused for Query rows.</summary>
+        public string? Name { get; set; }
 
         /// <summary>
         /// Optional namespace for the metric in Azure Monitor (overrides global default).
@@ -26,8 +26,27 @@ namespace poolautoscaler.configuration
         /// Parameter "data" exposes Resource, ExistingState, ResourceParts, Helpers.
         /// Example: "(data) => data.Resource.Sku.Capacity".
         /// Example: "(data) => data.ExistingState.CoreCount".
+        /// Exclusive with <see cref="Query"/>.
         /// </summary>
-        public string DataExpression { get; set; }
+        public string? DataExpression { get; set; }
+
+        /// <summary>
+        /// SQL text executed once per due cycle. First-row numeric columns become Azure Monitor metrics named after those columns.
+        /// Exclusive with <see cref="DataExpression"/>. Allowed only on the four SQL resource types.
+        /// </summary>
+        public string? Query { get; set; }
+
+        /// <summary>
+        /// Extra SQL driver attributes merged onto the app-built session (e.g. ApplicationIntent=ReadWrite).
+        /// Host, catalog, Encrypt, and credentials stay implied. Azure SQL Query requires ApplicationIntent (ReadOnly or ReadWrite).
+        /// </summary>
+        public Dictionary<string, string>? QueryConnection { get; set; }
+
+        /// <summary>SQL command timeout (e.g. "30s"). Defaults to 30 seconds when omitted.</summary>
+        public string? QueryTimeout { get; set; }
+
+        /// <summary>Parsed SQL command timeout. Defaults to 30 seconds.</summary>
+        public TimeSpan QueryTimeoutParsed { get; set; }
 
         /// <summary>Push interval (e.g. "1m", "5m").</summary>
         public string Frequency { get; set; }
@@ -35,7 +54,7 @@ namespace poolautoscaler.configuration
         /// <summary>Parsed push interval.</summary>
         public TimeSpan FrequencyParsed { get; set; }
 
-        /// <summary>Compiled expression returning a numeric value.</summary>
-        public Func<CustomMetricDataContext, double> DataExpressionDelegate { get; set; }
+        /// <summary>Compiled expression returning a numeric value. Null on Query rows.</summary>
+        public Func<CustomMetricDataContext, double>? DataExpressionDelegate { get; set; }
     }
 }
