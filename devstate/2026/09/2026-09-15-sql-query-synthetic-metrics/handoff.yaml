@@ -12,4 +12,4 @@ requirement: requirement.md
 comments: none
 explore: explore.md
 change: sql-query-custom-metrics
-pr: none
+pr: https://github.com/david-garcia-garcia/azureautoscaler/pull/44
