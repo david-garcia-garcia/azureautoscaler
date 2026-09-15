@@ -2,7 +2,7 @@ issueKey: 2026-09-15-sql-query-synthetic-metrics
 jobName: 2026-09-15-sql-query-synthetic-metrics
 issueHost: local
 issueRef: none
-prHost: local
+prHost: github
 repoSlug: azureautoscaler
 destBranch: 1.x
 qualify: qualified-with-gaps
@@ -12,4 +12,6 @@ requirement: requirement.md
 comments: none
 explore: explore.md
 change: sql-query-custom-metrics
-pr: https://github.com/david-garcia-garcia/azureautoscaler/pull/44
+pr:
+  id: 44
+  url: https://github.com/david-garcia-garcia/azureautoscaler/pull/44

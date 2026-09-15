@@ -11,4 +11,4 @@ JobName: 2026-09-15-sql-query-synthetic-metrics
 | codereview | [x] | [x] | 2026-09-15T09:13:36.2505524Z |
 | devdocsimpact | [x] | [x] | 2026-09-15T09:14:53.3165619Z |
 | archive | [x] | [x] | 2026-09-15T09:14:53.3165619Z |
-| pullrequest | [x] | [x] | 2026-09-15T09:14:53.3165619Z |
+| pullrequest | [x] | [x] | 2026-09-15T16:42:43.8102668Z |

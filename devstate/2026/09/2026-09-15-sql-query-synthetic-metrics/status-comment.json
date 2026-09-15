@@ -1,5 +1,5 @@
 {
-  "commentId": "local",
+  "commentId": "pr-body",
   "issueKey": "2026-09-15-sql-query-synthetic-metrics",
   "markerValue": "2026-09-15-sql-query-synthetic-metrics",
   "issueHost": "local"

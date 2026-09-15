@@ -101,8 +101,8 @@ Publication is the commissioned job. In-process `custom_*` gather is a different
 
 - Q: How is the QUERY session kept read-only?
   Rank: additive asked — requirement Unknowns name read-only enforcement
-  Decision: resolved — the app always builds the SQL connection string with `ApplicationIntent=ReadOnly` (Learn read scale-out). That routes to a readable secondary when the tier has one; it does not guarantee a replica (Basic/Standard/General Purpose have none). Do not parse or rewrite operator SQL. Failed QUERY skips that push group (same per-metric catch as `CustomMetricsPusher`).
-  By: explore
+  Decision: resolved — Azure SQL Query requires `QueryConnection.ApplicationIntent` set to `ReadOnly` or `ReadWrite` at startup. The app does not inject a default. `ReadOnly` routes to a readable secondary when the tier has one; it does not guarantee a replica (Basic/Standard/General Purpose have none). PostgreSQL/MySQL do not use that key. Do not parse or rewrite operator SQL. Failed QUERY skips that push group (same per-metric catch as `CustomMetricsPusher`).
+  By: implement
 
 - Q: Must QUERY return a single scalar, or may it return a named column / many rows?
   Rank: additive asked — Unknowns name result column; publication needs one number per `CustomMetricConfig.Name`

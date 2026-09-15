@@ -71,3 +71,10 @@ findings: prHost local; no remote PR
 fixed: final card
 skipped: push (human)
 verdict: ready for review
+
+## pullrequest (2026-09-15T16:42:43.8102668Z)
+phase: pullrequest
+findings: replaced stub PR summary with delivery card; CI Build and Test succeeded
+fixed: PR 44 description = opd-deliverreview card
+skipped: none
+verdict: ready for review
