@@ -54,8 +54,8 @@ namespace poolautoscaler.metrics
         {
             var plan = this.CreateConnectionPlan(state, commandTimeout);
             var token = await credential.GetTokenAsync(new TokenRequestContext(new[] { plan.TokenScope }), cancellationToken);
-            var entraUserName = plan.Engine == SqlQueryEngine.AzureSql ? null : EntraTokenUserName.TryRead(token.Token);
-            if (plan.Engine != SqlQueryEngine.AzureSql && string.IsNullOrWhiteSpace(entraUserName))
+            var entraUserName = NeedsEntraUserName(plan.Engine) ? EntraTokenUserName.TryRead(token.Token) : null;
+            if (NeedsEntraUserName(plan.Engine) && string.IsNullOrWhiteSpace(entraUserName))
             {
                 throw new InvalidOperationException(
                     "Query skipped: the access token has no Entra user name (preferred_username, upn, unique_name, or appid).");
@@ -108,6 +108,14 @@ namespace poolautoscaler.metrics
             throw new InvalidOperationException($"Query skipped: resource {resourceId} is not a supported SQL type.");
         }
 
+        /// <summary>True when the engine login is an Entra user name from the access token (PostgreSQL and MySQL).</summary>
+        /// <param name="engine">Resolved Query engine.</param>
+        /// <returns>True for PostgreSQL and MySQL Flexible Server.</returns>
+        private static bool NeedsEntraUserName(SqlQueryEngine engine)
+        {
+            return engine == SqlQueryEngine.PostgreSql || engine == SqlQueryEngine.MySql;
+        }
+
         /// <summary>Reads the ARM FQDN stored on the four SQL resource states.</summary>
         /// <param name="state">Refreshed resource state.</param>
         /// <returns>FQDN, or null when the state is not a SQL type or Refresh did not set it.</returns>
@@ -150,8 +158,8 @@ namespace poolautoscaler.metrics
         private SqlQueryConnectionPlan CreateOssPlan(SqlQueryEngine engine, string host, string catalog, TimeSpan timeout)
         {
             var connectionString = engine == SqlQueryEngine.PostgreSql
-                ? $"Host={host};Database={catalog};SSL Mode=Require"
-                : $"Server={host};Database={catalog};SslMode=Required";
+                ? $"Host={host};Database={catalog};SSL Mode=VerifyFull"
+                : $"Server={host};Database={catalog};SslMode=VerifyFull";
             return new SqlQueryConnectionPlan(
                 engine,
                 host,

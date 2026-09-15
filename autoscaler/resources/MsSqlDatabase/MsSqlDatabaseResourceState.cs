@@ -180,9 +180,10 @@ namespace poolautoscaler.resources.MsSqlDatabase
                 CurrentUsedStorage = storage_used
             };
 
-            var serverId = $"/subscriptions/{database.Id.SubscriptionId}/resourceGroups/{database.Id.ResourceGroupName}/providers/Microsoft.Sql/servers/{database.Id.Parent.Name}";
-            var server = await client.GetSqlServerResource(new ResourceIdentifier(serverId)).GetAsync(cancellationToken: cancellationToken);
-            this.FullyQualifiedDomainName = server.Value.Data.FullyQualifiedDomainName;
+            this.FullyQualifiedDomainName = await SqlLogicalServerFullyQualifiedDomainName.ReadAsync(
+                client,
+                database.Id,
+                cancellationToken);
         }
     }
 }

@@ -279,9 +279,10 @@ namespace poolautoscaler.resources.MssqlElasticPool
 
             this.RequestedMssqlElasticPoolState = new MssqlElasticPoolState();
 
-            var serverId = $"/subscriptions/{this.Resource.Id.SubscriptionId}/resourceGroups/{this.Resource.Id.ResourceGroupName}/providers/Microsoft.Sql/servers/{this.Resource.Id.Parent.Name}";
-            var server = await client.GetSqlServerResource(new ResourceIdentifier(serverId)).GetAsync(cancellationToken: cancellationToken);
-            this.FullyQualifiedDomainName = server.Value.Data.FullyQualifiedDomainName;
+            this.FullyQualifiedDomainName = await SqlLogicalServerFullyQualifiedDomainName.ReadAsync(
+                client,
+                this.Resource.Id,
+                cancellationToken);
         }
     }
 }

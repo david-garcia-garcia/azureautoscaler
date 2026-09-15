@@ -60,6 +60,7 @@ namespace poolautoscaler.tests
             Assert.Equal("postgres", plan.Catalog);
             Assert.Equal(SqlQueryEngine.PostgreSql, plan.Engine);
             Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString);
+            Assert.Contains("SSL Mode=VerifyFull", plan.ConnectionString);
             Assert.Equal(SqlQuerySessionFactory.OssRdbmsTokenScope, plan.TokenScope);
         }
 
@@ -75,6 +76,7 @@ namespace poolautoscaler.tests
             Assert.Equal("mysql", plan.Catalog);
             Assert.Equal(SqlQueryEngine.MySql, plan.Engine);
             Assert.DoesNotContain("ApplicationIntent", plan.ConnectionString);
+            Assert.Contains("SslMode=VerifyFull", plan.ConnectionString);
         }
 
         [Fact]
@@ -139,6 +141,66 @@ namespace poolautoscaler.tests
             Assert.Equal(1, rowReader.ReadCount);
             Assert.Equal("SELECT 1 AS cpu_percent", rowReader.LastQuery);
             Assert.Single(columns);
+        }
+
+        [Fact]
+        public void CreateConnectionPlan_SqlDatabase_ThrowsWhenFqdnMissing()
+        {
+            var state = this.CreateSqlDatabaseState();
+            state.ResourceParts["databaseName"] = "appdb";
+            var factory = new SqlQuerySessionFactory();
+
+            var ex = Assert.Throws<InvalidOperationException>(() => factory.CreateConnectionPlan(state, TimeSpan.FromSeconds(30)));
+
+            Assert.Contains("FQDN is missing", ex.Message);
+        }
+
+        [Fact]
+        public void CreateConnectionPlan_SqlDatabase_ThrowsWhenCatalogMissing()
+        {
+            var state = this.CreateSqlDatabaseState();
+            state.FullyQualifiedDomainName = "sqlsrv.database.windows.net";
+            state.ResourceParts.Remove("databaseName");
+            var factory = new SqlQuerySessionFactory();
+
+            var ex = Assert.Throws<InvalidOperationException>(() => factory.CreateConnectionPlan(state, TimeSpan.FromSeconds(30)));
+
+            Assert.Contains("catalog is missing", ex.Message);
+        }
+
+        [Fact]
+        public async Task ReadFirstRowAsync_PostgreSql_ThrowsWhenTokenHasNoEntraUserName()
+        {
+            var state = this.CreatePostgreSqlState();
+            state.FullyQualifiedDomainName = "pg.postgres.database.azure.com";
+            var factory = new SqlQuerySessionFactory(new TestSqlQueryRowReader(Array.Empty<SqlQueryColumn>()));
+            var credential = new Mock<TokenCredential>();
+            credential
+                .Setup(c => c.GetTokenAsync(It.IsAny<TokenRequestContext>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new AccessToken(JwtWithoutEntraUserClaims(), DateTimeOffset.UtcNow.AddHours(1)));
+
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => factory.ReadFirstRowAsync(
+                state,
+                credential.Object,
+                "SELECT 1",
+                TimeSpan.FromSeconds(30),
+                CancellationToken.None));
+
+            Assert.Contains("no Entra user name", ex.Message);
+        }
+
+        /// <summary>Minimal JWT with no preferred_username, upn, unique_name, or appid.</summary>
+        private static string JwtWithoutEntraUserClaims()
+        {
+            static string Base64Url(string json)
+            {
+                return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json))
+                    .TrimEnd('=')
+                    .Replace('+', '-')
+                    .Replace('/', '_');
+            }
+
+            return $"{Base64Url("{\"alg\":\"none\"}")}.{Base64Url("{\"sub\":\"x\"}")}.";
         }
 
         private MsSqlDatabaseResourceState CreateSqlDatabaseState()

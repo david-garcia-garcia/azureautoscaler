@@ -122,16 +122,16 @@ namespace poolautoscaler.metrics
                     var numericValue = ConvertToDouble(value);
                     await this.PushNamedMetricAsync(state, metric, metric.Name, numericValue, cancellationToken);
                     this.lastPushTimes[key] = DateTime.UtcNow;
-                    state.Logger.LogDebug(
-                        "Pushed custom metric {Name}={Value} in namespace {metricNamespace} to {ResourceId}",
-                        metric.Name,
-                        numericValue,
-                        metric.Namespace,
-                        metric.ResourceId);
                 }
                 catch (Exception ex)
                 {
-                    state.Logger.LogError(ex, "Failed to push custom metric {Name}: {Message}", metric.Name ?? "query", ex.Message);
+                    var failedName = hasQuery ? $"query[{metricIndex - 1}]" : metric.Name;
+                    state.Logger.LogError(
+                        ex,
+                        "Failed to push custom metric {Name} on {ResourceId}: {Message}",
+                        failedName,
+                        state.AzureResourceId,
+                        ex.Message);
                 }
             }
         }
@@ -167,11 +167,6 @@ namespace poolautoscaler.metrics
             foreach (var (columnName, numericValue) in published)
             {
                 await this.PushNamedMetricAsync(state, metric, columnName, numericValue, cancellationToken);
-                state.Logger.LogDebug(
-                    "Pushed custom metric {Name}={Value} from Query to {ResourceId}",
-                    columnName,
-                    numericValue,
-                    metric.ResourceId);
             }
 
             this.lastPushTimes[dueKey] = DateTime.UtcNow;
@@ -211,6 +206,12 @@ namespace poolautoscaler.metrics
                 DefaultMetricNamespace;
 
             await this.PushMetricAsync(resourceId, metricName, metricNamespace, numericValue, region, cancellationToken);
+            state.Logger.LogDebug(
+                "Pushed custom metric {Name}={Value} in namespace {metricNamespace} to {ResourceId}",
+                metricName,
+                numericValue,
+                metricNamespace,
+                resourceId);
         }
 
         private static object EvaluateExpression(CustomMetricConfig metric, CustomMetricDataContext context)
