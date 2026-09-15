@@ -55,3 +55,8 @@ All cross-links within `docs/` files and from `readme.md` to `docs/` files SHALL
 #### Scenario: Links between docs files use relative paths
 - **WHEN** a link from one doc file references another doc file
 - **THEN** the link SHALL use a relative path (e.g., `../configuration.md#section`) not an absolute URL
+
+---
+
+### Requirement: Live catalog folder naming
+Each live spec under `openspec/specs/` SHALL use a folder id with exactly four underscore-separated parts `{root}_{domain}_{component}_{spec-name}` declared in `openspec/specs/domains.md`. Kebab-case live folder ids SHALL NOT remain in the live catalog.
