@@ -27,3 +27,9 @@ phase: codereview
 findings: Standards 2 hard + 1 judgement; Spec 1 extra; Coverage 2 hard; other axes none
 fixed: helper summaries; empty-dict Information assert; two-cycle throttle assert
 skipped: duplicated null/empty guard (judgement); domains.md extra (librarian allowlist)
+
+## devdocsimpact (2026-09-15)
+phase: devdocsimpact
+findings: 1 missing-packet (Resource evaluation)
+fixed: created knowledge/devdocs/core_resource_evaluation.md and domain index
+skipped: none
