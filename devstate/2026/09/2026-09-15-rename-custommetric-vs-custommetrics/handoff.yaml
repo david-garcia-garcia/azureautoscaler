@@ -6,10 +6,12 @@ prHost: github
 repoSlug: azureautoscaler
 destBranch: 1.x
 qualify: qualified-with-gaps
-src: pending-after-requirement
-localTests: none
+src: af9110f-local-rename-debt-v0
+localTests: passed
 requirement: requirement.md
 comments: none
-explore: none
-change: none
-pr: none
+explore: explore.md
+change: rename-custommetric-stems
+pr:
+  id: 46
+  url: https://github.com/david-garcia-garcia/azureautoscaler/pull/46
