@@ -9,3 +9,9 @@ phase: explore
 findings: 5 open questions, all additive asked, assumed; 0 blocked; no explore_decide passes
 fixed: n/a
 skipped: n/a
+
+## propose (2026-09-15)
+phase: propose
+findings: change omit-scaling-configurations apply-ready; 1 new spec delta
+fixed: n/a
+skipped: n/a
