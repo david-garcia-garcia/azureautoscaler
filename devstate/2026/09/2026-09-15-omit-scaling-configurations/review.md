@@ -33,3 +33,9 @@ phase: devdocsimpact
 findings: 1 missing-packet (Resource evaluation)
 fixed: created knowledge/devdocs/core_resource_evaluation.md and domain index
 skipped: none
+
+## archive (2026-09-15)
+phase: archive
+findings: synced core_resource_management_omit-scaling-configurations to openspec/specs; change moved to archive/2026-09-15-omit-scaling-configurations; validate-artifact-names fail on 11 pre-existing legacy spec ids
+fixed: catalog sync and folder move; map.md regenerated
+skipped: n/a

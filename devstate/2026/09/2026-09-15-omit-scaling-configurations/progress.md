@@ -10,5 +10,5 @@ JobName: 2026-09-15-omit-scaling-configurations
 | implement | [x] | [x] | 2026-09-15T18:00:14.706Z |
 | codereview | [x] | [x] | 2026-09-15T18:04:05.952Z |
 | devdocsimpact | [x] | [x] | 2026-09-15T18:06:21.287Z |
-| archive | [ ] | [ ] | |
+| archive | [x] | [x] | 2026-09-15T18:08:35.000Z |
 | pullrequest | [ ] | [ ] | |
