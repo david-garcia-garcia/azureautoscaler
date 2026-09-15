@@ -55,26 +55,26 @@ ProcessOneAsync
 - Q: Does `ResourceState` need a new last-logged field for the no-config Information throttle?
   Rank: additive asked — new state field; requirement **Desired** allows `ResourceState` change; **Unknowns** names this gap
   Decision: assumed — add a sibling property to `LastDisabledMessageLogged`; only disable throttle exists today (`ResourceState.cs`).
-  By: explore
+  By: propose
 
 - Q: When `ProcessOneAsync` skips `RunLoop` because `IsDisabled()`, where does the once-per-hour disabled Information log run without duplicating spam?
   Rank: additive asked — **Desired** requires honor disable before `RunLoop` and reuse the RunLoop INFO pattern
   Decision: assumed — private throttled helper on `ResourceProcessor` invoked from early `ProcessOneAsync` return and from existing `RunLoop` post-refresh check.
-  By: explore
+  By: propose
 
 - Q: Do null and empty dictionary share the no-config Information path, while inactive time windows keep Trace only?
   Rank: additive asked — **Desired** “Treat null like empty” and separates INFO vs Trace wording
   Decision: assumed — null and `{}` use hourly Information; non-empty dict with zero active windows keeps Trace-only early return.
-  By: explore
+  By: propose
 
 - Q: Should `RunLoop` defer any `ScalingConfigurations.Values` access until after `Refresh`/`PushIfDueAsync`?
   Rank: additive asked — **Desired** requires refresh and push before scaling exit; current null NRE is pre-refresh
   Decision: assumed — yes; align null/empty handling with the existing empty-dict path after refresh/push.
-  By: explore
+  By: propose
 
 - Q: How should tests assert no-config Information given current logger mocks?
   Rank: additive asked — **Desired** tests clause (“if the suite supports log capture”)
   Decision: assumed — use `Mock<ILogger>.Verify` for `LogInformation` on the resource logger; skip only if a test uses a non-mock logger without capture.
-  By: explore
+  By: propose
 
 Verdict: in progress
