@@ -1,0 +1,15 @@
+issueKey: 2026-09-15-rename-live-spec-ids-to-4-part
+jobName: 2026-09-15-rename-live-spec-ids-to-4-part
+issueHost: local
+issueRef: none
+prHost: github
+repoSlug: azureautoscaler
+destBranch: 1.x
+qualify: qualified-with-gaps
+src: pending
+localTests: none
+requirement: requirement.md
+comments: none
+explore: none
+change: none
+pr: none
