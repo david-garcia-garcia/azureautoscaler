@@ -19,7 +19,7 @@ namespace poolautoscaler.metrics
     /// lacks this role—assign it at the VMSS, resource group, or subscription scope.
     /// See https://learn.microsoft.com/en-us/azure/azure-monitor/metrics/metrics-store-custom-rest-api.
     /// </remarks>
-    internal sealed class CustomMetricsPusher
+    internal sealed class PublishedMetricsPusher
     {
         /// <summary>Scope for Azure Monitor (use .default for token requests).</summary>
         private const string MonitoringScope = "https://monitoring.azure.com/.default";
@@ -30,26 +30,26 @@ namespace poolautoscaler.metrics
         private readonly ILogger logger;
         private readonly HttpClient httpClient;
         private readonly IResourceLocationResolver resourceLocationResolver;
-        private readonly string? defaultCustomMetricsNamespace;
+        private readonly string? defaultPublishedMetricsNamespace;
         private readonly SqlQuerySessionFactory sqlQuerySessionFactory;
 
         /// <summary>Per (resourceState.ResourceId, metricName) last push time.</summary>
         private readonly Dictionary<string, DateTime> lastPushTimes = new();
 
-        /// <summary>Initializes a new instance of the <see cref="CustomMetricsPusher"/> class.</summary>
+        /// <summary>Initializes a new instance of the <see cref="PublishedMetricsPusher"/> class.</summary>
         /// <param name="credential">The token credential for Azure Monitor.</param>
         /// <param name="armClient">The ARM client.</param>
         /// <param name="logger">The logger.</param>
         /// <param name="resourceLocationResolver">Resolves resource IDs to region for the metrics endpoint.</param>
-        /// <param name="defaultCustomMetricsNamespace">Optional global default namespace for custom metrics.</param>
+        /// <param name="defaultPublishedMetricsNamespace">Optional global default namespace for custom metrics.</param>
         /// <param name="sqlQuerySessionFactory">SQL Query session factory. Tests inject a factory with an in-memory reader.</param>
         /// <param name="metricsHttpHandler">Optional HTTP handler for the Azure Monitor POST. Tests capture requests here.</param>
-        public CustomMetricsPusher(
+        public PublishedMetricsPusher(
             TokenCredential credential,
             ArmClient armClient,
             ILogger logger,
             IResourceLocationResolver resourceLocationResolver,
-            string? defaultCustomMetricsNamespace = null,
+            string? defaultPublishedMetricsNamespace = null,
             SqlQuerySessionFactory? sqlQuerySessionFactory = null,
             HttpMessageHandler? metricsHttpHandler = null)
         {
@@ -60,7 +60,7 @@ namespace poolautoscaler.metrics
                 ? new HttpClient { Timeout = TimeSpan.FromSeconds(30) }
                 : new HttpClient(metricsHttpHandler) { Timeout = TimeSpan.FromSeconds(30) };
             this.resourceLocationResolver = resourceLocationResolver;
-            this.defaultCustomMetricsNamespace = defaultCustomMetricsNamespace;
+            this.defaultPublishedMetricsNamespace = defaultPublishedMetricsNamespace;
             this.sqlQuerySessionFactory = sqlQuerySessionFactory ?? new SqlQuerySessionFactory();
         }
 
@@ -75,14 +75,14 @@ namespace poolautoscaler.metrics
             ResourceState state,
             CancellationToken cancellationToken)
         {
-            if (state.Configuration.CustomMetrics == null || !state.Configuration.CustomMetrics.Any())
+            if (state.Configuration.PublishedMetrics == null || !state.Configuration.PublishedMetrics.Any())
             {
                 return;
             }
 
-            CustomMetricDataContext? context = null;
+            PublishedMetricEvalContext? context = null;
             var metricIndex = 0;
-            foreach (var metric in state.Configuration.CustomMetrics)
+            foreach (var metric in state.Configuration.PublishedMetrics)
             {
                 var hasQuery = !string.IsNullOrWhiteSpace(metric.Query);
                 var key = hasQuery
@@ -104,7 +104,7 @@ namespace poolautoscaler.metrics
                         continue;
                     }
 
-                    context ??= await state.BuildCustomMetricDataContextAsync(
+                    context ??= await state.BuildPublishedMetricEvalContextAsync(
                         this.armClient,
                         this.credential,
                         cancellationToken);
@@ -120,7 +120,7 @@ namespace poolautoscaler.metrics
                     }
 
                     var numericValue = ConvertToDouble(value);
-                    await this.PushNamedMetricAsync(state, metric, CustomMetricSeries.FromScalar(metric.Name, numericValue), cancellationToken);
+                    await this.PushNamedMetricAsync(state, metric, PublishedMetricSeries.FromScalar(metric.Name, numericValue), cancellationToken);
                     this.lastPushTimes[key] = DateTime.UtcNow;
                 }
                 catch (Exception ex)
@@ -146,7 +146,7 @@ namespace poolautoscaler.metrics
         /// <returns>A task that completes when the Query group is published or skipped.</returns>
         private async Task PushQueryMetricAsync(
             ResourceState state,
-            CustomMetricConfig metric,
+            PublishedMetricConfig metric,
             string dueKey,
             CancellationToken cancellationToken)
         {
@@ -193,8 +193,8 @@ namespace poolautoscaler.metrics
         /// <returns>A task that completes when the POST succeeds.</returns>
         private async Task PushNamedMetricAsync(
             ResourceState state,
-            CustomMetricConfig metric,
-            CustomMetricSeries series,
+            PublishedMetricConfig metric,
+            PublishedMetricSeries series,
             CancellationToken cancellationToken)
         {
             var resourceId = state.ReplaceResourceParts(metric.ResourceId);
@@ -213,7 +213,7 @@ namespace poolautoscaler.metrics
 
             var metricNamespace =
                 !string.IsNullOrWhiteSpace(metric.Namespace) ? metric.Namespace :
-                !string.IsNullOrWhiteSpace(this.defaultCustomMetricsNamespace) ? this.defaultCustomMetricsNamespace :
+                !string.IsNullOrWhiteSpace(this.defaultPublishedMetricsNamespace) ? this.defaultPublishedMetricsNamespace :
                 DefaultMetricNamespace;
 
             await this.PushMetricAsync(resourceId, series, metricNamespace, region, cancellationToken);
@@ -228,7 +228,7 @@ namespace poolautoscaler.metrics
                 resourceId);
         }
 
-        private static object EvaluateExpression(CustomMetricConfig metric, CustomMetricDataContext context)
+        private static object EvaluateExpression(PublishedMetricConfig metric, PublishedMetricEvalContext context)
         {
             if (metric.DataExpressionDelegate == null)
             {
@@ -254,7 +254,7 @@ namespace poolautoscaler.metrics
 
         private async Task PushMetricAsync(
             string resourceId,
-            CustomMetricSeries series,
+            PublishedMetricSeries series,
             string metricNamespace,
             string region,
             CancellationToken cancellationToken)
@@ -288,7 +288,7 @@ namespace poolautoscaler.metrics
             return $"https://{region}.monitoring.azure.com/{normalized}/metrics";
         }
 
-        private object BuildMetricsBody(CustomMetricSeries series, string metricNamespace)
+        private object BuildMetricsBody(PublishedMetricSeries series, string metricNamespace)
         {
             var time = DateTime.UtcNow.ToString("o");
 

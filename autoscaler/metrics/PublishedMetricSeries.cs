@@ -1,15 +1,15 @@
 namespace poolautoscaler.metrics
 {
     /// <summary>Azure Monitor custom-metric series bag posted for one metric name.</summary>
-    internal sealed class CustomMetricSeries
+    internal sealed class PublishedMetricSeries
     {
-        /// <summary>Initializes a new instance of the <see cref="CustomMetricSeries"/> class.</summary>
+        /// <summary>Initializes a new instance of the <see cref="PublishedMetricSeries"/> class.</summary>
         /// <param name="name">Metric name in Azure Monitor.</param>
         /// <param name="min">Lowest sample in the published interval.</param>
         /// <param name="max">Highest sample in the published interval.</param>
         /// <param name="sum">Sum of samples in the published interval.</param>
         /// <param name="count">Number of samples in the published interval.</param>
-        public CustomMetricSeries(string name, double min, double max, double sum, int count)
+        public PublishedMetricSeries(string name, double min, double max, double sum, int count)
         {
             this.Name = name;
             this.Min = min;
@@ -37,9 +37,9 @@ namespace poolautoscaler.metrics
         /// <param name="name">Metric name in Azure Monitor.</param>
         /// <param name="value">Value copied into min, max, and sum with count 1.</param>
         /// <returns>A series whose Average, Minimum, and Maximum are that value.</returns>
-        public static CustomMetricSeries FromScalar(string name, double value)
+        public static PublishedMetricSeries FromScalar(string name, double value)
         {
-            return new CustomMetricSeries(name, value, value, value, 1);
+            return new PublishedMetricSeries(name, value, value, value, 1);
         }
     }
 }

@@ -17,7 +17,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig { DataExpression = "(data) => Convert.ToDouble(1)" });
+                metric: new PublishedMetricConfig { DataExpression = "(data) => Convert.ToDouble(1)" });
 
             var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
             Assert.Contains("Name", ex.Message);
@@ -28,7 +28,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig
+                metric: new PublishedMetricConfig
                 {
                     Name = "core_count",
                     DataExpression = "(data) => Convert.ToDouble(2)",
@@ -36,7 +36,7 @@ namespace poolautoscaler.tests
 
             config.PrepareAndValidate(this.logger);
 
-            Assert.NotNull(config.Resources[0].CustomMetrics[0].DataExpressionDelegate);
+            Assert.NotNull(config.Resources[0].PublishedMetrics[0].DataExpressionDelegate);
         }
 
         [Fact]
@@ -49,8 +49,8 @@ namespace poolautoscaler.tests
             var ex = Record.Exception(() => config.PrepareAndValidate(this.logger));
 
             Assert.Null(ex);
-            Assert.Null(config.Resources[0].CustomMetrics[0].DataExpressionDelegate);
-            Assert.Equal(TimeSpan.FromSeconds(30), config.Resources[0].CustomMetrics[0].QueryTimeoutParsed);
+            Assert.Null(config.Resources[0].PublishedMetrics[0].DataExpressionDelegate);
+            Assert.Equal(TimeSpan.FromSeconds(30), config.Resources[0].PublishedMetrics[0].QueryTimeoutParsed);
         }
 
         [Fact]
@@ -58,7 +58,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig
+                metric: new PublishedMetricConfig
                 {
                     Name = "x",
                     DataExpression = "(data) => Convert.ToDouble(1)",
@@ -74,7 +74,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig { Name = "x" });
+                metric: new PublishedMetricConfig { Name = "x" });
 
             var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
             Assert.Contains("Query or a DataExpression", ex.Message);
@@ -88,7 +88,7 @@ namespace poolautoscaler.tests
         public void PrepareAndValidate_QueryOnSqlResource_Accepts(string resourceId)
         {
             var needsIntent = resourceId.Contains("/Microsoft.Sql/", StringComparison.OrdinalIgnoreCase);
-            var metric = new CustomMetricConfig
+            var metric = new PublishedMetricConfig
             {
                 Query = "SELECT 1 AS cpu_percent",
                 QueryConnection = needsIntent
@@ -106,7 +106,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig { Query = "SELECT 1 AS cpu_percent" });
+                metric: new PublishedMetricConfig { Query = "SELECT 1 AS cpu_percent" });
 
             var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
             Assert.Contains("ApplicationIntent", ex.Message);
@@ -117,7 +117,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig
+                metric: new PublishedMetricConfig
                 {
                     Query = "SELECT 1 AS cpu_percent",
                     QueryConnection = new Dictionary<string, string> { ["ApplicationIntent"] = "Snapshot" },
@@ -132,7 +132,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig
+                metric: new PublishedMetricConfig
                 {
                     Query = "SELECT 1 AS cpu_percent",
                     QueryConnection = new Dictionary<string, string> { ["Password"] = "secret" },
@@ -147,7 +147,7 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: SqlDatabaseId,
-                metric: new CustomMetricConfig
+                metric: new PublishedMetricConfig
                 {
                     Name = "core_count",
                     DataExpression = "(data) => Convert.ToDouble(1)",
@@ -163,22 +163,22 @@ namespace poolautoscaler.tests
         {
             var config = this.BuildConfig(
                 resourceId: "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.ContainerService/managedClusters/aks/agentPools/pool",
-                metric: new CustomMetricConfig { Query = "SELECT 1 AS cpu_percent" });
+                metric: new PublishedMetricConfig { Query = "SELECT 1 AS cpu_percent" });
 
             var ex = Assert.Throws<Exception>(() => config.PrepareAndValidate(this.logger));
             Assert.Contains("not allowed", ex.Message);
         }
 
-        private static CustomMetricConfig AzureSqlQuery(string query)
+        private static PublishedMetricConfig AzureSqlQuery(string query)
         {
-            return new CustomMetricConfig
+            return new PublishedMetricConfig
             {
                 Query = query,
                 QueryConnection = new Dictionary<string, string> { ["ApplicationIntent"] = "ReadOnly" },
             };
         }
 
-        private Configuration BuildConfig(string resourceId, CustomMetricConfig metric)
+        private Configuration BuildConfig(string resourceId, PublishedMetricConfig metric)
         {
             return new Configuration
             {
@@ -197,7 +197,7 @@ namespace poolautoscaler.tests
                                 ResourceId = resourceId,
                             },
                         },
-                        CustomMetrics = [metric],
+                        PublishedMetrics = [metric],
                     },
                 ],
             };

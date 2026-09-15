@@ -25,7 +25,7 @@ namespace poolautoscaler.resourcemanagement
         private readonly LicenseInfo licenseInfo;
         private readonly Func<DateTime> utcNowProvider;
         private readonly IMetricsGatherer metricsGatherer;
-        private readonly CustomMetricsPusher customMetricsPusher;
+        private readonly PublishedMetricsPusher customMetricsPusher;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ResourceProcessor"/> class.
@@ -38,7 +38,7 @@ namespace poolautoscaler.resourcemanagement
         /// <param name="resourceLocationResolver">Resolves resource IDs to region for custom metrics.</param>
         /// <param name="utcNowProvider">Optional. Provides current UTC time for TimeWindow evaluation. Defaults to <see cref="DateTime.UtcNow"/>.</param>
         /// <param name="metricsGatherer">Optional. Gathers metrics for evaluation. Defaults to <see cref="AzureMonitorMetricsGatherer"/>.</param>
-        /// <param name="defaultCustomMetricsNamespace">Optional global default namespace for custom metrics.</param>
+        /// <param name="defaultPublishedMetricsNamespace">Optional global default namespace for custom metrics.</param>
         internal ResourceProcessor(
             ILoggerFactory logFactory,
             IReadOnlyList<IDimension> dimensions,
@@ -48,7 +48,7 @@ namespace poolautoscaler.resourcemanagement
             IResourceLocationResolver resourceLocationResolver,
             Func<DateTime>? utcNowProvider = null,
             IMetricsGatherer? metricsGatherer = null,
-            string? defaultCustomMetricsNamespace = null)
+            string? defaultPublishedMetricsNamespace = null)
         {
             this.logger = logFactory.CreateLogger("ResourceProcessor");
             this.dimensions = dimensions;
@@ -57,7 +57,7 @@ namespace poolautoscaler.resourcemanagement
             this.licenseInfo = licenseInfo;
             this.utcNowProvider = utcNowProvider ?? (() => DateTime.UtcNow);
             this.metricsGatherer = metricsGatherer ?? new AzureMonitorMetricsGatherer(armClientWrapper.Client, credential);
-            this.customMetricsPusher = new CustomMetricsPusher(credential, armClientWrapper.Client, this.logger, resourceLocationResolver, defaultCustomMetricsNamespace);
+            this.customMetricsPusher = new PublishedMetricsPusher(credential, armClientWrapper.Client, this.logger, resourceLocationResolver, defaultPublishedMetricsNamespace);
         }
 
         /// <summary>

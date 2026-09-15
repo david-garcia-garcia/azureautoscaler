@@ -60,7 +60,7 @@ namespace poolautoscaler.metrics
                 scalars.Add((columnName, numericValue));
             }
 
-            var series = new List<CustomMetricSeries>();
+            var series = new List<PublishedMetricSeries>();
             var skippedMetricNames = new HashSet<string>(StringComparer.Ordinal);
 
             // Bare names stay one-sample unless the same stem also has suffix columns.
@@ -72,7 +72,7 @@ namespace poolautoscaler.metrics
                     continue;
                 }
 
-                series.Add(CustomMetricSeries.FromScalar(scalarName, scalarValue));
+                series.Add(PublishedMetricSeries.FromScalar(scalarName, scalarValue));
             }
 
             // Complete suffix groups become one series; incomplete, duplicate, or invalid count stems are skipped.
@@ -90,7 +90,7 @@ namespace poolautoscaler.metrics
                     continue;
                 }
 
-                series.Add(new CustomMetricSeries(stem, fields[MinField], fields[MaxField], fields[SumField], sampleCount));
+                series.Add(new PublishedMetricSeries(stem, fields[MinField], fields[MaxField], fields[SumField], sampleCount));
             }
 
             return new SqlQueryMetricSeriesMapResult(series, skippedMetricNames.ToList());

@@ -2,7 +2,7 @@
 
 Lets operators publish QUERY-backed custom metrics on the four SQL resource types into Azure Monitor, using the existing CustomMetrics surface and column names as metric names.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Query XOR DataExpression on CustomMetrics
 A CustomMetrics entry SHALL supply exactly one value source: `Query` or `DataExpression`. The product SHALL NOT add a `SyntheticMetrics` configuration type. `Name` SHALL be required only when the value source is `DataExpression`. A `Query` entry SHALL NOT require `Name`. Startup validation SHALL reject a CustomMetrics entry that has both sources, neither source, or a blank `Query`/`DataExpression`. Startup validation SHALL reject `Query` on any resource that is not Azure SQL Database, Azure SQL Elastic Pool, PostgreSQL Flexible Server, or MySQL Flexible Server.
@@ -87,15 +87,15 @@ When first-row numeric columns use the reserved suffixes `_min`, `_max`, `_sum`,
 - **THEN** the app SHALL still execute the Query text once in that cycle
 
 ### Requirement: Query metrics are push-only
-QUERY results SHALL be published only through the existing CustomMetrics push path. This change SHALL NOT implement SQL `CustomMetric()` for in-process gather of `custom_*` scaling metric names. Existing Azure Monitor scaling metrics SHALL keep working.
+QUERY results SHALL be published only through the existing CustomMetrics YAML push path (`PublishedMetricsPusher`). This change SHALL NOT implement SQL `GatherScalingCustomMetric()` for in-process gather of `custom_*` scaling metric names. Existing Azure Monitor scaling metrics SHALL keep working.
 
-#### Scenario: Query does not implement SQL CustomMetric
+#### Scenario: Query does not implement SQL gather hook
 - **WHEN** a scaling Metric name starts with `custom_` on a SQL resource
 - **THEN** behavior SHALL remain the existing not-implemented failure; QUERY SHALL NOT satisfy that call
 
-#### Scenario: Query publishes through CustomMetrics
+#### Scenario: Query publishes through CustomMetrics YAML
 - **WHEN** a SQL resource has a due Query CustomMetrics entry that returns numeric columns
-- **THEN** those values SHALL be POSTed as Azure Monitor custom metrics on the configured publish ResourceId (or the resource’s own id when omitted)
+- **THEN** `PublishedMetricsPusher` SHALL POST those values as Azure Monitor custom metrics on the configured publish ResourceId (or the resource’s own id when omitted)
 
 ### Requirement: Read-only TokenCredential SQL session
 The app SHALL open the QUERY session with the same process TokenCredential used for ARM and Azure Monitor. Azure SQL Database and Azure SQL Elastic Pool Query rows SHALL require `QueryConnection.ApplicationIntent` set to `ReadOnly` or `ReadWrite`. The app SHALL NOT inject `ApplicationIntent` when the key is omitted. Operators MAY set other `QueryConnection` extras that the app merges onto the implied session. `QueryConnection` SHALL NOT accept keys that replace host, catalog, or credentials (`Server`, `Database`, `Password`, `User ID`, and the same reserved set). The app SHALL NOT parse or rewrite operator SQL. A failed QUERY SHALL skip that push group and SHALL NOT stop other CustomMetrics on the same resource. Command timeout SHALL default to 30 seconds.

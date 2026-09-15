@@ -9,15 +9,15 @@ using poolautoscaler.resources.MsSqlDatabase;
 
 namespace poolautoscaler.tests
 {
-    /// <summary>Query path on CustomMetricsPusher: one run, numeric POSTs, skip, and per-row catch.</summary>
-    public class CustomMetricsPusherQueryTests
+    /// <summary>Query path on PublishedMetricsPusher: one run, numeric POSTs, skip, and per-row catch.</summary>
+    public class PublishedMetricsPusherQueryTests
     {
         private readonly ILogger logger = new Mock<ILogger>().Object;
         private readonly Mock<TokenCredential> credential = new();
         private readonly Mock<ArmClient> armClient = new();
         private readonly Mock<IResourceLocationResolver> locationResolver = new();
 
-        public CustomMetricsPusherQueryTests()
+        public PublishedMetricsPusherQueryTests()
         {
             this.credential
                 .Setup(c => c.GetTokenAsync(It.IsAny<TokenRequestContext>(), It.IsAny<CancellationToken>()))
@@ -40,7 +40,7 @@ namespace poolautoscaler.tests
             var http = new TestCapturingMetricsHttpHandler();
             var pusher = this.CreatePusher(rowReader, http);
             var state = this.CreateSqlState(
-                new CustomMetricConfig { Query = "SELECT 1 AS cpu_percent", FrequencyParsed = TimeSpan.Zero });
+                new PublishedMetricConfig { Query = "SELECT 1 AS cpu_percent", FrequencyParsed = TimeSpan.Zero });
 
             await pusher.PushIfDueAsync(state, CancellationToken.None);
 
@@ -70,7 +70,7 @@ namespace poolautoscaler.tests
             var http = new TestCapturingMetricsHttpHandler();
             var pusher = this.CreatePusher(rowReader, http);
             var state = this.CreateSqlState(
-                new CustomMetricConfig { Query = "SELECT 1", FrequencyParsed = TimeSpan.Zero });
+                new PublishedMetricConfig { Query = "SELECT 1", FrequencyParsed = TimeSpan.Zero });
 
             await pusher.PushIfDueAsync(state, CancellationToken.None);
 
@@ -94,7 +94,7 @@ namespace poolautoscaler.tests
             var http = new TestCapturingMetricsHttpHandler();
             var pusher = this.CreatePusher(rowReader, http);
             var state = this.CreateSqlState(
-                new CustomMetricConfig { Query = "SELECT GETDATE() AS from_time", FrequencyParsed = TimeSpan.Zero });
+                new PublishedMetricConfig { Query = "SELECT GETDATE() AS from_time", FrequencyParsed = TimeSpan.Zero });
 
             await pusher.PushIfDueAsync(state, CancellationToken.None);
 
@@ -111,8 +111,8 @@ namespace poolautoscaler.tests
             var http = new TestCapturingMetricsHttpHandler();
             var pusher = this.CreatePusher(rowReader, http);
             var state = this.CreateSqlState(
-                new CustomMetricConfig { Query = "SELECT fail", FrequencyParsed = TimeSpan.Zero },
-                new CustomMetricConfig { Query = "SELECT 2 AS sku_cores", FrequencyParsed = TimeSpan.Zero });
+                new PublishedMetricConfig { Query = "SELECT fail", FrequencyParsed = TimeSpan.Zero },
+                new PublishedMetricConfig { Query = "SELECT 2 AS sku_cores", FrequencyParsed = TimeSpan.Zero });
 
             await pusher.PushIfDueAsync(state, CancellationToken.None);
 
@@ -121,9 +121,9 @@ namespace poolautoscaler.tests
             Assert.Contains("sku_cores", http.Bodies[0]);
         }
 
-        private CustomMetricsPusher CreatePusher(TestSqlQueryRowReader rowReader, TestCapturingMetricsHttpHandler http)
+        private PublishedMetricsPusher CreatePusher(TestSqlQueryRowReader rowReader, TestCapturingMetricsHttpHandler http)
         {
-            return new CustomMetricsPusher(
+            return new PublishedMetricsPusher(
                 this.credential.Object,
                 this.armClient.Object,
                 this.logger,
@@ -132,13 +132,13 @@ namespace poolautoscaler.tests
                 metricsHttpHandler: http);
         }
 
-        private MsSqlDatabaseResourceState CreateSqlState(params CustomMetricConfig[] metrics)
+        private MsSqlDatabaseResourceState CreateSqlState(params PublishedMetricConfig[] metrics)
         {
             var resourceId = "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Sql/servers/srv/databases/appdb";
             var state = new MsSqlDatabaseResourceState(
                 resourceId,
                 this.logger,
-                new Resource { CustomMetrics = metrics.ToList() });
+                new Resource { PublishedMetrics = metrics.ToList() });
             state.FullyQualifiedDomainName = "sqlsrv.database.windows.net";
             state.ResourceParts["databaseName"] = "appdb";
             foreach (var metric in metrics)

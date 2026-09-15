@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 namespace poolautoscaler.configuration
 {
     /// <summary>Per-resource configuration (enable, frequency, scaling configs).</summary>
@@ -21,7 +23,8 @@ namespace poolautoscaler.configuration
         /// <summary>Scaling configurations keyed by ID.</summary>
         public Dictionary<string, ScalingConfiguration> ScalingConfigurations { get; set; }
 
-        /// <summary>Custom metrics to push to Azure Monitor.</summary>
-        public List<CustomMetricConfig> CustomMetrics { get; set; }
+        /// <summary>Custom metrics to push to Azure Monitor (YAML key <c>CustomMetrics</c>).</summary>
+        [ConfigurationKeyName("CustomMetrics")]
+        public List<PublishedMetricConfig> PublishedMetrics { get; set; }
     }
 }

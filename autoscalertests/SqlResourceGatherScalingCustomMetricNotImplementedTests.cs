@@ -11,7 +11,7 @@ using poolautoscaler.resources.PostgreSqlFlexibleServer;
 namespace poolautoscaler.tests
 {
     /// <summary>QUERY does not implement in-process SQL CustomMetric gather.</summary>
-    public class SqlResourceCustomMetricNotImplementedTests
+    public class SqlResourceGatherScalingCustomMetricNotImplementedTests
     {
         private readonly ILogger logger = new Mock<ILogger>().Object;
         private readonly Mock<ArmClient> armClient = new();
@@ -26,7 +26,7 @@ namespace poolautoscaler.tests
                 new Resource());
 
             await Assert.ThrowsAsync<NotImplementedException>(() =>
-                state.CustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
+                state.GatherScalingCustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
         }
 
         [Fact]
@@ -38,7 +38,7 @@ namespace poolautoscaler.tests
                 new Resource());
 
             await Assert.ThrowsAsync<NotImplementedException>(() =>
-                state.CustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
+                state.GatherScalingCustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
         }
 
         [Fact]
@@ -50,7 +50,7 @@ namespace poolautoscaler.tests
                 new Resource());
 
             await Assert.ThrowsAsync<NotImplementedException>(() =>
-                state.CustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
+                state.GatherScalingCustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
         }
 
         [Fact]
@@ -62,7 +62,7 @@ namespace poolautoscaler.tests
                 new Resource());
 
             await Assert.ThrowsAsync<NotImplementedException>(() =>
-                state.CustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
+                state.GatherScalingCustomMetric(this.armClient.Object, this.credential.Object, CancellationToken.None, new ScalingConfiguration(), "custom_dtu"));
         }
     }
 }

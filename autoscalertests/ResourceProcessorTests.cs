@@ -162,7 +162,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 90 },
             };
 
             var dimensions = new List<IDimension> { new TestDimension() };
@@ -192,7 +192,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 15 },
             };
 
             var dimensions = new List<IDimension> { new TestDimension() };
@@ -222,7 +222,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 50 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 50 },
             };
 
             var dimensions = new List<IDimension> { new TestDimension() };
@@ -254,7 +254,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 15 },
                 LastScale = utcNow.AddSeconds(-30),
             };
 
@@ -287,7 +287,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 15 },
                 LastScale = utcNow.AddSeconds(-120),
             };
 
@@ -320,7 +320,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 90 },
                 LastScale = utcNow.AddSeconds(-30),
             };
 
@@ -353,7 +353,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 90 },
                 LastScale = utcNow.AddSeconds(-120),
             };
 
@@ -389,7 +389,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 15 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 15 },
                 LastScale = utcNow.AddMinutes(-10),
             };
 
@@ -430,7 +430,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 90 },
                 LastScale = utcNow.AddMinutes(-10),
             };
 
@@ -466,7 +466,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 90 },
                 LastScale = utcNow.AddMinutes(-10),
             };
 
@@ -503,7 +503,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 90 },
                 LastScale = utcNow.AddMinutes(-10),
             };
 
@@ -540,7 +540,7 @@ namespace poolautoscaler.tests
             var state = new TestResourceState("test://test", this.logger, config)
             {
                 CurrentCapacity = 10,
-                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+                ScalingCustomMetricValues = { ["custom_test_cpu"] = 90 },
                 LastScale = utcNow.AddMinutes(-10),
                 ApplyChangesException = new RequestFailedException(400, "catchup", "ElasticPoolUpdateLinksNotInCatchup", null),
             };

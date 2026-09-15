@@ -1,4 +1,5 @@
 using Azure.Monitor.Query.Models;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using poolautoscaler.metrics;
 using poolautoscaler.metrics.Dto;
@@ -36,7 +37,8 @@ namespace poolautoscaler.configuration
         /// Default namespace for custom metrics pushed to Azure Monitor (optional).
         /// If not set, defaults to "Custom Autoscaler". Can be overridden per metric.
         /// </summary>
-        public string? CustomMetricsNamespace { get; set; }
+        [ConfigurationKeyName("CustomMetricsNamespace")]
+        public string? PublishedMetricsNamespace { get; set; }
 
         /// <summary>Parses defaults and validates resources.</summary>
         /// <param name="logger">The logger.</param>
@@ -85,11 +87,11 @@ namespace poolautoscaler.configuration
                     }
                 }
 
-                if (resource.CustomMetrics != null)
+                if (resource.PublishedMetrics != null)
                 {
-                    foreach (var customMetric in resource.CustomMetrics)
+                    foreach (var customMetric in resource.PublishedMetrics)
                     {
-                        this.PrepareAndValidateCustomMetric(resource, customMetric);
+                        this.PrepareAndValidatePublishedMetric(resource, customMetric);
                     }
                 }
 
@@ -223,7 +225,7 @@ namespace poolautoscaler.configuration
         /// </summary>
         /// <param name="resource">The resource that owns the row.</param>
         /// <param name="customMetric">The CustomMetrics row to validate.</param>
-        private void PrepareAndValidateCustomMetric(Resource resource, CustomMetricConfig customMetric)
+        private void PrepareAndValidatePublishedMetric(Resource resource, PublishedMetricConfig customMetric)
         {
             var hasQuery = !string.IsNullOrWhiteSpace(customMetric.Query);
             var hasDataExpression = !string.IsNullOrWhiteSpace(customMetric.DataExpression);
@@ -266,10 +268,10 @@ namespace poolautoscaler.configuration
             }
 
             customMetric.DataExpressionDelegate =
-                (Func<CustomMetricDataContext, double>)ExpressionParserUtils.ParseExpression(
+                (Func<PublishedMetricEvalContext, double>)ExpressionParserUtils.ParseExpression(
                     customMetric.DataExpression,
                     "data",
-                    typeof(CustomMetricDataContext),
+                    typeof(PublishedMetricEvalContext),
                     typeof(double),
                     1);
         }

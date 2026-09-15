@@ -8,7 +8,7 @@ namespace poolautoscaler.metrics
     /// Provides custom metric data context for pushing metrics to Azure Monitor.
     /// Resource types implement this to build the context passed to DataExpression.
     /// </summary>
-    public interface ICustomMetricDataProvider
+    public interface IPublishedMetricEvalContextBuilder
     {
         /// <summary>
         /// Builds the data context for custom metric expression evaluation.
@@ -18,7 +18,7 @@ namespace poolautoscaler.metrics
         /// <param name="credential">The token credential.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The data context for expression evaluation.</returns>
-        Task<CustomMetricDataContext> BuildCustomMetricDataContextAsync(
+        Task<PublishedMetricEvalContext> BuildPublishedMetricEvalContextAsync(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken);

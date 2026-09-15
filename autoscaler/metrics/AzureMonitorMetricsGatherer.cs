@@ -50,7 +50,7 @@ namespace poolautoscaler.metrics
                     {
                         metrics.Add(
                             metric.Id,
-                            await state.CustomMetric(this.armClient, this.credential, cancellationToken, setting, metric.Name));
+                            await state.GatherScalingCustomMetric(this.armClient, this.credential, cancellationToken, setting, metric.Name));
                         continue;
                     }
 

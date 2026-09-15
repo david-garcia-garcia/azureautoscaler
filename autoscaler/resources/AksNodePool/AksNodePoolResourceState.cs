@@ -127,7 +127,7 @@ namespace poolautoscaler.resources.AksNodePool
         }
 
         /// <inheritdoc />
-        protected override async Task<IReadOnlyDictionary<string, object>?> GetCustomMetricExtraAsync(
+        protected override async Task<IReadOnlyDictionary<string, object>?> GetScalingCustomMetricExtraAsync(
             ArmClient client,
             TokenCredential credential,
             CancellationToken cancellationToken)

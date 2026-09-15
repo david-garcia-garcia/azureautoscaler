@@ -3,14 +3,14 @@ using poolautoscaler.metrics.Dto;
 namespace poolautoscaler.configuration
 {
     /// <summary>Configuration for a single custom metric to push to Azure Monitor.</summary>
-    public class CustomMetricConfig
+    public class PublishedMetricConfig
     {
         /// <summary>Metric name (e.g. node_count, core_count). Required for DataExpression rows; unused for Query rows.</summary>
         public string? Name { get; set; }
 
         /// <summary>
         /// Optional namespace for the metric in Azure Monitor (overrides global default).
-        /// If not set, the global default (Configuration.CustomMetricsNamespace) is used,
+        /// If not set, the global default (Configuration.PublishedMetricsNamespace) is used,
         /// otherwise "Custom Autoscaler".
         /// </summary>
         public string? Namespace { get; set; }
@@ -55,6 +55,6 @@ namespace poolautoscaler.configuration
         public TimeSpan FrequencyParsed { get; set; }
 
         /// <summary>Compiled expression returning a numeric value. Null on Query rows.</summary>
-        public Func<CustomMetricDataContext, double>? DataExpressionDelegate { get; set; }
+        public Func<PublishedMetricEvalContext, double>? DataExpressionDelegate { get; set; }
     }
 }

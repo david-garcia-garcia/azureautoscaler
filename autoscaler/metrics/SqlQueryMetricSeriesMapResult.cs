@@ -7,7 +7,7 @@ namespace poolautoscaler.metrics
         /// <param name="series">Series that can be POSTed.</param>
         /// <param name="skippedMetricNames">Stems skipped as incomplete, duplicate, invalid count, or scalar conflict.</param>
         public SqlQueryMetricSeriesMapResult(
-            IReadOnlyList<CustomMetricSeries> series,
+            IReadOnlyList<PublishedMetricSeries> series,
             IReadOnlyList<string> skippedMetricNames)
         {
             this.Series = series;
@@ -15,7 +15,7 @@ namespace poolautoscaler.metrics
         }
 
         /// <summary>Series that can be POSTed.</summary>
-        public IReadOnlyList<CustomMetricSeries> Series { get; }
+        public IReadOnlyList<PublishedMetricSeries> Series { get; }
 
         /// <summary>Stems skipped as incomplete, duplicate, invalid count, or scalar conflict.</summary>
         public IReadOnlyList<string> SkippedMetricNames { get; }

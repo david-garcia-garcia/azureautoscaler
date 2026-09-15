@@ -335,7 +335,7 @@ namespace AzureSqlElasticPoolAutoscaler
                     armClientWrapper,
                     this.LicenseInfo,
                     this.resourceLocationResolver,
-                    defaultCustomMetricsNamespace: this.Configuration.CustomMetricsNamespace);
+                    defaultPublishedMetricsNamespace: this.Configuration.PublishedMetricsNamespace);
 
                 const int MinIterationIntervalSeconds = 2;
 

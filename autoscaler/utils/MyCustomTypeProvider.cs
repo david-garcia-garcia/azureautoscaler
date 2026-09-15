@@ -15,8 +15,8 @@ namespace poolautoscaler.utils
             {
                 typeof(MetricEvalDto),
                 typeof(MetricEvalDtoResultValue),
-                typeof(CustomMetricDataContext),
-                typeof(CustomMetricHelpers),
+                typeof(PublishedMetricEvalContext),
+                typeof(PublishedMetricHelpers),
                 typeof(VmssMetricView),
                 typeof(VmssSkuView),
                 typeof(ResourceFilterContext),
