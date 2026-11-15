@@ -72,6 +72,24 @@ namespace poolautoscaler.resourcemanagement
         }
 
         /// <summary>
+        /// Determines whether the resource is disabled by at least one entry with a finite expiry
+        /// (e.g. unhandled exception backoff or transient Azure error).
+        /// Entries set to <see cref="DateTime.MaxValue"/> are not considered: they are re-evaluated by
+        /// <see cref="Refresh(IArmClientWrapper, TokenCredential, CancellationToken)"/> (the <c>autoscaler.disabled</c> tag,
+        /// AKS provisioning state) or cleared by the background scale task, so they must not prevent refresh.
+        /// </summary>
+        /// <returns>True if a time-bound disable entry is still active; otherwise false.</returns>
+        public bool IsDisabledUntilExpiry()
+        {
+            if (!this.IsDisabled())
+            {
+                return false;
+            }
+
+            return this.DisabledUntil.Values.Any((i) => i != DateTime.MaxValue);
+        }
+
+        /// <summary>
         /// Gets the number of seconds until the next evaluation.
         /// </summary>
         /// <returns>Seconds until next evaluation, or 0 if not applicable.</returns>
@@ -257,11 +275,14 @@ namespace poolautoscaler.resourcemanagement
         public const string UnhandledExceptionPrefix = "Unhandled exception: ";
 
         /// <summary>
+        /// Resource tag that disables autoscaling while set to <c>true</c>; also used as its <see cref="DisabledUntil"/> key.
+        /// </summary>
+        public const string AutoscalerDisabledTag = "autoscaler.disabled";
+
+        /// <summary>
         /// Duration to disable a resource after an unhandled exception.
         /// </summary>
         public static readonly TimeSpan UnhandledExceptionDisableDuration = TimeSpan.FromHours(1);
-
-        private const string AutoscalerDisabledTag = "autoscaler.disabled";
 
         private DateTime? LastEvaluation;
 

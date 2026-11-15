@@ -37,6 +37,9 @@ namespace poolautoscaler.tests
         /// <summary>When set, <see cref="ApplyChanges"/> throws this (for background scale task error tests).</summary>
         public Exception? ApplyChangesException { get; set; }
 
+        /// <summary>When set, invoked during <see cref="Refresh"/> to simulate state read from Azure (e.g. tag changes).</summary>
+        public Action<TestResourceState>? OnRefresh { get; set; }
+
         public override Task<MetricEvalDtoResult> CustomMetric(
             ArmClient client,
             TokenCredential credential,
@@ -64,6 +67,7 @@ namespace poolautoscaler.tests
         public override async Task Refresh(IArmClientWrapper clientWrapper, TokenCredential credential, CancellationToken cancellationToken)
         {
             this.RefreshWasCalled = true;
+            this.OnRefresh?.Invoke(this);
 
             // Contract: Refresh always sets LastScale so RunLoop can use it. Base uses change history; test double uses MinValue when unset.
             this.LastScale = this.LastScale ?? DateTime.MinValue;

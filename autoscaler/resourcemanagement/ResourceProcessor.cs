@@ -81,7 +81,10 @@ namespace poolautoscaler.resourcemanagement
                 return false;
             }
 
-            if (resourceState.IsDisabled())
+            // Skip refresh only for time-bound disables (e.g. unhandled exception backoff). Open-ended disables
+            // (autoscaler.disabled tag, AKS provisioning state) are re-evaluated by Refresh, so RunLoop must run
+            // for them to clear; RunLoop's own IsDisabled() check still prevents scaling while they hold.
+            if (resourceState.IsDisabledUntilExpiry())
             {
                 this.LogDisabledInformationIfDue(resourceState, resourceState.Logger);
                 resourceState.ResetEvaluation();

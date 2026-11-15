@@ -662,6 +662,83 @@ namespace poolautoscaler.tests
                 Times.Never);
         }
 
+        [Fact]
+        public async Task ProcessOneAsync_WhenDisabledTagRemoved_RefreshesAndResumesScaling()
+        {
+            // Arrange: resource previously disabled via tag; the tag is gone on the next refresh.
+            var state = this.CreateScaleUpState();
+            state.DisabledUntil[ResourceState.AutoscalerDisabledTag] = DateTime.MaxValue;
+            state.OnRefresh = s => s.DisabledUntil.Remove(ResourceState.AutoscalerDisabledTag);
+            var processor = this.CreateProcessorWithTestDimension();
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: refresh ran, disable cleared, and scaling resumed (10 -> 20).
+            Assert.True(state.RefreshWasCalled);
+            Assert.False(state.DisabledUntil.ContainsKey(ResourceState.AutoscalerDisabledTag));
+            Assert.Equal(20, state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenDisabledTagStillSet_RefreshesButDoesNotScale()
+        {
+            // Arrange: tag still present after refresh.
+            var state = this.CreateScaleUpState();
+            state.DisabledUntil[ResourceState.AutoscalerDisabledTag] = DateTime.MaxValue;
+            var processor = this.CreateProcessorWithTestDimension();
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: refresh ran so the tag could be re-read, but no scaling happened.
+            Assert.True(state.RefreshWasCalled);
+            Assert.True(state.IsDisabled());
+            Assert.Null(state.RequestedCapacity);
+        }
+
+        [Fact]
+        public async Task ProcessOneAsync_WhenTimeBoundAndOpenEndedDisables_SkipsRefresh()
+        {
+            // Arrange: an unhandled-exception backoff still active alongside the tag disable.
+            var state = this.CreateScaleUpState();
+            state.DisabledUntil[ResourceState.AutoscalerDisabledTag] = DateTime.MaxValue;
+            state.DisabledUntil[ResourceState.UnhandledExceptionPrefix + "simulated evaluation failure"] =
+                DateTime.UtcNow.Add(ResourceState.UnhandledExceptionDisableDuration);
+            var processor = this.CreateProcessorWithTestDimension();
+
+            // Act
+            await processor.ProcessOneAsync(state, CancellationToken.None);
+
+            // Assert: the time-bound backoff still short-circuits before RunLoop.
+            Assert.False(state.RefreshWasCalled);
+            Assert.Null(state.RequestedCapacity);
+        }
+
+        private TestResourceState CreateScaleUpState()
+        {
+            var scalingConfig = CreateScalingConfigurationWithMetricAndRule(
+                scaleTargetExpression: "(data) => (data.Metrics[\"cpu\"].Values.First().Default > 80 ? \"20\" : \"10\")");
+            var config = CreateResourceConfiguration(scalingConfig);
+            return new TestResourceState("test://test", this.logger, config)
+            {
+                CurrentCapacity = 10,
+                CustomMetricValues = { ["custom_test_cpu"] = 90 },
+            };
+        }
+
+        private ResourceProcessor CreateProcessorWithTestDimension()
+        {
+            return new ResourceProcessor(
+                this.logFactoryMock.Object,
+                new List<IDimension> { new TestDimension() },
+                this.credentialMock.Object,
+                this.armClientWrapper,
+                this.licenseInfo,
+                this.resourceLocationResolver,
+                () => new DateTime(2025, 6, 16, 12, 0, 0, DateTimeKind.Utc));
+        }
+
         private static ScalingConfiguration CreateScalingConfigurationWithMetricAndRule(
             string scaleTargetExpression,
             int scaleUpCooldownSeconds = 0,
