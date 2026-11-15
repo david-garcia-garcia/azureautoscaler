@@ -178,5 +178,44 @@ namespace poolautoscaler.tests
             Assert.False(result3);
             Assert.Empty(state.DisabledUntil);
         }
+
+        [Fact]
+        public void IsDisabledUntilExpiry_WhenOnlyPermanentEntries_ReturnsFalse()
+        {
+            var state = new MsSqlDatabaseResourceState(this.resourceId, this.loggerMock.Object, this.config);
+            state.DisabledUntil[ResourceState.AutoscalerDisabledTag] = DateTime.MaxValue;
+
+            Assert.False(state.IsDisabledUntilExpiry());
+            Assert.True(state.IsDisabled());
+        }
+
+        [Fact]
+        public void IsDisabledUntilExpiry_WhenActiveTimeBoundEntry_ReturnsTrue()
+        {
+            var state = new MsSqlDatabaseResourceState(this.resourceId, this.loggerMock.Object, this.config);
+            state.DisabledUntil["cooldown"] = DateTime.UtcNow.AddMinutes(10);
+
+            Assert.True(state.IsDisabledUntilExpiry());
+        }
+
+        [Fact]
+        public void IsDisabledUntilExpiry_WhenTimeBoundEntryExpired_ReturnsFalseAndPrunes()
+        {
+            var state = new MsSqlDatabaseResourceState(this.resourceId, this.loggerMock.Object, this.config);
+            state.DisabledUntil[ResourceState.AutoscalerDisabledTag] = DateTime.MaxValue;
+            state.DisabledUntil["expired"] = DateTime.UtcNow.AddSeconds(-10);
+
+            Assert.False(state.IsDisabledUntilExpiry());
+            Assert.Single(state.DisabledUntil);
+            Assert.True(state.DisabledUntil.ContainsKey(ResourceState.AutoscalerDisabledTag));
+        }
+
+        [Fact]
+        public void IsDisabledUntilExpiry_WhenNoEntries_ReturnsFalse()
+        {
+            var state = new MsSqlDatabaseResourceState(this.resourceId, this.loggerMock.Object, this.config);
+
+            Assert.False(state.IsDisabledUntilExpiry());
+        }
     }
 }

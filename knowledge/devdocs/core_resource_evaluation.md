@@ -16,7 +16,8 @@ _Avoid_: no scaling configured
 
 ## How to use
 
-- Entry point is `ProcessOneAsync`: skip when disabled, not due, or `Enabled == false`; honor `IsDisabled()` before `RunLoop` and emit throttled disabled Information via `LogDisabledInformationIfDue`.
+- Entry point is `ProcessOneAsync`: skip when not due or `Enabled == false`; skip before `RunLoop` only when `IsDisabledUntilExpiry()` (a time-bound disable such as the unhandled-exception backoff) and emit throttled disabled Information via `LogDisabledInformationIfDue`.
+- Open-ended disables (`DateTime.MaxValue`: `autoscaler.disabled` tag, AKS `ProvisioningState`) must still reach `Refresh`, which is the only place that clears them; the post-refresh `IsDisabled()` check in `RunLoop` prevents scaling while they hold.
 - In `RunLoop`, always call `Refresh` then `PushIfDueAsync` before touching `ScalingConfigurations`.
 - When `HasNoScalingConfigurations` (null or empty), log absent-config Information at most once per hour (`LastNoScalingConfigurationsMessageLogged`), then return without scaling evaluation.
 - When the dictionary exists but `GetActiveScalingConfigurations` is empty, Trace only (`No scaling configurations apply right now.`) and return without scaling evaluation.
@@ -33,5 +34,6 @@ _Avoid_: no scaling configured
 ## Gotchas
 
 - Null and empty dictionary share the hourly absent-config Information path; inactive time windows use Trace only.
-- Unhandled exceptions in `ProcessOneAsync` set a one-hour disable entry; without the early `IsDisabled()` guard, the next due cycle repeats the failure every `Frequency`.
+- Unhandled exceptions in `ProcessOneAsync` set a one-hour disable entry; without the early `IsDisabledUntilExpiry()` guard, the next due cycle repeats the failure every `Frequency`.
+- Do not use plain `IsDisabled()` for the early guard: it also matches `DateTime.MaxValue` entries, so removing the `autoscaler.disabled` tag would never be seen until the process restarts.
 - Do not read `ScalingConfigurations.Values` before refresh and custom-metrics push; null bind is valid at validation time.
